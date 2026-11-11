@@ -145,6 +145,32 @@ public final class ModuleConfig {
             SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED;
     public boolean assistantGestureZoneOverlayEnabled =
             SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED;
+    public int assistantGestureZoneRadiusDp =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_RADIUS_DP;
+    public int assistantGestureZoneCorePercent =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_CORE_PERCENT;
+    public int assistantGestureZoneFillOpacityPercent =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FILL_OPACITY_PERCENT;
+    public int assistantGestureZoneStrokeOpacityPercent =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_STROKE_OPACITY_PERCENT;
+    public int assistantGestureZoneStrokeWidthTenthDp =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_STROKE_WIDTH_TENTH_DP;
+    public int assistantGestureZoneFadeInMs =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FADE_IN_MS;
+    public int assistantGestureZoneFadeOutMs =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FADE_OUT_MS;
+    public int assistantGestureZoneShortColor =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_SHORT_COLOR;
+    public int assistantGestureZoneLongColor =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_LONG_COLOR;
+    public int assistantGestureZoneFarColor =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FAR_COLOR;
+    public int assistantGestureZoneShortStrokeColor =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_SHORT_STROKE_COLOR;
+    public int assistantGestureZoneLongStrokeColor =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_LONG_STROKE_COLOR;
+    public int assistantGestureZoneFarStrokeColor =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FAR_STROKE_COLOR;
     public int[][] sideGestureActions = SettingsStore.readSideGestureActions(null, true);
     public String sideGestureTargetApp = "";
     public String sideGestureTargetActivity = "";
@@ -795,6 +821,45 @@ public final class ModuleConfig {
             config.assistantGestureZoneOverlayEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED,
                     SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED);
+            config.assistantGestureZoneRadiusDp = Math.max(40, Math.min(240, SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_RADIUS_DP,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_RADIUS_DP)));
+            config.assistantGestureZoneCorePercent = Math.max(0, Math.min(95, SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_CORE_PERCENT,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_CORE_PERCENT)));
+            config.assistantGestureZoneFillOpacityPercent = Math.max(0, Math.min(100, SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FILL_OPACITY_PERCENT,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FILL_OPACITY_PERCENT)));
+            config.assistantGestureZoneStrokeOpacityPercent = Math.max(0, Math.min(100, SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_STROKE_OPACITY_PERCENT,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_STROKE_OPACITY_PERCENT)));
+            config.assistantGestureZoneStrokeWidthTenthDp = Math.max(0, Math.min(50, SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_STROKE_WIDTH_TENTH_DP,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_STROKE_WIDTH_TENTH_DP)));
+            config.assistantGestureZoneFadeInMs = Math.max(0, Math.min(500, SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FADE_IN_MS,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FADE_IN_MS)));
+            config.assistantGestureZoneFadeOutMs = Math.max(0, Math.min(500, SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FADE_OUT_MS,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FADE_OUT_MS)));
+            config.assistantGestureZoneShortColor = SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_SHORT_COLOR,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_SHORT_COLOR);
+            config.assistantGestureZoneLongColor = SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_LONG_COLOR,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_LONG_COLOR);
+            config.assistantGestureZoneFarColor = SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FAR_COLOR,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FAR_COLOR);
+            config.assistantGestureZoneShortStrokeColor = SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_SHORT_STROKE_COLOR,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_SHORT_STROKE_COLOR);
+            config.assistantGestureZoneLongStrokeColor = SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_LONG_STROKE_COLOR,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_LONG_STROKE_COLOR);
+            config.assistantGestureZoneFarStrokeColor = SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FAR_STROKE_COLOR,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FAR_STROKE_COLOR);
             config.sideGestureActions = SettingsStore.readSideGestureActions(prefs, true);
             config.sideGestureTargetApp = SettingsStore.readString(prefs,
                     SettingsStore.KEY_SIDE_GESTURE_TARGET_APP, "");

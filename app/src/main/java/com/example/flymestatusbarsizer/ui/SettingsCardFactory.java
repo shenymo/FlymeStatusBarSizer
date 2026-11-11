@@ -426,6 +426,64 @@ public final class SettingsCardFactory {
         return activity.buildSectionCard("悬浮箭头设置", null, arrowOptions, true);
     }
 
+    public View createSideGestureZoneAppearanceSettingsPage() {
+        activity.beginAssistantGestureZoneDraft();
+        LinearLayout options = new LinearLayout(activity);
+        options.setOrientation(LinearLayout.VERTICAL);
+        activity.addProfileSectionHeader(options, "范围与清晰度", null);
+        activity.addSliderRow(options, "显示范围", "调节手指周围区域提示的最远距离。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_RADIUS_DP,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_RADIUS_DP, 40, 240, "dp");
+        activity.addSliderRow(options, "中心清晰范围", "调节中心区域占显示范围的比例。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_CORE_PERCENT,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_CORE_PERCENT, 0, 95, "%");
+        activity.addDivider(options);
+        activity.addProfileSectionHeader(options, "透明度与线条", null);
+        activity.addSliderRow(options, "区域透明度", "调节近、中、远触发区域填充的显眼程度。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FILL_OPACITY_PERCENT,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FILL_OPACITY_PERCENT, 0, 100, "%");
+        activity.addSliderRow(options, "边界透明度", "调节区域边界和距离阈值圆线的显眼程度。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_STROKE_OPACITY_PERCENT,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_STROKE_OPACITY_PERCENT, 0, 100, "%");
+        activity.addTenthDpSliderRow(options, "边界粗细", "调节分区边线和阈值圆线的宽度。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_STROKE_WIDTH_TENTH_DP,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_STROKE_WIDTH_TENTH_DP, 0, 50);
+        activity.addDivider(options);
+        activity.addProfileSectionHeader(options, "颜色", null);
+        ColorPreferenceEditor colors = new ColorPreferenceEditor(activity);
+        colors.addColor(options, "近距离区域", SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_SHORT_COLOR,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_SHORT_COLOR);
+        colors.addColor(options, "近距离边线",
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_SHORT_STROKE_COLOR,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_SHORT_STROKE_COLOR);
+        colors.addColor(options, "中距离区域", SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_LONG_COLOR,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_LONG_COLOR);
+        colors.addColor(options, "中距离边线",
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_LONG_STROKE_COLOR,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_LONG_STROKE_COLOR);
+        colors.addColor(options, "远距离区域", SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FAR_COLOR,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FAR_COLOR);
+        colors.addColor(options, "远距离边线",
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FAR_STROKE_COLOR,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FAR_STROKE_COLOR);
+        activity.addDivider(options);
+        activity.addProfileSectionHeader(options, "动画", null);
+        activity.addSliderRow(options, "渐显时长", "调节手势开始后区域显示的速度。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FADE_IN_MS,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FADE_IN_MS, 0, 500, "ms");
+        activity.addSliderRow(options, "淡出时长", "调节手势结束后区域消失的速度。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FADE_OUT_MS,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FADE_OUT_MS, 0, 500, "ms");
+        activity.addActionButtonRow(options, "保存当前设置",
+                "滑杆和颜色修改会暂存在本页，点击此按钮后才会正式保存。",
+                "保存", activity::saveAssistantGestureZoneAppearance);
+        activity.addActionButtonRow(options, "恢复全部默认外观",
+                "将本页所有范围、透明度、线条、颜色和动画参数恢复默认。",
+                "恢复默认", activity::resetAssistantGestureZoneAppearance);
+        return activity.buildSectionCard("触发区域外观", "仅调整提示样式，不改变手势触发条件。",
+                options, true);
+    }
+
     public View createSideGestureSettingsPage() {
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
@@ -553,6 +611,8 @@ public final class SettingsCardFactory {
         activity.addSwitchRow(previewOptions, "显示触发区域", null,
                 SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED);
+        activity.addActionButtonRow(previewOptions, "触发区域外观", null, "设置",
+                () -> activity.openPage(MainActivity.Page.SIDE_GESTURE_ZONE_APPEARANCE_SETTINGS));
         page.addView(activity.buildSectionCard("滑动提示", null, previewOptions, true),
                 activity.matchWrapWithTop(8));
 

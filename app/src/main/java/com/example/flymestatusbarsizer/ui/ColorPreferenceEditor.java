@@ -40,7 +40,7 @@ public final class ColorPreferenceEditor {
         swatch.setPadding(activity.dp(12), activity.dp(8), activity.dp(12), activity.dp(8));
         swatch.setMinHeight(activity.dp(44));
         swatch.setContentDescription(title + "颜色，点击修改");
-        updateSwatch(swatch, SettingsStore.readInt(activity.prefs(), key, defaultColor));
+        updateSwatch(swatch, readColor(key, defaultColor));
         row.addView(swatch);
         activity.setTapClickListener(swatch, v -> showColorDialog(title, key, defaultColor, swatch));
         root.addView(row);
@@ -105,7 +105,7 @@ public final class ColorPreferenceEditor {
             }
             @Override public void afterTextChanged(Editable s) { }
         });
-        input.setText(hex(SettingsStore.readInt(activity.prefs(), key, defaultColor)));
+        input.setText(hex(readColor(key, defaultColor)));
         ScrollView scroll = new ScrollView(activity);
         scroll.addView(content);
         AlertDialog dialog = new AlertDialog.Builder(activity).setTitle(title + "颜色")
@@ -113,7 +113,7 @@ public final class ColorPreferenceEditor {
                 .setView(scroll).setNegativeButton("取消", null)
                 .setNeutralButton("恢复默认", (d, w) -> {
                     palette.recordApplied(defaultColor);
-                    activity.putIntSetting(key, defaultColor);
+                    putColor(key, defaultColor);
                     updateSwatch(swatch, defaultColor);
                 })
                 .setPositiveButton("应用", null).create();
@@ -124,7 +124,7 @@ public final class ColorPreferenceEditor {
             try {
                 int color = parseColor(input.getText().toString());
                 palette.recordApplied(color);
-                activity.putIntSetting(key, color);
+                putColor(key, color);
                 updateSwatch(swatch, color);
                 dialog.dismiss();
             } catch (IllegalArgumentException e) {
@@ -140,6 +140,20 @@ public final class ColorPreferenceEditor {
         double luminance = 0.299 * Color.red(opaque) + 0.587 * Color.green(opaque)
                 + 0.114 * Color.blue(opaque);
         view.setTextColor(luminance > 150 ? Color.BLACK : Color.WHITE);
+    }
+
+    private int readColor(String key, int defaultColor) {
+        return key.startsWith("assistant_gesture_zone_")
+                ? activity.readAssistantGestureZoneDraft(key, defaultColor)
+                : SettingsStore.readInt(activity.prefs(), key, defaultColor);
+    }
+
+    private void putColor(String key, int color) {
+        if (key.startsWith("assistant_gesture_zone_")) {
+            activity.putAssistantGestureZoneDraft(key, color);
+        } else {
+            activity.putIntSetting(key, color);
+        }
     }
 
     private static int parseColor(String text) {

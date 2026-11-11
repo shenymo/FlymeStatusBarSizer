@@ -234,6 +234,45 @@ public final class SettingsStore {
             "assistant_gesture_preview_enabled";
     public static final String KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED =
             "assistant_gesture_zone_overlay_enabled";
+    public static final String KEY_ASSISTANT_GESTURE_ZONE_RADIUS_DP =
+            "assistant_gesture_zone_radius_dp";
+    public static final int DEFAULT_ASSISTANT_GESTURE_ZONE_RADIUS_DP = 100;
+    public static final String KEY_ASSISTANT_GESTURE_ZONE_CORE_PERCENT =
+            "assistant_gesture_zone_core_percent";
+    public static final int DEFAULT_ASSISTANT_GESTURE_ZONE_CORE_PERCENT = 45;
+    public static final String KEY_ASSISTANT_GESTURE_ZONE_FILL_OPACITY_PERCENT =
+            "assistant_gesture_zone_fill_opacity_percent";
+    public static final int DEFAULT_ASSISTANT_GESTURE_ZONE_FILL_OPACITY_PERCENT = 30;
+    public static final String KEY_ASSISTANT_GESTURE_ZONE_STROKE_OPACITY_PERCENT =
+            "assistant_gesture_zone_stroke_opacity_percent";
+    public static final int DEFAULT_ASSISTANT_GESTURE_ZONE_STROKE_OPACITY_PERCENT = 65;
+    public static final String KEY_ASSISTANT_GESTURE_ZONE_STROKE_WIDTH_TENTH_DP =
+            "assistant_gesture_zone_stroke_width_tenth_dp";
+    public static final int DEFAULT_ASSISTANT_GESTURE_ZONE_STROKE_WIDTH_TENTH_DP = 15;
+    public static final String KEY_ASSISTANT_GESTURE_ZONE_FADE_IN_MS =
+            "assistant_gesture_zone_fade_in_ms";
+    public static final int DEFAULT_ASSISTANT_GESTURE_ZONE_FADE_IN_MS = 120;
+    public static final String KEY_ASSISTANT_GESTURE_ZONE_FADE_OUT_MS =
+            "assistant_gesture_zone_fade_out_ms";
+    public static final int DEFAULT_ASSISTANT_GESTURE_ZONE_FADE_OUT_MS = 120;
+    public static final String KEY_ASSISTANT_GESTURE_ZONE_SHORT_COLOR =
+            "assistant_gesture_zone_short_color";
+    public static final int DEFAULT_ASSISTANT_GESTURE_ZONE_SHORT_COLOR = 0xff3f8cff;
+    public static final String KEY_ASSISTANT_GESTURE_ZONE_LONG_COLOR =
+            "assistant_gesture_zone_long_color";
+    public static final int DEFAULT_ASSISTANT_GESTURE_ZONE_LONG_COLOR = 0xffffaa55;
+    public static final String KEY_ASSISTANT_GESTURE_ZONE_FAR_COLOR =
+            "assistant_gesture_zone_far_color";
+    public static final int DEFAULT_ASSISTANT_GESTURE_ZONE_FAR_COLOR = 0xff61c69b;
+    public static final String KEY_ASSISTANT_GESTURE_ZONE_SHORT_STROKE_COLOR =
+            "assistant_gesture_zone_short_stroke_color";
+    public static final int DEFAULT_ASSISTANT_GESTURE_ZONE_SHORT_STROKE_COLOR = 0xff69a9ff;
+    public static final String KEY_ASSISTANT_GESTURE_ZONE_LONG_STROKE_COLOR =
+            "assistant_gesture_zone_long_stroke_color";
+    public static final int DEFAULT_ASSISTANT_GESTURE_ZONE_LONG_STROKE_COLOR = 0xffffb45f;
+    public static final String KEY_ASSISTANT_GESTURE_ZONE_FAR_STROKE_COLOR =
+            "assistant_gesture_zone_far_stroke_color";
+    public static final int DEFAULT_ASSISTANT_GESTURE_ZONE_FAR_STROKE_COLOR = 0xff6de1ad;
     public static final String KEY_ASSISTANT_GESTURE_SCENES = "assistant_gesture_scenes";
     public static final int ASSISTANT_GESTURE_SCENE_NORMAL = 1;
     public static final int ASSISTANT_GESTURE_SCENE_NOTIFICATION = 1 << 1;
@@ -823,6 +862,19 @@ public final class SettingsStore {
             KEY_SIDE_BACK_ARROW_LONG_COLOR,
             KEY_SIDE_BACK_ARROW_SHORT_OUTLINE_COLOR,
             KEY_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR,
+            KEY_ASSISTANT_GESTURE_ZONE_RADIUS_DP,
+            KEY_ASSISTANT_GESTURE_ZONE_CORE_PERCENT,
+            KEY_ASSISTANT_GESTURE_ZONE_FILL_OPACITY_PERCENT,
+            KEY_ASSISTANT_GESTURE_ZONE_STROKE_OPACITY_PERCENT,
+            KEY_ASSISTANT_GESTURE_ZONE_STROKE_WIDTH_TENTH_DP,
+            KEY_ASSISTANT_GESTURE_ZONE_FADE_IN_MS,
+            KEY_ASSISTANT_GESTURE_ZONE_FADE_OUT_MS,
+            KEY_ASSISTANT_GESTURE_ZONE_SHORT_COLOR,
+            KEY_ASSISTANT_GESTURE_ZONE_LONG_COLOR,
+            KEY_ASSISTANT_GESTURE_ZONE_FAR_COLOR,
+            KEY_ASSISTANT_GESTURE_ZONE_SHORT_STROKE_COLOR,
+            KEY_ASSISTANT_GESTURE_ZONE_LONG_STROKE_COLOR,
+            KEY_ASSISTANT_GESTURE_ZONE_FAR_STROKE_COLOR,
             KEY_ASSISTANT_GESTURE_DISTANCE_DP,
             KEY_ASSISTANT_GESTURE_UP_ANGLE,
             KEY_ASSISTANT_GESTURE_DOWN_ANGLE,
@@ -1319,6 +1371,32 @@ public final class SettingsStore {
             case KEY_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR:
                 return DEFAULT_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR;
             case KEY_ASSISTANT_GESTURE_DISTANCE_DP: return DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP;
+            case KEY_ASSISTANT_GESTURE_ZONE_RADIUS_DP:
+                return DEFAULT_ASSISTANT_GESTURE_ZONE_RADIUS_DP;
+            case KEY_ASSISTANT_GESTURE_ZONE_CORE_PERCENT:
+                return DEFAULT_ASSISTANT_GESTURE_ZONE_CORE_PERCENT;
+            case KEY_ASSISTANT_GESTURE_ZONE_FILL_OPACITY_PERCENT:
+                return DEFAULT_ASSISTANT_GESTURE_ZONE_FILL_OPACITY_PERCENT;
+            case KEY_ASSISTANT_GESTURE_ZONE_STROKE_OPACITY_PERCENT:
+                return DEFAULT_ASSISTANT_GESTURE_ZONE_STROKE_OPACITY_PERCENT;
+            case KEY_ASSISTANT_GESTURE_ZONE_STROKE_WIDTH_TENTH_DP:
+                return DEFAULT_ASSISTANT_GESTURE_ZONE_STROKE_WIDTH_TENTH_DP;
+            case KEY_ASSISTANT_GESTURE_ZONE_FADE_IN_MS:
+                return DEFAULT_ASSISTANT_GESTURE_ZONE_FADE_IN_MS;
+            case KEY_ASSISTANT_GESTURE_ZONE_FADE_OUT_MS:
+                return DEFAULT_ASSISTANT_GESTURE_ZONE_FADE_OUT_MS;
+            case KEY_ASSISTANT_GESTURE_ZONE_SHORT_COLOR:
+                return DEFAULT_ASSISTANT_GESTURE_ZONE_SHORT_COLOR;
+            case KEY_ASSISTANT_GESTURE_ZONE_LONG_COLOR:
+                return DEFAULT_ASSISTANT_GESTURE_ZONE_LONG_COLOR;
+            case KEY_ASSISTANT_GESTURE_ZONE_FAR_COLOR:
+                return DEFAULT_ASSISTANT_GESTURE_ZONE_FAR_COLOR;
+            case KEY_ASSISTANT_GESTURE_ZONE_SHORT_STROKE_COLOR:
+                return DEFAULT_ASSISTANT_GESTURE_ZONE_SHORT_STROKE_COLOR;
+            case KEY_ASSISTANT_GESTURE_ZONE_LONG_STROKE_COLOR:
+                return DEFAULT_ASSISTANT_GESTURE_ZONE_LONG_STROKE_COLOR;
+            case KEY_ASSISTANT_GESTURE_ZONE_FAR_STROKE_COLOR:
+                return DEFAULT_ASSISTANT_GESTURE_ZONE_FAR_STROKE_COLOR;
             case KEY_ASSISTANT_GESTURE_UP_ANGLE: return DEFAULT_ASSISTANT_GESTURE_UP_ANGLE;
             case KEY_ASSISTANT_GESTURE_DOWN_ANGLE: return DEFAULT_ASSISTANT_GESTURE_DOWN_ANGLE;
             case KEY_ASSISTANT_GESTURE_MIN_VERTICAL_DP:

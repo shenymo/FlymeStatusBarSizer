@@ -249,10 +249,10 @@ final class AssistantGestureHooks {
                 if (zoneOverlayEnabled) {
                     float density = context.getResources().getDisplayMetrics().density;
                     zoneOverlay.show(gestureStartX, state.startY(), fromLeft, shortDistancePx,
-                            longDistancePx, farDistancePx, gestureConfig.sideGestureActions, sideOffset,
+                            longDistancePx, farDistancePx,
                             gestureConfig.assistantGestureUpAngle / 10f,
                             gestureConfig.assistantGestureDownAngle / 10f,
-                            gestureConfig.assistantGestureMinVerticalDp * density);
+                            gestureConfig.assistantGestureMinVerticalDp * density, gestureConfig);
                 }
             }
             if (zoneOverlayEnabled && gestureStarted) zoneOverlay.updatePointer(rawX, rawY);

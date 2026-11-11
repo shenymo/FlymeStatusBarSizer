@@ -193,6 +193,8 @@ public class MainActivity extends Activity {
     private boolean updateCheckRunning;
     private SideGestureZoneOverlay sideGestureZoneOverlay;
     private Runnable sideGestureActionsChangedListener;
+    private final Map<String, Integer> assistantGestureZoneDraft = new HashMap<>();
+    private boolean keepAssistantGestureZoneDraft;
 
     public enum Page {
         HOME(null, null, null, false),
@@ -203,6 +205,7 @@ public class MainActivity extends Activity {
         CORNER_GESTURE_SETTINGS("底角手势设置", "独立设置左右底角斜滑的触发距离和对应动作。", null, false),
         SIDE_GESTURE_SETTINGS("手势增强", "设置侧边和底角手势的动作、提示与返回动画。", null, false),
         SIDE_BACK_ARROW_SETTINGS("悬浮箭头设置", "调整箭头的形状、位置、动画和颜色。", null, false),
+        SIDE_GESTURE_ZONE_APPEARANCE_SETTINGS("触发区域外观", "调整触发区域提示的颜色、范围与动画。", null, false),
         ADVANCED_DEBUG("工具与调试", "管理配置、性能日志、布局微调和调试工具。", null, true),
         ABOUT("关于与支持", null, null, false),
         ABOUT_DETAILS("版本与适用范围", null, null, false),
@@ -353,6 +356,10 @@ public class MainActivity extends Activity {
         registerPage(Page.SIDE_BACK_ARROW_SETTINGS, R.layout.page_side_gesture,
                 (activity, root) -> root.addView(
                         settingsCardFactory.createSideBackArrowSettingsPage(), PageViewUtils.matchWrap()));
+        registerPage(Page.SIDE_GESTURE_ZONE_APPEARANCE_SETTINGS, R.layout.page_side_gesture,
+                (activity, root) -> root.addView(
+                        settingsCardFactory.createSideGestureZoneAppearanceSettingsPage(),
+                        PageViewUtils.matchWrap()));
         registerPage(Page.ADVANCED_DEBUG, R.layout.page_advanced_debug, AdvancedDebugPageController::bind);
         registerPage(Page.ABOUT, R.layout.page_about, AboutPageController::bind);
         registerPage(Page.ABOUT_DETAILS, R.layout.page_about, AboutPageController::bindDetails);
@@ -2278,6 +2285,9 @@ public class MainActivity extends Activity {
     }
 
     int readIntSetting(String key, int defaultValue) {
+        if (key != null && assistantGestureZoneDraft.containsKey(key)) {
+            return assistantGestureZoneDraft.get(key);
+        }
         return SettingsStore.readInt(prefs, key, defaultValue);
     }
 
@@ -2312,6 +2322,11 @@ public class MainActivity extends Activity {
     }
 
     public void putIntSetting(String key, int value) {
+        if (key != null && key.startsWith("assistant_gesture_zone_")
+                && !assistantGestureZoneDraft.isEmpty()) {
+            putAssistantGestureZoneDraft(key, value);
+            return;
+        }
         SharedPreferences.Editor editor = prefs.edit().putInt(key, value);
         if (SettingsStore.isPositionOffsetKey(key)) {
             SettingsStore.markPositionOffsetStorageVersion(editor);
@@ -2319,6 +2334,70 @@ public class MainActivity extends Activity {
         editor.apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();
+    }
+
+    public void beginAssistantGestureZoneDraft() {
+        if (keepAssistantGestureZoneDraft) {
+            keepAssistantGestureZoneDraft = false;
+            return;
+        }
+        assistantGestureZoneDraft.clear();
+        for (String key : assistantGestureZoneDraftKeys()) {
+            assistantGestureZoneDraft.put(key, SettingsStore.readInt(prefs, key,
+                    SettingsStore.defaultInt(key)));
+        }
+    }
+
+    private String[] assistantGestureZoneDraftKeys() {
+        return new String[] {
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_RADIUS_DP,
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_CORE_PERCENT,
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FILL_OPACITY_PERCENT,
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_STROKE_OPACITY_PERCENT,
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_STROKE_WIDTH_TENTH_DP,
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FADE_IN_MS,
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FADE_OUT_MS,
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_SHORT_COLOR,
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_LONG_COLOR,
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FAR_COLOR,
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_SHORT_STROKE_COLOR,
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_LONG_STROKE_COLOR,
+                SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FAR_STROKE_COLOR
+        };
+    }
+
+    public int readAssistantGestureZoneDraft(String key, int defaultValue) {
+        Integer value = assistantGestureZoneDraft.get(key);
+        return value != null ? value : readIntSetting(key, defaultValue);
+    }
+
+    public void putAssistantGestureZoneDraft(String key, int value) {
+        assistantGestureZoneDraft.put(key, value);
+    }
+
+    public void saveAssistantGestureZoneAppearance() {
+        SharedPreferences.Editor editor = prefs.edit();
+        for (Map.Entry<String, Integer> entry : assistantGestureZoneDraft.entrySet()) {
+            editor.putInt(entry.getKey(), entry.getValue());
+        }
+        editor.apply();
+        assistantGestureZoneDraft.clear();
+        for (String key : assistantGestureZoneDraftKeys()) {
+            assistantGestureZoneDraft.put(key, SettingsStore.readInt(prefs, key,
+                    SettingsStore.defaultInt(key)));
+        }
+        SettingsStore.notifyChanged(this);
+        invalidatePreview();
+        showToast("触发区域外观已保存");
+    }
+
+    public void resetAssistantGestureZoneAppearance() {
+        String[] keys = assistantGestureZoneDraftKeys();
+        assistantGestureZoneDraft.clear();
+        for (String key : keys) assistantGestureZoneDraft.put(key, SettingsStore.defaultInt(key));
+        keepAssistantGestureZoneDraft = true;
+        showToast("已恢复默认值，请点击保存");
+        recreate();
     }
 
     public void putStringSetting(String key, String value) {

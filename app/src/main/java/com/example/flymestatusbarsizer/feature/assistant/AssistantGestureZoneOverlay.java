@@ -2,14 +2,20 @@ package com.example.flymestatusbarsizer.feature.assistant;
 
 import android.content.Context;
 import android.graphics.Canvas;
-import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
+import android.graphics.RadialGradient;
+import android.graphics.Shader;
 import android.os.Binder;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
+import android.view.animation.DecelerateInterpolator;
+
+import com.example.flymestatusbarsizer.config.ModuleConfig;
+import com.example.flymestatusbarsizer.config.SettingsStore;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -31,32 +37,30 @@ final class AssistantGestureZoneOverlay {
     }
 
     void show(float startX, float startY, boolean fromLeft, float shortDistancePx,
-            float longDistancePx, float farDistancePx, int[][] actions, int sideOffset,
-            float upAngle, float downAngle, float minVertical) {
+            float longDistancePx, float farDistancePx,
+            float upAngle, float downAngle, float minVertical, ModuleConfig config) {
         view.setSpec(startX, startY, fromLeft, shortDistancePx, longDistancePx, farDistancePx,
-                actions, sideOffset, upAngle, downAngle, minVertical);
+                upAngle, downAngle, minVertical);
+        view.setAppearance(config);
         if (!attached && !attempted) {
             attempted = true;
             attach();
         }
         if (attached) {
-            view.setVisibility(View.VISIBLE);
-            view.postInvalidateOnAnimation();
+            view.fadeIn();
         }
     }
 
     void hide() {
         if (attached) {
-            view.setVisibility(View.INVISIBLE);
+            view.fadeOut();
         } else {
             attempted = false;
         }
     }
 
     void updatePointer(float x, float y) {
-        view.pointerX = x;
-        view.pointerY = y;
-        if (attached) view.postInvalidateOnAnimation();
+        view.setPointer(x, y);
     }
 
     private void attach() {
@@ -110,18 +114,25 @@ final class AssistantGestureZoneOverlay {
     }
 
     private final class ZoneView extends View {
+        private float fadeInDurationMs = SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FADE_IN_MS;
+        private float fadeOutDurationMs = SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FADE_OUT_MS;
+        private int revealRadiusDp = SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_RADIUS_DP;
+        private int corePercent = SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_CORE_PERCENT;
+        private int fillOpacityPercent =
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FILL_OPACITY_PERCENT;
+        private int strokeOpacityPercent =
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_STROKE_OPACITY_PERCENT;
         private final Paint shortFill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint farFill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint farStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint longFill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint shortStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint longStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint startPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint ringPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint labelBackground = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint[] revealPaints = {
+                shortFill, longFill, farFill, shortStroke, longStroke, farStroke
+        };
+        private final Matrix revealMatrix = new Matrix();
         private final float density;
-        private final float scaledDensity;
         private float startX;
         private float startY;
         private float pointerX;
@@ -133,55 +144,52 @@ final class AssistantGestureZoneOverlay {
         private float downAngleTan;
         private float minVertical;
         private boolean fromLeft;
-        private final String[][] actionLabels = new String[3][3];
 
         ZoneView(Context context) {
             super(context);
+            setAlpha(0f);
             density = getResources().getDisplayMetrics().density;
-            scaledDensity = getResources().getDisplayMetrics().scaledDensity;
-            shortFill.setColor(0x263f8cff);
-            longFill.setColor(0x2affaa55);
-            farFill.setColor(0x2a61c69b);
-            shortStroke.setColor(0xa869a9ff);
-            longStroke.setColor(0xb8ffb45f);
-            farStroke.setColor(0xb86de1ad);
+            shortFill.setColor(SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_SHORT_COLOR);
+            longFill.setColor(SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_LONG_COLOR);
+            farFill.setColor(SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FAR_COLOR);
+            shortStroke.setColor(SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_SHORT_STROKE_COLOR);
+            longStroke.setColor(SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_LONG_STROKE_COLOR);
+            farStroke.setColor(SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FAR_STROKE_COLOR);
             shortStroke.setStyle(Paint.Style.STROKE);
             longStroke.setStyle(Paint.Style.STROKE);
             farStroke.setStyle(Paint.Style.STROKE);
-            shortStroke.setStrokeWidth(dp(1));
-            longStroke.setStrokeWidth(dp(1));
-            farStroke.setStrokeWidth(dp(1));
-            startPaint.setColor(Color.WHITE);
-            ringPaint.setStyle(Paint.Style.STROKE);
-            ringPaint.setStrokeWidth(dp(1));
-            labelBackground.setColor(0xe5222222);
-            labelPaint.setColor(Color.WHITE);
-            labelPaint.setTextSize(13f * scaledDensity);
-            labelPaint.setTypeface(android.graphics.Typeface.create(
-                    "sans-serif-medium", android.graphics.Typeface.NORMAL));
+            setAppearanceColors();
+        }
+
+        void fadeIn() {
+            animate().cancel();
+            setAlpha(0f);
+            setVisibility(View.VISIBLE);
+            animate().alpha(1f).setDuration((long) fadeInDurationMs)
+                    .setInterpolator(new DecelerateInterpolator()).start();
+        }
+
+        void fadeOut() {
+            if (getVisibility() != View.VISIBLE) return;
+            animate().cancel();
+            animate().alpha(0f).setDuration((long) fadeOutDurationMs)
+                    .setInterpolator(new DecelerateInterpolator())
+                    .withEndAction(() -> setVisibility(View.INVISIBLE)).start();
         }
 
         void setSpec(float startX, float startY, boolean fromLeft, float shortDistance,
-                float longDistance, float farDistance, int[][] actions, int sideOffset,
+                float longDistance, float farDistance,
                 float upAngle, float downAngle, float minVertical) {
             this.startX = startX;
             this.startY = startY;
-            pointerX = startX;
-            pointerY = startY;
             this.fromLeft = fromLeft;
             this.shortDistance = shortDistance;
             this.longDistance = longDistance;
             this.farDistance = farDistance;
-            int tierCount = Float.isFinite(farDistance) ? 3 : Float.isFinite(longDistance) ? 2 : 1;
-            for (int tier = 0; tier < tierCount; tier++) {
-                for (int direction = 0; direction < 3; direction++) {
-                    actionLabels[tier][direction] = SideGestureActions.label(
-                            actions[tier][sideOffset + direction], getContext());
-                }
-            }
             upAngleTan = (float) Math.tan(Math.toRadians(upAngle));
             downAngleTan = (float) Math.tan(Math.toRadians(downAngle));
             this.minVertical = minVertical;
+            setPointer(startX, startY);
         }
 
         @Override protected void onDraw(Canvas canvas) {
@@ -193,55 +201,37 @@ final class AssistantGestureZoneOverlay {
             float upperY = startY;
             float lowerY = getHeight() - startY;
             canvas.save();
-            canvas.clipRect(0, 0, getWidth(), getHeight());
+            float revealRadius = dp(revealRadiusDp);
+            canvas.clipRect(pointerX - revealRadius, pointerY - revealRadius,
+                    pointerX + revealRadius, pointerY + revealRadius);
             boolean splitEnabled = Float.isFinite(longDistance);
             boolean farEnabled = Float.isFinite(farDistance);
             if (!splitEnabled || longDistance > shortDistance) {
-                drawMode(canvas, availableX, upperY, lowerY, direction, 0,
-                        shortDistance, splitEnabled ? longDistance : 0f, shortFill, shortStroke,
-                        splitEnabled ? "近" : "");
+                drawMode(canvas, availableX, upperY, lowerY, direction,
+                        shortDistance, splitEnabled ? longDistance : 0f, shortFill, shortStroke);
             }
             if (splitEnabled) {
-                drawMode(canvas, availableX, upperY, lowerY, direction, 1,
+                drawMode(canvas, availableX, upperY, lowerY, direction,
                         Math.max(shortDistance, longDistance), farEnabled ? farDistance : 0f,
-                        longFill, longStroke, "中");
+                        longFill, longStroke);
             }
             if (farEnabled) {
-                drawMode(canvas, availableX, upperY, lowerY, direction, 2,
-                        farDistance, 0f, farFill, farStroke, "远");
+                drawMode(canvas, availableX, upperY, lowerY, direction,
+                        farDistance, 0f, farFill, farStroke);
             }
-            drawThresholds(canvas, direction);
+            drawThresholds(canvas);
             canvas.restore();
-            drawStartLabel(canvas, direction);
         }
 
         private void drawMode(Canvas canvas, float availableX, float upperY, float lowerY,
-                int direction, int tier, float minRadius, float maxRadius,
-                Paint fill, Paint stroke, String mode) {
-            String[] labels = actionLabels[tier];
+                int direction, float minRadius, float maxRadius,
+                Paint fill, Paint stroke) {
             drawHorizontal(canvas, availableX, upperY, lowerY, direction, minRadius, maxRadius,
                     fill, stroke);
             drawDiagonal(canvas, availableX, upperY, lowerY, direction, minRadius, maxRadius,
                     true, fill, stroke);
             drawDiagonal(canvas, availableX, upperY, lowerY, direction, minRadius, maxRadius,
                     false, fill, stroke);
-            float labelDistance = maxRadius > 0f
-                    ? (minRadius + maxRadius) * 0.5f : minRadius + dp(56);
-            float labelOffset = Float.isFinite(farDistance) ? dp(34) * (tier - 1) : 0f;
-            drawLabel(canvas, direction, labelDistance, startY + labelOffset,
-                    (mode.length() == 0 ? "横向" : mode + "距离横向") + " · "
-                            + labels[0],
-                    fill.getColor());
-            float diagonalX = Math.max(shortDistance * 0.35f + dp(22), labelDistance);
-            diagonalX = Math.min(availableX * 0.82f, Math.max(shortDistance * 0.35f, diagonalX));
-            float upDiagonalY = angleBand(diagonalX, true) + dp(26);
-            float downDiagonalY = angleBand(diagonalX, false) + dp(26);
-            drawLabel(canvas, direction, diagonalX, startY - upDiagonalY - labelOffset,
-                    (mode.length() == 0 ? "上斜" : mode + "距离上斜") + " · "
-                            + labels[1], fill.getColor());
-            drawLabel(canvas, direction, diagonalX, startY + downDiagonalY + labelOffset,
-                    (mode.length() == 0 ? "下斜" : mode + "距离下斜") + " · "
-                            + labels[2], fill.getColor());
         }
 
         private void drawHorizontal(Canvas canvas, float availableX, float upperY, float lowerY,
@@ -337,59 +327,14 @@ final class AssistantGestureZoneOverlay {
             canvas.drawPath(path, stroke);
         }
 
-        private void drawThresholds(Canvas canvas, int direction) {
-            ringPaint.setColor(shortStroke.getColor());
-            canvas.drawCircle(startX, startY, shortDistance, ringPaint);
-            drawDistanceLabel(canvas, direction, shortDistance, "近 " + distanceText(shortDistance),
-                    shortStroke.getColor());
+        private void drawThresholds(Canvas canvas) {
+            canvas.drawCircle(startX, startY, shortDistance, shortStroke);
             if (Float.isFinite(longDistance)) {
-                ringPaint.setColor(longStroke.getColor());
-                canvas.drawCircle(startX, startY, longDistance, ringPaint);
-                drawDistanceLabel(canvas, direction, longDistance,
-                        "中 " + distanceText(longDistance), longStroke.getColor());
+                canvas.drawCircle(startX, startY, longDistance, longStroke);
             }
             if (Float.isFinite(farDistance)) {
-                ringPaint.setColor(farStroke.getColor());
-                canvas.drawCircle(startX, startY, farDistance, ringPaint);
-                drawDistanceLabel(canvas, direction, farDistance,
-                        "远 " + distanceText(farDistance), farStroke.getColor());
+                canvas.drawCircle(startX, startY, farDistance, farStroke);
             }
-            startPaint.setColor(Color.WHITE);
-            startPaint.setStyle(Paint.Style.FILL);
-            canvas.drawCircle(startX, startY, dp(5), startPaint);
-            startPaint.setColor(0xfff5d76e);
-            canvas.drawCircle(pointerX, pointerY, dp(7), startPaint);
-            startPaint.setColor(Color.WHITE);
-        }
-
-        private void drawDistanceLabel(Canvas canvas, int direction, float distance, String text,
-                int color) {
-            if (distance <= 0f) return;
-            drawLabel(canvas, direction, distance,
-                    startY - dp(18), text, color);
-        }
-
-        private void drawStartLabel(Canvas canvas, int direction) {
-            drawLabel(canvas, direction, 0f, startY - dp(22), "起点", Color.WHITE);
-        }
-
-        private void drawLabel(Canvas canvas, int direction, float distance, float y, String text,
-                int color) {
-            labelPaint.setTextSize(13f * scaledDensity);
-            float width = labelPaint.measureText(text) + dp(16);
-            float height = dp(30);
-            float center = screenX(distance, direction);
-            float left = Math.max(dp(6), Math.min(getWidth() - width - dp(6), center - width / 2f));
-            float top = Math.max(dp(6), Math.min(getHeight() - height - dp(6), y - height / 2f));
-            labelBackground.setColor(Color.argb(0xe5, Color.red(color), Color.green(color),
-                    Color.blue(color)));
-            canvas.drawRoundRect(left, top, left + width, top + height, dp(7), dp(7),
-                    labelBackground);
-            labelPaint.setColor(Color.WHITE);
-            Paint.FontMetrics metrics = labelPaint.getFontMetrics();
-            float baseline = top + (height - metrics.bottom - metrics.top) / 2f;
-            canvas.drawText(text, left + (width - labelPaint.measureText(text)) / 2f,
-                    baseline, labelPaint);
         }
 
         private float radialLower(float x, float radius) {
@@ -411,12 +356,52 @@ final class AssistantGestureZoneOverlay {
             return startX + direction * distance;
         }
 
-        private String distanceText(float px) {
-            return Math.round(px / density) + "dp";
-        }
-
         private float dp(float value) {
             return value * density;
+        }
+
+        void setPointer(float x, float y) {
+            pointerX = x;
+            pointerY = y;
+            revealMatrix.setTranslate(x, y);
+            for (Paint paint : revealPaints) {
+                paint.getShader().setLocalMatrix(revealMatrix);
+            }
+            postInvalidateOnAnimation();
+        }
+
+        void setAppearance(ModuleConfig config) {
+            revealRadiusDp = config.assistantGestureZoneRadiusDp;
+            corePercent = config.assistantGestureZoneCorePercent;
+            fillOpacityPercent = config.assistantGestureZoneFillOpacityPercent;
+            strokeOpacityPercent = config.assistantGestureZoneStrokeOpacityPercent;
+            fadeInDurationMs = config.assistantGestureZoneFadeInMs;
+            fadeOutDurationMs = config.assistantGestureZoneFadeOutMs;
+            shortStroke.setStrokeWidth(dp(config.assistantGestureZoneStrokeWidthTenthDp / 10f));
+            longStroke.setStrokeWidth(dp(config.assistantGestureZoneStrokeWidthTenthDp / 10f));
+            farStroke.setStrokeWidth(dp(config.assistantGestureZoneStrokeWidthTenthDp / 10f));
+            shortFill.setColor(config.assistantGestureZoneShortColor);
+            longFill.setColor(config.assistantGestureZoneLongColor);
+            farFill.setColor(config.assistantGestureZoneFarColor);
+            shortStroke.setColor(config.assistantGestureZoneShortStrokeColor);
+            longStroke.setColor(config.assistantGestureZoneLongStrokeColor);
+            farStroke.setColor(config.assistantGestureZoneFarStrokeColor);
+            setAppearanceColors();
+            setPointer(pointerX, pointerY);
+        }
+
+        private void setAppearanceColors() {
+            for (int i = 0; i < revealPaints.length; i++) {
+                Paint paint = revealPaints[i];
+                int color = paint.getColor();
+                int opacity = i < 3 ? fillOpacityPercent : strokeOpacityPercent;
+                int solid = (Math.round(opacity * 255f / 100f) << 24) | (color & 0x00ffffff);
+                float edgeRadius = dp(revealRadiusDp);
+                float coreStop = Math.max(0.001f, corePercent / 100f);
+                paint.setShader(new RadialGradient(0f, 0f, edgeRadius,
+                        new int[]{solid, solid, color & 0x00ffffff},
+                        new float[]{0f, coreStop, 1f}, Shader.TileMode.CLAMP));
+            }
         }
     }
 }
