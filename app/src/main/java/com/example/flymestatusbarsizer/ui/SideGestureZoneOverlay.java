@@ -79,7 +79,10 @@ public final class SideGestureZoneOverlay {
             R.drawable.gesture_action_task_scale,
             R.drawable.gesture_action_quick_tools,
             R.drawable.gesture_action_app_launcher,
-            0, 0, 0, 0
+            R.drawable.gesture_action_open_app,
+            R.drawable.gesture_action_open_activity,
+            R.drawable.gesture_action_open_intent_uri,
+            R.drawable.gesture_action_open_scheme_url
     };
     private static final String[] ACTION_LABELS = {
             "无动作", "返回", "返回桌面", "最近任务", "锁屏", "结束当前任务（App）",
