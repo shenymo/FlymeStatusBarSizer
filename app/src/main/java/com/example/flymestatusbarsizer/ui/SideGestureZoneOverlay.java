@@ -36,6 +36,8 @@ public final class SideGestureZoneOverlay {
             SettingsStore.SIDE_GESTURE_ACTION_BACK,
             SettingsStore.SIDE_GESTURE_ACTION_HOME,
             SettingsStore.SIDE_GESTURE_ACTION_RECENTS,
+            SettingsStore.SIDE_GESTURE_ACTION_LOCK_SCREEN,
+            SettingsStore.SIDE_GESTURE_ACTION_END_CURRENT_TASK,
             SettingsStore.SIDE_GESTURE_ACTION_WINDOWMODE_PANEL,
             SettingsStore.SIDE_GESTURE_ACTION_WELT_WINDOW,
             SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER,
@@ -49,7 +51,8 @@ public final class SideGestureZoneOverlay {
             SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL
     };
     private static final String[] ACTION_LABELS = {
-            "无动作", "返回", "返回桌面", "最近任务", "小窗选择面板", "贴边", "任务切换器", "全局负一屏", "多应用工作台",
+            "无动作", "返回", "返回桌面", "最近任务", "锁屏", "结束当前任务（App）",
+            "小窗选择面板", "贴边", "任务切换器", "全局负一屏", "多应用工作台",
             "快捷工具", "应用启动器", "打开指定应用", "打开 Activity", "打开 Intent URI", "打开 Scheme URL"
     };
     private static final int DRAG_NONE = 0;
@@ -1108,6 +1111,8 @@ public final class SideGestureZoneOverlay {
                 case SettingsStore.SIDE_GESTURE_ACTION_BACK: return "返回";
                 case SettingsStore.SIDE_GESTURE_ACTION_HOME: return "返回桌面";
                 case SettingsStore.SIDE_GESTURE_ACTION_RECENTS: return "最近任务";
+                case SettingsStore.SIDE_GESTURE_ACTION_LOCK_SCREEN: return "锁屏";
+                case SettingsStore.SIDE_GESTURE_ACTION_END_CURRENT_TASK: return "结束当前任务（App）";
                 case SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT: return "全局负一屏";
                 case SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE: return "多应用工作台";
                 case SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER: return "任务切换器";

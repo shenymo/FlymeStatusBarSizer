@@ -1,11 +1,17 @@
 package com.example.flymestatusbarsizer.feature.assistant;
 
+import android.app.ActivityManager;
 import android.content.Context;
+import android.os.PowerManager;
+import android.os.SystemClock;
 
 import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.config.SideGestureTargetStore;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.feature.windowmode.WindowModeSideGestureHooks;
+import com.example.flymestatusbarsizer.util.ReflectUtils;
+
+import java.util.List;
 
 /** Keeps action availability and execution separate from edge gesture recognition. */
 public final class SideGestureActions {
@@ -47,6 +53,45 @@ public final class SideGestureActions {
     static Action resolve(int action, Action globalAssistant, Action taskScale, Action taskSwitcher,
             Action quickTools, Action appLauncher, Context context) {
         switch (action) {
+            case SettingsStore.SIDE_GESTURE_ACTION_LOCK_SCREEN:
+            case SettingsStore.SIDE_GESTURE_ACTION_END_CURRENT_TASK:
+                if (context == null) return null;
+                return new Action() {
+                    @Override public boolean isReady() {
+                        return true;
+                    }
+
+                    @Override public void execute(boolean fromLeft, Runnable onSuccess) {
+                        try {
+                            if (action == SettingsStore.SIDE_GESTURE_ACTION_LOCK_SCREEN) {
+                                PowerManager power = context.getSystemService(PowerManager.class);
+                                PowerManager.class.getMethod("goToSleep", long.class)
+                                        .invoke(power, SystemClock.uptimeMillis());
+                            } else {
+                                ActivityManager manager = context.getSystemService(ActivityManager.class);
+                                List<ActivityManager.RunningTaskInfo> tasks = manager.getRunningTasks(1);
+                                if (tasks.isEmpty()) return;
+                                ActivityManager.RunningTaskInfo task = tasks.get(0);
+                                if (task.taskId < 0 || task.topActivity == null
+                                        || ReflectUtils.getIntField(task, "displayId", -1) != 0
+                                        || ReflectUtils.invokeNoArgInt(task, "getActivityType", -1) != 1
+                                        || "com.android.systemui".equals(
+                                                task.topActivity.getPackageName())) return;
+                                Object service = Class.forName("android.app.ActivityTaskManager")
+                                        .getMethod("getService").invoke(null);
+                                Object result = Class.forName("android.app.IActivityTaskManager")
+                                        .getMethod("removeTask", int.class).invoke(service, task.taskId);
+                                if (Boolean.FALSE.equals(result)) {
+                                    AssistantHooks.warn("Cannot end current task", null);
+                                    return;
+                                }
+                            }
+                            if (onSuccess != null) onSuccess.run();
+                        } catch (ReflectiveOperationException | RuntimeException error) {
+                            AssistantHooks.warn("Cannot execute gesture action: " + label(action), error);
+                        }
+                    }
+                };
             case SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT:
                 return globalAssistant;
             case SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE:
@@ -78,6 +123,8 @@ public final class SideGestureActions {
             case SettingsStore.SIDE_GESTURE_ACTION_BACK: return "返回";
             case SettingsStore.SIDE_GESTURE_ACTION_HOME: return "返回桌面";
             case SettingsStore.SIDE_GESTURE_ACTION_RECENTS: return "最近任务";
+            case SettingsStore.SIDE_GESTURE_ACTION_LOCK_SCREEN: return "锁屏";
+            case SettingsStore.SIDE_GESTURE_ACTION_END_CURRENT_TASK: return "结束当前任务（App）";
             case SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT: return "全局负一屏";
             case SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE: return "多应用工作台";
             case SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER: return "任务切换器";
