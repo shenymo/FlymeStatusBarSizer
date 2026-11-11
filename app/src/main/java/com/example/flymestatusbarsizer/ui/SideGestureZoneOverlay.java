@@ -15,6 +15,7 @@ import android.graphics.Matrix;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -33,6 +34,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.example.flymestatusbarsizer.MainActivity;
+import com.example.flymestatusbarsizer.R;
 import com.example.flymestatusbarsizer.feature.assistant.AssistantGestureGeometry;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.config.SideGestureTargetStore;
@@ -62,6 +64,22 @@ public final class SideGestureZoneOverlay {
             SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY,
             SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI,
             SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL
+    };
+    private static final int[] ACTION_ICONS = {
+            R.drawable.gesture_action_none,
+            R.drawable.gesture_action_back,
+            R.drawable.gesture_action_home,
+            R.drawable.gesture_action_recents,
+            R.drawable.gesture_action_lock,
+            R.drawable.gesture_action_end_task,
+            R.drawable.gesture_action_window_panel,
+            R.drawable.gesture_action_welt_window,
+            R.drawable.gesture_action_task_switcher,
+            R.drawable.gesture_action_global_assistant,
+            R.drawable.gesture_action_task_scale,
+            R.drawable.gesture_action_quick_tools,
+            R.drawable.gesture_action_app_launcher,
+            0, 0, 0, 0
     };
     private static final String[] ACTION_LABELS = {
             "无动作", "返回", "返回桌面", "最近任务", "锁屏", "结束当前任务（App）",
@@ -912,6 +930,16 @@ public final class SideGestureZoneOverlay {
                             ? activity.primaryColor() : activity.textColor());
                     row.setMinHeight(Math.round(dp(48)));
                     row.setPadding(Math.round(dp(14)), 0, Math.round(dp(14)), 0);
+                    int actionIndex = ACTION_CATEGORY_STARTS[categoryState[0]] + position;
+                    int iconResource = ACTION_ICONS[actionIndex];
+                    Drawable icon = iconResource == 0 ? null : activity.getDrawable(iconResource);
+                    if (icon != null) {
+                        icon = icon.mutate();
+                        icon.setTint(choice.value == currentAction
+                                ? activity.primaryColor() : activity.textColor());
+                    }
+                    row.setCompoundDrawablePadding(Math.round(dp(12)));
+                    row.setCompoundDrawablesWithIntrinsicBounds(icon, null, null, null);
                     row.setBackground(activity.roundRect(choice.value == currentAction
                             ? activity.surfaceSoftColor() : Color.TRANSPARENT, 8));
                     return row;
