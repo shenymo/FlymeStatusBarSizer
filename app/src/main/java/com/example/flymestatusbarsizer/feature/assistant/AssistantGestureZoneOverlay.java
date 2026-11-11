@@ -21,7 +21,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 /** Draws the configured gesture zones from the actual pointer-down position. */
-final class AssistantGestureZoneOverlay {
+public final class AssistantGestureZoneOverlay {
     private static final int[] WINDOW_TYPES = {2041, 2017, 2040};
     private static final String TITLE = "FlymeStatusBarSizer:GestureZones";
     private final Context context;
@@ -30,7 +30,7 @@ final class AssistantGestureZoneOverlay {
     private boolean attached;
     private boolean attempted;
 
-    AssistantGestureZoneOverlay(Context context) {
+    public AssistantGestureZoneOverlay(Context context) {
         this.context = context;
         windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
         view = new ZoneView(context);
@@ -40,7 +40,22 @@ final class AssistantGestureZoneOverlay {
             float longDistancePx, float farDistancePx,
             float upAngle, float downAngle, float minVertical, ModuleConfig config) {
         view.setSpec(startX, startY, fromLeft, shortDistancePx, longDistancePx, farDistancePx,
-                upAngle, downAngle, minVertical);
+                upAngle, downAngle, minVertical, false);
+        show(config);
+    }
+
+    public void showCorner(float startX, float startY, boolean fromLeft, ModuleConfig config) {
+        float density = context.getResources().getDisplayMetrics().density;
+        view.setSpec(startX, startY, fromLeft, config.cornerGestureDistanceDp * density,
+                config.cornerGestureSplitEnabled
+                        ? config.cornerGestureLongDistanceDp * density : Float.POSITIVE_INFINITY,
+                config.cornerGestureFarEnabled
+                        ? config.cornerGestureFarDistanceDp * density : Float.POSITIVE_INFINITY,
+                0f, 0f, 0f, true);
+        show(config);
+    }
+
+    private void show(ModuleConfig config) {
         view.setAppearance(config);
         if (!attached && !attempted) {
             attempted = true;
@@ -53,13 +68,22 @@ final class AssistantGestureZoneOverlay {
 
     void hide() {
         if (attached) {
-            view.fadeOut();
+            view.fadeOut(null);
         } else {
             attempted = false;
         }
     }
 
-    void updatePointer(float x, float y) {
+    public void close() {
+        if (!attached) return;
+        view.fadeOut(() -> {
+            windowManager.removeViewImmediate(view);
+            attached = false;
+            attempted = false;
+        });
+    }
+
+    public void updatePointer(float x, float y) {
         view.setPointer(x, y);
     }
 
@@ -142,6 +166,7 @@ final class AssistantGestureZoneOverlay {
         private float farDistance;
         private AssistantGestureGeometry geometry;
         private boolean fromLeft;
+        private boolean cornerMode;
 
         ZoneView(Context context) {
             super(context);
@@ -167,24 +192,32 @@ final class AssistantGestureZoneOverlay {
                     .setInterpolator(new DecelerateInterpolator()).start();
         }
 
-        void fadeOut() {
-            if (getVisibility() != View.VISIBLE) return;
+        void fadeOut(Runnable onEnd) {
+            if (getVisibility() != View.VISIBLE) {
+                if (onEnd != null) onEnd.run();
+                return;
+            }
             animate().cancel();
             animate().alpha(0f).setDuration((long) fadeOutDurationMs)
                     .setInterpolator(new DecelerateInterpolator())
-                    .withEndAction(() -> setVisibility(View.INVISIBLE)).start();
+                    .withEndAction(() -> {
+                        setVisibility(View.INVISIBLE);
+                        if (onEnd != null) onEnd.run();
+                    }).start();
         }
 
         void setSpec(float startX, float startY, boolean fromLeft, float shortDistance,
                 float longDistance, float farDistance,
-                float upAngle, float downAngle, float minVertical) {
+                float upAngle, float downAngle, float minVertical, boolean cornerMode) {
             this.startX = startX;
             this.startY = startY;
             this.fromLeft = fromLeft;
             this.shortDistance = shortDistance;
             this.longDistance = longDistance;
             this.farDistance = farDistance;
-            geometry = new AssistantGestureGeometry(shortDistance, upAngle, downAngle, minVertical);
+            this.cornerMode = cornerMode;
+            geometry = cornerMode ? null
+                    : new AssistantGestureGeometry(shortDistance, upAngle, downAngle, minVertical);
             setPointer(startX, startY);
         }
 
@@ -209,9 +242,23 @@ final class AssistantGestureZoneOverlay {
             transform.postTranslate(startX, startY);
             for (int tier = 0; tier < count; tier++) {
                 float outer = tier + 1 < count ? distances[tier + 1] : Float.POSITIVE_INFINITY;
-                for (int zone = 0; zone < 3; zone++) {
-                    Path path = geometry.region(zone, distances[tier], outer,
-                            availableX, upperY, lowerY);
+                for (int zone = 0; zone < (cornerMode ? 1 : 3); zone++) {
+                    Path path;
+                    if (cornerMode) {
+                        path = new Path();
+                        path.addRect(0f, -upperY, availableX, lowerY, Path.Direction.CW);
+                        Path circle = new Path();
+                        circle.addCircle(0f, 0f, distances[tier], Path.Direction.CW);
+                        path.op(circle, Path.Op.DIFFERENCE);
+                        if (Float.isFinite(outer)) {
+                            circle.reset();
+                            circle.addCircle(0f, 0f, outer, Path.Direction.CW);
+                            path.op(circle, Path.Op.INTERSECT);
+                        }
+                    } else {
+                        path = geometry.region(zone, distances[tier], outer,
+                                availableX, upperY, lowerY);
+                    }
                     path.transform(transform);
                     canvas.drawPath(path, fills[tier]);
                     canvas.drawPath(path, strokes[tier]);

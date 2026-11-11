@@ -6,6 +6,7 @@ import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.config.SideGestureTargetStore;
 import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
 import com.example.flymestatusbarsizer.feature.assistant.AssistantGestureActionOverlay;
+import com.example.flymestatusbarsizer.feature.assistant.AssistantGestureZoneOverlay;
 import com.example.flymestatusbarsizer.feature.assistant.SideGestureActions;
 
 import android.app.ActivityManager;
@@ -92,7 +93,7 @@ public final class WindowModeSideGestureHooks {
                 if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
                     Object target = chain.getThisObject();
                     CornerGesture previous = CORNER_GESTURES.remove(target);
-                    if (previous != null) previous.preview.close();
+                    if (previous != null) previous.close();
                     Context context = (Context) readField(target, "mContext");
                     ModuleConfig config = ModuleConfig.load(context);
                     if (config.enabled && config.assistantGestureEnabled
@@ -113,7 +114,7 @@ public final class WindowModeSideGestureHooks {
                 gesture.update(event);
                 if (isTerminalEvent(event)) {
                     CORNER_GESTURES.remove(target);
-                    gesture.preview.close();
+                    gesture.close();
                 }
                 return null;
             });
@@ -123,7 +124,7 @@ public final class WindowModeSideGestureHooks {
                 Object target = chain.getThisObject();
                 CORNER_HANDLER.post(() -> {
                     CornerGesture gesture = CORNER_GESTURES.remove(target);
-                    if (gesture != null) gesture.preview.close();
+                    if (gesture != null) gesture.close();
                 });
                 return chain.proceed();
             });
@@ -143,6 +144,8 @@ public final class WindowModeSideGestureHooks {
         final boolean fromLeft;
         final float density;
         final AssistantGestureActionOverlay preview;
+        AssistantGestureZoneOverlay zoneOverlay;
+        boolean zoneOverlayStarted;
         int lastTier = -1;
         boolean canceled;
 
@@ -154,13 +157,36 @@ public final class WindowModeSideGestureHooks {
             fromLeft = startX < context.getResources().getDisplayMetrics().widthPixels / 2f;
             density = context.getResources().getDisplayMetrics().density;
             preview = new AssistantGestureActionOverlay(context);
+            if (config.assistantGestureZoneOverlayEnabled) {
+                zoneOverlay = new AssistantGestureZoneOverlay(context);
+            }
+        }
+
+        void close() {
+            preview.close();
+            if (zoneOverlay != null) {
+                zoneOverlay.close();
+                zoneOverlay = null;
+            }
         }
 
         void update(MotionEvent event) {
             int action = event.getActionMasked();
-            if (action == MotionEvent.ACTION_CANCEL || event.getPointerCount() != 1) canceled = true;
+            if (action == MotionEvent.ACTION_CANCEL || event.getPointerCount() != 1) {
+                canceled = true;
+                close();
+            }
             float inward = (event.getRawX() - startX) * (fromLeft ? 1 : -1);
             float distance = (float) Math.hypot(inward, event.getRawY() - startY) / density;
+            if (zoneOverlay != null && action == MotionEvent.ACTION_MOVE) {
+                if (!zoneOverlayStarted && inward > 0f) {
+                    zoneOverlayStarted = true;
+                    zoneOverlay.showCorner(startX, startY, fromLeft, config);
+                }
+                if (zoneOverlayStarted) {
+                    zoneOverlay.updatePointer(event.getRawX(), event.getRawY());
+                }
+            }
             boolean ready = !canceled && inward > 0 && distance >= config.cornerGestureDistanceDp;
             int tier = SettingsStore.sideGestureTier(distance,
                     config.cornerGestureSplitEnabled ? config.cornerGestureLongDistanceDp : Float.POSITIVE_INFINITY,
