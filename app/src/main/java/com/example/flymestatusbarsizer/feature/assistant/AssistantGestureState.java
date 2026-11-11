@@ -35,6 +35,10 @@ final class AssistantGestureState {
         return tracking && !claimed && geometry.ready(dx, dy);
     }
 
+    boolean readyForFan(float distance) {
+        return tracking && !claimed && dx > 0f && travelDistance() >= distance;
+    }
+
     int direction() {
         return dx <= 0f ? HORIZONTAL : geometry.direction(dx, dy);
     }
@@ -44,6 +48,7 @@ final class AssistantGestureState {
     float inwardDistance() { return dx; }
     float verticalDelta() { return dy; }
     float travelDistance() { return (float) Math.hypot(dx, dy); }
+    float angleDegrees() { return (float) Math.toDegrees(Math.atan2(dy, dx)); }
 
     void claim() { claimed = true; tracking = false; }
     void cancel() { tracking = false; }

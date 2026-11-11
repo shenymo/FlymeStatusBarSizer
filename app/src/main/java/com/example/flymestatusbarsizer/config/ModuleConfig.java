@@ -174,6 +174,26 @@ public final class ModuleConfig {
     public int assistantGestureZoneFarStrokeColor =
             SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FAR_STROKE_COLOR;
     public int[][] sideGestureActions = SettingsStore.readSideGestureActions(null, true);
+    public int sideGestureMode = SettingsStore.SIDE_GESTURE_MODE_DIRECTION;
+    public int[][] sideGestureFanActions = SettingsStore.readSideGestureFanActions(null);
+    public int[][] sideGestureFanShortBoundaries = {
+            {SettingsStore.DEFAULT_SIDE_GESTURE_FAN_SHORT_BOUNDARY_1,
+                    SettingsStore.DEFAULT_SIDE_GESTURE_FAN_SHORT_BOUNDARY_2},
+            {SettingsStore.DEFAULT_SIDE_GESTURE_FAN_SHORT_BOUNDARY_1,
+                    SettingsStore.DEFAULT_SIDE_GESTURE_FAN_SHORT_BOUNDARY_2}
+    };
+    public int[][] sideGestureFanLongBoundaries = {
+            {SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_1,
+                    SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_2,
+                    SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_3,
+                    SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_4},
+            {SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_1,
+                    SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_2,
+                    SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_3,
+                    SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_4}
+    };
+    public int sideGestureFanCornerDistanceDp =
+            SettingsStore.DEFAULT_SIDE_GESTURE_FAN_CORNER_DISTANCE_DP;
     public String sideGestureTargetApp = "";
     public String sideGestureTargetActivity = "";
     public String sideGestureTargetIntentUri = "";
@@ -866,6 +886,25 @@ public final class ModuleConfig {
                     SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_FAR_STROKE_COLOR,
                     SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_FAR_STROKE_COLOR);
             config.sideGestureActions = SettingsStore.readSideGestureActions(prefs, true);
+            config.sideGestureMode = SettingsStore.readInt(prefs, SettingsStore.KEY_SIDE_GESTURE_MODE,
+                    SettingsStore.SIDE_GESTURE_MODE_DIRECTION) == SettingsStore.SIDE_GESTURE_MODE_FAN
+                    ? SettingsStore.SIDE_GESTURE_MODE_FAN : SettingsStore.SIDE_GESTURE_MODE_DIRECTION;
+            config.sideGestureFanActions = SettingsStore.readSideGestureFanActions(prefs);
+            for (int side = 0; side < 2; side++) {
+                config.sideGestureFanShortBoundaries[side] = SettingsStore.readSideGestureFanBoundaries(prefs,
+                        SettingsStore.SIDE_GESTURE_FAN_SHORT_BOUNDARY_KEYS[side],
+                        new int[]{SettingsStore.DEFAULT_SIDE_GESTURE_FAN_SHORT_BOUNDARY_1,
+                                SettingsStore.DEFAULT_SIDE_GESTURE_FAN_SHORT_BOUNDARY_2});
+                config.sideGestureFanLongBoundaries[side] = SettingsStore.readSideGestureFanBoundaries(prefs,
+                        SettingsStore.SIDE_GESTURE_FAN_LONG_BOUNDARY_KEYS[side],
+                        new int[]{SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_1,
+                                SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_2,
+                                SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_3,
+                                SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_4});
+            }
+            config.sideGestureFanCornerDistanceDp = Math.max(0, Math.min(240,
+                    SettingsStore.readInt(prefs, SettingsStore.KEY_SIDE_GESTURE_FAN_CORNER_DISTANCE_DP,
+                            SettingsStore.DEFAULT_SIDE_GESTURE_FAN_CORNER_DISTANCE_DP)));
             config.sideGestureTargetApp = SettingsStore.readString(prefs,
                     SettingsStore.KEY_SIDE_GESTURE_TARGET_APP, "");
             config.sideGestureTargetActivity = SettingsStore.readString(prefs,

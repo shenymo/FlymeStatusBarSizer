@@ -507,19 +507,30 @@ public final class SettingsCardFactory {
         workspaceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
 
         Runnable updateActionVisibility = () -> {
+            boolean fanMode = SettingsStore.readInt(activity.prefs(), SettingsStore.KEY_SIDE_GESTURE_MODE,
+                    SettingsStore.SIDE_GESTURE_MODE_DIRECTION) == SettingsStore.SIDE_GESTURE_MODE_FAN;
             boolean splitEnabled = SettingsStore.readBoolean(activity.prefs(),
                     SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
                     SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED);
             boolean farEnabled = splitEnabled && SettingsStore.readBoolean(activity.prefs(),
                     SettingsStore.KEY_ASSISTANT_GESTURE_FAR_ENABLED, false);
-            int tierCount = farEnabled ? 3 : splitEnabled ? 2 : 1;
-            int[][] actions = SettingsStore.readSideGestureActions(activity.prefs(), true);
             boolean hasAssistant = false;
             boolean hasWorkspace = false;
-            for (int tier = 0; tier < tierCount; tier++) {
-                for (int action : actions[tier]) {
-                    hasAssistant |= action == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
-                    hasWorkspace |= action == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
+            if (fanMode) {
+                for (int[] band : SettingsStore.readSideGestureFanActions(activity.prefs())) {
+                    for (int action : band) {
+                        hasAssistant |= action == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
+                        hasWorkspace |= action == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
+                    }
+                }
+            } else {
+                int tierCount = farEnabled ? 3 : splitEnabled ? 2 : 1;
+                int[][] actions = SettingsStore.readSideGestureActions(activity.prefs(), true);
+                for (int tier = 0; tier < tierCount; tier++) {
+                    for (int action : actions[tier]) {
+                        hasAssistant |= action == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
+                        hasWorkspace |= action == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
+                    }
                 }
             }
             if (SettingsStore.readBoolean(activity.prefs(),
@@ -543,8 +554,24 @@ public final class SettingsCardFactory {
 
         LinearLayout gestureOptions = new LinearLayout(activity);
         gestureOptions.setOrientation(LinearLayout.VERTICAL);
-        activity.addActionButtonRow(gestureOptions, "触发区域与动作",
-                null,
+        LinearLayout legacyOptions = new LinearLayout(activity);
+        legacyOptions.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout fanOptions = new LinearLayout(activity);
+        fanOptions.setOrientation(LinearLayout.VERTICAL);
+        boolean fanMode = SettingsStore.readInt(activity.prefs(), SettingsStore.KEY_SIDE_GESTURE_MODE,
+                SettingsStore.SIDE_GESTURE_MODE_DIRECTION) == SettingsStore.SIDE_GESTURE_MODE_FAN;
+        fanOptions.setVisibility(fanMode ? View.VISIBLE : View.GONE);
+        legacyOptions.setVisibility(fanMode ? View.GONE : View.VISIBLE);
+        activity.addChoiceRow(gestureOptions, "动作区划分方式", null,
+                SettingsStore.KEY_SIDE_GESTURE_MODE, SettingsStore.SIDE_GESTURE_MODE_DIRECTION,
+                new int[]{SettingsStore.SIDE_GESTURE_MODE_DIRECTION, SettingsStore.SIDE_GESTURE_MODE_FAN},
+                new String[]{"方向分区", "扇形分区"}, selected -> {
+                    boolean useFan = selected == SettingsStore.SIDE_GESTURE_MODE_FAN;
+                    legacyOptions.setVisibility(useFan ? View.GONE : View.VISIBLE);
+                    fanOptions.setVisibility(useFan ? View.VISIBLE : View.GONE);
+                    updateActionVisibility.run();
+                });
+        activity.addActionButtonRow(legacyOptions, "触发区域与动作", null,
                 "编辑", activity::openSideGestureZoneOverlay);
         activity.addDivider(gestureOptions);
         boolean splitEnabled = SettingsStore.readBoolean(activity.prefs(),
@@ -565,7 +592,7 @@ public final class SettingsCardFactory {
         activity.addSwitchRow(farOptions, "增加远距离动作", null,
                 SettingsStore.KEY_ASSISTANT_GESTURE_FAR_ENABLED, false,
                 (buttonView, isChecked) -> updateActionVisibility.run());
-        activity.addSwitchRow(gestureOptions, "按距离设置不同动作", null,
+        activity.addSwitchRow(legacyOptions, "按距离设置不同动作", null,
                 SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
                 (buttonView, isChecked) -> {
@@ -573,9 +600,13 @@ public final class SettingsCardFactory {
                     farOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE);
                     updateActionVisibility.run();
                 });
-        gestureOptions.addView(farOptions, PageViewUtils.matchWrap());
-        gestureOptions.addView(triggerOptions, PageViewUtils.matchWrap());
-        activity.addDivider(gestureOptions);
+        legacyOptions.addView(farOptions, PageViewUtils.matchWrap());
+        legacyOptions.addView(triggerOptions, PageViewUtils.matchWrap());
+        activity.addActionButtonRow(fanOptions, "触发区域与动作", null,
+                "编辑", activity::openSideGestureZoneOverlay);
+        activity.addDivider(legacyOptions);
+        gestureOptions.addView(legacyOptions, PageViewUtils.matchWrap());
+        gestureOptions.addView(fanOptions, PageViewUtils.matchWrap());
         activity.addSwitchRow(gestureOptions, "在桌面启用侧边手势", null,
                 SettingsStore.KEY_LAUNCHER_SIDE_GESTURE_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_SIDE_GESTURE_ENABLED);

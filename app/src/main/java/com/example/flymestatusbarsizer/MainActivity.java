@@ -778,7 +778,9 @@ public class MainActivity extends Activity {
     }
 
     public void openSideGestureZoneOverlay() {
-        showSideGestureZoneOverlay(false);
+        boolean fan = SettingsStore.readInt(prefs, SettingsStore.KEY_SIDE_GESTURE_MODE,
+                SettingsStore.SIDE_GESTURE_MODE_DIRECTION) == SettingsStore.SIDE_GESTURE_MODE_FAN;
+        showSideGestureZoneOverlay(false, fan);
     }
 
     public void openCornerGestureZoneOverlay() {
@@ -813,6 +815,28 @@ public class MainActivity extends Activity {
         String key = cornerMode ? SettingsStore.cornerGestureActionKey(tier, slot)
                 : SettingsStore.sideGestureActionKey(tier, slot);
         prefs.edit().putInt(key, action).apply();
+        SettingsStore.notifyChanged(this);
+        notifySideGestureActionsChanged();
+    }
+
+    public void commitSideGestureFanTarget(int band, int slot, int action,
+            SideGestureTargetStore.Target target) {
+        List<SideGestureTargetStore.Target> targets = SideGestureTargetStore.parse(
+                SideGestureTargetStore.readRaw(prefs));
+        if (target != null) {
+            boolean replaced = false;
+            for (int i = 0; i < targets.size(); i++) {
+                if (targets.get(i).id == target.id) {
+                    targets.set(i, target);
+                    replaced = true;
+                    break;
+                }
+            }
+            if (!replaced) targets.add(target);
+        }
+        prefs.edit().putInt(SettingsStore.SIDE_GESTURE_FAN_ACTION_KEYS[band][slot], action)
+                .putString(SettingsStore.KEY_SIDE_GESTURE_TARGETS_JSON,
+                        SideGestureTargetStore.encode(targets)).apply();
         SettingsStore.notifyChanged(this);
         notifySideGestureActionsChanged();
     }
@@ -1440,8 +1464,12 @@ public class MainActivity extends Activity {
     }
 
     private void showSideGestureZoneOverlay(boolean cornerMode) {
+        showSideGestureZoneOverlay(cornerMode, false);
+    }
+
+    private void showSideGestureZoneOverlay(boolean cornerMode, boolean fanMode) {
         if (sideGestureZoneOverlay != null) return;
-        sideGestureZoneOverlay = new SideGestureZoneOverlay(this, prefs, primaryColor(), cornerMode,
+        sideGestureZoneOverlay = new SideGestureZoneOverlay(this, prefs, primaryColor(), cornerMode, fanMode,
                 this::notifySideGestureActionsChanged, () -> {
                     sideGestureZoneOverlay = null;
                 });

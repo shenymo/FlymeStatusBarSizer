@@ -167,6 +167,37 @@ public final class SettingsStore {
     public static final String KEY_SIDE_GESTURE_RIGHT_FAR_ACTION = "side_gesture_right_far_action";
     public static final String KEY_SIDE_GESTURE_RIGHT_UP_FAR_ACTION = "side_gesture_right_up_far_action";
     public static final String KEY_SIDE_GESTURE_RIGHT_DOWN_FAR_ACTION = "side_gesture_right_down_far_action";
+    public static final String KEY_SIDE_GESTURE_MODE = "side_gesture_mode";
+    public static final int SIDE_GESTURE_MODE_DIRECTION = 0;
+    public static final int SIDE_GESTURE_MODE_FAN = 1;
+    public static final String[][] SIDE_GESTURE_FAN_SHORT_BOUNDARY_KEYS = {
+            {"side_gesture_fan_left_short_boundary_1", "side_gesture_fan_left_short_boundary_2"},
+            {"side_gesture_fan_right_short_boundary_1", "side_gesture_fan_right_short_boundary_2"}
+    };
+    public static final String[][] SIDE_GESTURE_FAN_LONG_BOUNDARY_KEYS = {
+            {"side_gesture_fan_left_long_boundary_1", "side_gesture_fan_left_long_boundary_2",
+                    "side_gesture_fan_left_long_boundary_3", "side_gesture_fan_left_long_boundary_4"},
+            {"side_gesture_fan_right_long_boundary_1", "side_gesture_fan_right_long_boundary_2",
+                    "side_gesture_fan_right_long_boundary_3", "side_gesture_fan_right_long_boundary_4"}
+    };
+    public static final String KEY_SIDE_GESTURE_FAN_CORNER_DISTANCE_DP = "side_gesture_fan_corner_distance_dp";
+    public static final int DEFAULT_SIDE_GESTURE_FAN_SHORT_BOUNDARY_1 = -250;
+    public static final int DEFAULT_SIDE_GESTURE_FAN_SHORT_BOUNDARY_2 = 250;
+    public static final int DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_1 = -600;
+    public static final int DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_2 = -300;
+    public static final int DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_3 = 0;
+    public static final int DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_4 = 300;
+    public static final int DEFAULT_SIDE_GESTURE_FAN_CORNER_DISTANCE_DP = 80;
+    public static final String[][] SIDE_GESTURE_FAN_ACTION_KEYS = {
+            {"side_gesture_fan_left_short_0", "side_gesture_fan_left_short_1", "side_gesture_fan_left_short_2",
+                    "side_gesture_fan_right_short_0", "side_gesture_fan_right_short_1", "side_gesture_fan_right_short_2"},
+            {"side_gesture_fan_left_long_0", "side_gesture_fan_left_long_1", "side_gesture_fan_left_long_2",
+                    "side_gesture_fan_left_long_3", "side_gesture_fan_left_long_4", "side_gesture_fan_right_long_0",
+                    "side_gesture_fan_right_long_1", "side_gesture_fan_right_long_2", "side_gesture_fan_right_long_3",
+                    "side_gesture_fan_right_long_4"},
+            {"side_gesture_fan_left_corner_top", "side_gesture_fan_left_corner_bottom",
+                    "side_gesture_fan_right_corner_top", "side_gesture_fan_right_corner_bottom"}
+    };
     private static final String[] SIDE_GESTURE_LEGACY_KEYS = {
             KEY_SIDE_GESTURE_ACTION, KEY_SIDE_GESTURE_UP_ACTION, KEY_SIDE_GESTURE_DOWN_ACTION,
             KEY_SIDE_GESTURE_ACTION, KEY_SIDE_GESTURE_UP_ACTION, KEY_SIDE_GESTURE_DOWN_ACTION
@@ -1013,7 +1044,31 @@ public final class SettingsStore {
             KEY_TELEPHONY_DEBUG_SLOT1_NETWORK_PROFILE,
             KEY_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL,
             KEY_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE,
-            KEY_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL
+            KEY_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL,
+            KEY_SIDE_GESTURE_MODE,
+            KEY_SIDE_GESTURE_FAN_CORNER_DISTANCE_DP,
+            SIDE_GESTURE_FAN_SHORT_BOUNDARY_KEYS[0][0],
+            SIDE_GESTURE_FAN_SHORT_BOUNDARY_KEYS[0][1],
+            SIDE_GESTURE_FAN_SHORT_BOUNDARY_KEYS[1][0],
+            SIDE_GESTURE_FAN_SHORT_BOUNDARY_KEYS[1][1],
+            SIDE_GESTURE_FAN_LONG_BOUNDARY_KEYS[0][0],
+            SIDE_GESTURE_FAN_LONG_BOUNDARY_KEYS[0][1],
+            SIDE_GESTURE_FAN_LONG_BOUNDARY_KEYS[0][2],
+            SIDE_GESTURE_FAN_LONG_BOUNDARY_KEYS[0][3],
+            SIDE_GESTURE_FAN_LONG_BOUNDARY_KEYS[1][0],
+            SIDE_GESTURE_FAN_LONG_BOUNDARY_KEYS[1][1],
+            SIDE_GESTURE_FAN_LONG_BOUNDARY_KEYS[1][2],
+            SIDE_GESTURE_FAN_LONG_BOUNDARY_KEYS[1][3],
+            SIDE_GESTURE_FAN_ACTION_KEYS[0][0], SIDE_GESTURE_FAN_ACTION_KEYS[0][1],
+            SIDE_GESTURE_FAN_ACTION_KEYS[0][2], SIDE_GESTURE_FAN_ACTION_KEYS[0][3],
+            SIDE_GESTURE_FAN_ACTION_KEYS[0][4], SIDE_GESTURE_FAN_ACTION_KEYS[0][5],
+            SIDE_GESTURE_FAN_ACTION_KEYS[1][0], SIDE_GESTURE_FAN_ACTION_KEYS[1][1],
+            SIDE_GESTURE_FAN_ACTION_KEYS[1][2], SIDE_GESTURE_FAN_ACTION_KEYS[1][3],
+            SIDE_GESTURE_FAN_ACTION_KEYS[1][4], SIDE_GESTURE_FAN_ACTION_KEYS[1][5],
+            SIDE_GESTURE_FAN_ACTION_KEYS[1][6], SIDE_GESTURE_FAN_ACTION_KEYS[1][7],
+            SIDE_GESTURE_FAN_ACTION_KEYS[1][8], SIDE_GESTURE_FAN_ACTION_KEYS[1][9],
+            SIDE_GESTURE_FAN_ACTION_KEYS[2][0], SIDE_GESTURE_FAN_ACTION_KEYS[2][1],
+            SIDE_GESTURE_FAN_ACTION_KEYS[2][2], SIDE_GESTURE_FAN_ACTION_KEYS[2][3]
     };
 
     public static final String[] BOOLEAN_KEYS = StatusBarIconVisibility.appendPreferenceKeys(new String[]{
@@ -1326,6 +1381,22 @@ public final class SettingsStore {
 
     public static int defaultInt(String key) {
         if (CircleBatteryAnimationConfig.isKey(key)) return CircleBatteryAnimationConfig.defaultInt(key);
+        if (KEY_SIDE_GESTURE_MODE.equals(key)) return SIDE_GESTURE_MODE_DIRECTION;
+        if (KEY_SIDE_GESTURE_FAN_CORNER_DISTANCE_DP.equals(key))
+            return DEFAULT_SIDE_GESTURE_FAN_CORNER_DISTANCE_DP;
+        for (String[] band : SIDE_GESTURE_FAN_ACTION_KEYS) {
+            for (String actionKey : band) if (actionKey.equals(key)) return SIDE_GESTURE_ACTION_NONE;
+        }
+        for (int side = 0; side < 2; side++) {
+            String[] shortKeys = SIDE_GESTURE_FAN_SHORT_BOUNDARY_KEYS[side];
+            if (shortKeys[0].equals(key)) return DEFAULT_SIDE_GESTURE_FAN_SHORT_BOUNDARY_1;
+            if (shortKeys[1].equals(key)) return DEFAULT_SIDE_GESTURE_FAN_SHORT_BOUNDARY_2;
+            String[] longKeys = SIDE_GESTURE_FAN_LONG_BOUNDARY_KEYS[side];
+            if (longKeys[0].equals(key)) return DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_1;
+            if (longKeys[1].equals(key)) return DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_2;
+            if (longKeys[2].equals(key)) return DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_3;
+            if (longKeys[3].equals(key)) return DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_4;
+        }
         switch (key) {
             case KEY_CORNER_GESTURE_LEFT_ACTION:
             case KEY_CORNER_GESTURE_RIGHT_ACTION: return SIDE_GESTURE_ACTION_NONE;
@@ -1920,6 +1991,36 @@ public final class SettingsStore {
     public static int sideGestureTier(float distance, float longDistance, float farDistance) {
         if (distance >= farDistance) return SIDE_GESTURE_FAR;
         return distance >= longDistance ? SIDE_GESTURE_LONG : SIDE_GESTURE_SHORT;
+    }
+
+    public static int[][] readSideGestureFanActions(SharedPreferences prefs) {
+        Map<String, ?> values = prefs == null ? java.util.Collections.emptyMap() : prefs.getAll();
+        int[][] actions = new int[3][];
+        for (int band = 0; band < actions.length; band++) {
+            actions[band] = new int[SIDE_GESTURE_FAN_ACTION_KEYS[band].length];
+            for (int slot = 0; slot < actions[band].length; slot++) {
+                actions[band][slot] = normalizeSideGestureAction(readIntValue(
+                        values.get(SIDE_GESTURE_FAN_ACTION_KEYS[band][slot]), SIDE_GESTURE_ACTION_NONE));
+            }
+        }
+        return actions;
+    }
+
+    public static int sideGestureFanZone(float angleDegrees, int[] boundaries) {
+        int angleTenths = Math.round(angleDegrees * 10f);
+        int zone = 0;
+        while (zone < boundaries.length && angleTenths >= boundaries[zone]) zone++;
+        return zone;
+    }
+
+    public static int[] readSideGestureFanBoundaries(SharedPreferences prefs, String[] keys,
+            int[] defaults) {
+        int[] boundaries = new int[defaults.length];
+        for (int i = 0; i < boundaries.length; i++) {
+            boundaries[i] = Math.max(-850, Math.min(850, readInt(prefs, keys[i], defaults[i])));
+            if (i > 0) boundaries[i] = Math.max(boundaries[i], boundaries[i - 1] + 10);
+        }
+        return boundaries;
     }
 
     public static int normalizeOneHandedModeAction(int value) {

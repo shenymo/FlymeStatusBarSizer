@@ -110,11 +110,18 @@ public final class SideGestureZoneOverlay {
     private static final int DRAG_DOWN_ANGLE = 4;
     private static final int DRAG_MIN_VERTICAL = 5;
     private static final int DRAG_FAR = 6;
+    private static final int DRAG_FAN_SHORT_1 = 7;
+    private static final int DRAG_FAN_SHORT_2 = 8;
+    private static final int DRAG_FAN_LONG_1 = 9;
+    private static final int DRAG_FAN_LONG_2 = 10;
+    private static final int DRAG_FAN_LONG_3 = 11;
+    private static final int DRAG_FAN_LONG_4 = 12;
 
     private final MainActivity activity;
     private final SharedPreferences prefs;
     private final int accentColor;
     private final boolean cornerMode;
+    private final boolean fanMode;
     private final Runnable onActionChanged;
     private final Runnable onClosed;
     private final OverlayView view;
@@ -125,6 +132,12 @@ public final class SideGestureZoneOverlay {
     private int upAngle;
     private int downAngle;
     private int minVerticalDp;
+    private int fanCornerDistanceDp;
+    private int[][] fanActions;
+    private int[] fanShortBoundaries;
+    private int[] fanLongBoundaries;
+    private int[][] fanShortBoundariesBySide;
+    private int[][] fanLongBoundariesBySide;
     private boolean leftSide = true;
     private boolean splitEnabled;
     private boolean farEnabled;
@@ -133,10 +146,16 @@ public final class SideGestureZoneOverlay {
     public SideGestureZoneOverlay(MainActivity activity, SharedPreferences prefs, int accentColor,
             boolean cornerMode,
             Runnable onActionChanged, Runnable onClosed) {
+        this(activity, prefs, accentColor, cornerMode, false, onActionChanged, onClosed);
+    }
+
+    public SideGestureZoneOverlay(MainActivity activity, SharedPreferences prefs, int accentColor,
+            boolean cornerMode, boolean fanMode, Runnable onActionChanged, Runnable onClosed) {
         this.activity = activity;
         this.prefs = prefs;
         this.accentColor = accentColor;
         this.cornerMode = cornerMode;
+        this.fanMode = fanMode;
         this.onActionChanged = onActionChanged;
         this.onClosed = onClosed;
         this.view = new OverlayView(activity);
@@ -164,6 +183,40 @@ public final class SideGestureZoneOverlay {
     }
 
     private void loadFromPreferences() {
+        if (fanMode) {
+            fanActions = SettingsStore.readSideGestureFanActions(prefs);
+            actions = fanActions;
+            shortDistanceDp = readBounded(SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP,
+                    SettingsStore.MIN_ASSISTANT_GESTURE_DISTANCE_DP,
+                    SettingsStore.MAX_ASSISTANT_GESTURE_DISTANCE_DP);
+            longDistanceDp = Math.max(shortDistanceDp + 1,
+                    readBounded(SettingsStore.KEY_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
+                            SettingsStore.DEFAULT_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
+                            SettingsStore.MIN_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
+                            SettingsStore.MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP));
+            fanCornerDistanceDp = readBounded(SettingsStore.KEY_SIDE_GESTURE_FAN_CORNER_DISTANCE_DP,
+                    SettingsStore.DEFAULT_SIDE_GESTURE_FAN_CORNER_DISTANCE_DP, 0, 240);
+            int[] shortDefaults = {SettingsStore.DEFAULT_SIDE_GESTURE_FAN_SHORT_BOUNDARY_1,
+                    SettingsStore.DEFAULT_SIDE_GESTURE_FAN_SHORT_BOUNDARY_2};
+            int[] longDefaults = {SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_1,
+                    SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_2,
+                    SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_3,
+                    SettingsStore.DEFAULT_SIDE_GESTURE_FAN_LONG_BOUNDARY_4};
+            fanShortBoundariesBySide = new int[2][];
+            fanLongBoundariesBySide = new int[2][];
+            for (int side = 0; side < 2; side++) {
+                fanShortBoundariesBySide[side] = SettingsStore.readSideGestureFanBoundaries(prefs,
+                        SettingsStore.SIDE_GESTURE_FAN_SHORT_BOUNDARY_KEYS[side], shortDefaults);
+                fanLongBoundariesBySide[side] = SettingsStore.readSideGestureFanBoundaries(prefs,
+                        SettingsStore.SIDE_GESTURE_FAN_LONG_BOUNDARY_KEYS[side], longDefaults);
+            }
+            fanShortBoundaries = fanShortBoundariesBySide[0];
+            fanLongBoundaries = fanLongBoundariesBySide[0];
+            splitEnabled = true;
+            farEnabled = true;
+            return;
+        }
         if (cornerMode) {
             actions = SettingsStore.readCornerGestureActions(prefs, false);
             shortDistanceDp = readBounded(SettingsStore.KEY_CORNER_GESTURE_DISTANCE_DP,
@@ -215,6 +268,35 @@ public final class SideGestureZoneOverlay {
 
     private void saveToPreferences() {
         SharedPreferences.Editor editor = prefs.edit();
+        if (fanMode) {
+            editor.putInt(SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_DP, shortDistanceDp)
+                    .putInt(SettingsStore.KEY_ASSISTANT_GESTURE_LONG_DISTANCE_DP, longDistanceDp)
+                    .putInt(SettingsStore.KEY_SIDE_GESTURE_FAN_CORNER_DISTANCE_DP,
+                            fanCornerDistanceDp);
+            fanShortBoundariesBySide[leftSide ? 0 : 1] = fanShortBoundaries;
+            fanLongBoundariesBySide[leftSide ? 0 : 1] = fanLongBoundaries;
+            for (int side = 0; side < 2; side++) {
+                for (int i = 0; i < fanShortBoundariesBySide[side].length; i++) {
+                    editor.putInt(SettingsStore.SIDE_GESTURE_FAN_SHORT_BOUNDARY_KEYS[side][i],
+                            fanShortBoundariesBySide[side][i]);
+                }
+                for (int i = 0; i < fanLongBoundariesBySide[side].length; i++) {
+                    editor.putInt(SettingsStore.SIDE_GESTURE_FAN_LONG_BOUNDARY_KEYS[side][i],
+                            fanLongBoundariesBySide[side][i]);
+                }
+            }
+            for (int band = 0; band < fanActions.length; band++) {
+                for (int slot = 0; slot < fanActions[band].length; slot++) {
+                    editor.putInt(SettingsStore.SIDE_GESTURE_FAN_ACTION_KEYS[band][slot],
+                            fanActions[band][slot]);
+                }
+            }
+            saveFanTargets(editor);
+            editor.apply();
+            SettingsStore.notifyChanged(activity);
+            if (onActionChanged != null) onActionChanged.run();
+            return;
+        }
         if (cornerMode) {
             editor.putInt(SettingsStore.KEY_CORNER_GESTURE_DISTANCE_DP, shortDistanceDp)
                     .putInt(SettingsStore.KEY_CORNER_GESTURE_LONG_DISTANCE_DP, longDistanceDp);
@@ -262,6 +344,25 @@ public final class SideGestureZoneOverlay {
         if (onActionChanged != null) onActionChanged.run();
     }
 
+    private void saveFanTargets(SharedPreferences.Editor editor) {
+        List<SideGestureTargetStore.Target> storedTargets = SideGestureTargetStore.parse(
+                SideGestureTargetStore.readRaw(prefs));
+        List<SideGestureTargetStore.Target> assignedTargets = new ArrayList<>();
+        int[][] directionActions = SettingsStore.readSideGestureActions(prefs, false);
+        int[][] cornerActions = SettingsStore.readCornerGestureActions(prefs, false);
+        for (SideGestureTargetStore.Target target : storedTargets) {
+            boolean assigned = false;
+            for (int[] band : fanActions) for (int action : band) assigned |= action == target.id;
+            for (int[] tier : directionActions) for (int action : tier) assigned |= action == target.id;
+            for (int[] tier : cornerActions) for (int action : tier) assigned |= action == target.id;
+            if (assigned) assignedTargets.add(target);
+        }
+        if (assignedTargets.size() != storedTargets.size()) {
+            editor.putString(SettingsStore.KEY_SIDE_GESTURE_TARGETS_JSON,
+                    SideGestureTargetStore.encode(assignedTargets));
+        }
+    }
+
     private final class OverlayView extends View {
         private final Paint thresholdPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint longThresholdPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -280,7 +381,7 @@ public final class SideGestureZoneOverlay {
         private final RectF rightControl = new RectF();
         private final RectF exitControl = new RectF();
         private final RectF saveControl = new RectF();
-        private final RectF[][] actionLabelBounds = new RectF[3][6];
+        private final RectF[][] actionLabelBounds = new RectF[3][10];
         private final RectF[] tierControls = {new RectF(), new RectF(), new RectF()};
         private float density;
         private float scaledDensity;
@@ -352,6 +453,10 @@ public final class SideGestureZoneOverlay {
             direction = leftSide ? 1f : -1f;
             originX = edge;
             scale = density;
+            if (fanMode) {
+                float maxRadius = Math.max(720f, longDistanceDp + fanCornerDistanceDp + 40f);
+                scale = Math.min(density, (width - dp(32)) / maxRadius);
+            }
             if (cornerMode) {
                 centerY = bottom - dp(108);
                 int maxDistance = farEnabled ? 720 : splitEnabled ? 480 : 240;
@@ -369,11 +474,110 @@ public final class SideGestureZoneOverlay {
             drawControls(canvas, width, height, top);
         }
 
+        private void drawFanZones(Canvas canvas) {
+            int side = leftSide ? 0 : 1;
+            fanShortBoundaries = fanShortBoundariesBySide[side];
+            fanLongBoundaries = fanLongBoundariesBySide[side];
+            float shortRadius = shortDistanceDp * scale;
+            float longRadius = longDistanceDp * scale;
+            float cornerRadius = (longDistanceDp + fanCornerDistanceDp) * scale;
+            drawFanBand(canvas, shortRadius, longRadius, fanShortBoundaries,
+                    shortRegionPaint, thresholdPaint, 0);
+            drawFanBand(canvas, longRadius, cornerRadius, fanLongBoundaries,
+                    longRegionPaint, longThresholdPaint, 1);
+            drawFanBand(canvas, cornerRadius, Float.POSITIVE_INFINITY, new int[]{0},
+                    farRegionPaint, farThresholdPaint, 2);
+            drawFanThreshold(canvas, shortRadius, thresholdPaint, handlePaint);
+            drawFanThreshold(canvas, longRadius, longThresholdPaint, longHandlePaint);
+            drawFanThreshold(canvas, cornerRadius, farThresholdPaint, farHandlePaint);
+            drawFanBoundaryLines(canvas, shortRadius, longRadius, fanShortBoundaries, thresholdPaint);
+            drawFanBoundaryLines(canvas, longRadius, cornerRadius, fanLongBoundaries, longThresholdPaint);
+            drawFanBoundaryHandles(canvas, shortRadius, fanShortBoundaries, 0);
+            drawFanBoundaryHandles(canvas, longRadius, fanLongBoundaries, 1);
+        }
+
+        private void drawFanBand(Canvas canvas, float inner, float outer, int[] boundaries,
+                Paint fill, Paint stroke, int mode) {
+            int side = leftSide ? 0 : 1;
+            float radius = Float.isFinite(outer) ? outer : Math.max(getWidth(), getHeight());
+            int zones = boundaries.length + 1;
+            for (int zone = 0; zone < zones; zone++) {
+                float start = zone == 0 ? -90f : boundaries[zone - 1] / 10f;
+                float end = zone == boundaries.length ? 90f : boundaries[zone] / 10f;
+                Path path = new Path();
+                float sx = (float) Math.cos(Math.toRadians(start));
+                float sy = (float) Math.sin(Math.toRadians(start));
+                path.moveTo(sx * inner, sy * inner);
+                path.lineTo(sx * radius, sy * radius);
+                RectF oval = new RectF(-radius, -radius, radius, radius);
+                path.arcTo(oval, start, end - start);
+                float ex = (float) Math.cos(Math.toRadians(end));
+                float ey = (float) Math.sin(Math.toRadians(end));
+                path.lineTo(ex * inner, ey * inner);
+                if (inner > 0f) {
+                    path.arcTo(new RectF(-inner, -inner, inner, inner), end, start - end);
+                } else path.lineTo(0f, 0f);
+                path.close();
+                Matrix transform = new Matrix();
+                transform.setScale(direction, 1f);
+                transform.postTranslate(originX, centerY);
+                path.transform(transform);
+                canvas.drawPath(path, fill);
+                canvas.drawPath(path, stroke);
+                float labelRadius = (inner + Math.min(radius, inner + dp(180))) * 0.5f;
+                float labelAngle = (start + end) * 0.5f;
+                float labelX = originX + direction * (float) Math.cos(Math.toRadians(labelAngle)) * labelRadius;
+                float labelY = centerY + (float) Math.sin(Math.toRadians(labelAngle)) * labelRadius;
+                int slot = fanSlot(mode, zone, side);
+                drawArcActionLabel(canvas, actionLabelForFan(mode, zone, side), labelX, labelY,
+                        zone, stroke, mode, slot);
+            }
+        }
+
+        private void drawFanThreshold(Canvas canvas, float radius, Paint paint, Paint handle) {
+            RectF oval = new RectF(originX - radius, centerY - radius,
+                    originX + radius, centerY + radius);
+            canvas.drawArc(oval, leftSide ? -90f : -90f, 180f, false, paint);
+            float x = originX + direction * radius;
+            canvas.drawCircle(x, centerY, dp(13), controlPaint);
+            canvas.drawCircle(x, centerY, dp(8), handle);
+        }
+
+        private void drawFanBoundaryHandles(Canvas canvas, float radius, int[] boundaries, int mode) {
+            float outer = mode == 0 ? longDistanceDp * scale
+                    : (longDistanceDp + fanCornerDistanceDp) * scale;
+            float handleRadius = (radius + outer) * 0.5f;
+            for (int i = 0; i < boundaries.length; i++) {
+                float angle = boundaries[i] / 10f;
+                float x = originX + direction * (float) Math.cos(Math.toRadians(angle)) * handleRadius;
+                float y = centerY + (float) Math.sin(Math.toRadians(angle)) * handleRadius;
+                canvas.drawCircle(x, y, dp(13), controlPaint);
+                canvas.drawCircle(x, y, dp(8), mode == 0 ? handlePaint : longHandlePaint);
+                drawGeometryLabel(canvas, x, y - (y < centerY ? dp(18) : -dp(18)),
+                        angleText(boundaries[i]) + "°");
+            }
+        }
+
+        private void drawFanBoundaryLines(Canvas canvas, float inner, float outer,
+                int[] boundaries, Paint paint) {
+            for (int boundary : boundaries) {
+                float angle = boundary / 10f;
+                float cos = (float) Math.cos(Math.toRadians(angle));
+                float sin = (float) Math.sin(Math.toRadians(angle));
+                canvas.drawLine(originX + direction * cos * inner, centerY + sin * inner,
+                        originX + direction * cos * outer, centerY + sin * outer, paint);
+            }
+        }
+
         private void drawZones(Canvas canvas) {
             for (int mode = 0; mode < actionLabelBounds.length; mode++) {
                 for (int action = 0; action < actionLabelBounds[mode].length; action++) {
                     actionLabelBounds[mode][action].setEmpty();
                 }
+            }
+            if (fanMode) {
+                drawFanZones(canvas);
+                return;
             }
             if (cornerMode) {
                 drawCornerZones(canvas);
@@ -426,7 +630,9 @@ public final class SideGestureZoneOverlay {
         private void drawCornerZones(Canvas canvas) {
             int slot = leftSide ? 0 : 1;
             int count = farEnabled ? 3 : splitEnabled ? 2 : 1;
-            int[] distances = {shortDistanceDp, longDistanceDp, farDistanceDp};
+            int[] distances = fanMode
+                    ? new int[]{shortDistanceDp, longDistanceDp, longDistanceDp + fanCornerDistanceDp}
+                    : new int[]{shortDistanceDp, longDistanceDp, farDistanceDp};
             Paint[] fills = {shortRegionPaint, longRegionPaint, farRegionPaint};
             Paint[] strokes = {thresholdPaint, longThresholdPaint, farThresholdPaint};
             Paint[] handles = {handlePaint, longHandlePaint, farHandlePaint};
@@ -642,10 +848,13 @@ public final class SideGestureZoneOverlay {
                 canvas.drawRoundRect(rect, dp(10), dp(10), controlPaint);
                 textPaint.setColor(overlayTextColor);
                 textPaint.setTextSize(14f * scaledDensity);
-                canvas.drawText(splitEnabled ? TIER_NAMES[tier] : "触发设置",
+                String tierName = fanMode ? (tier == 0 ? "短滑区" : tier == 1 ? "长滑区" : "角落区")
+                        : (splitEnabled ? TIER_NAMES[tier] : "触发设置");
+                canvas.drawText(tierName,
                         rect.centerX(), rect.centerY() - dp(3), textPaint);
                 textPaint.setTextSize(11f * scaledDensity);
-                canvas.drawText(distances[tier] + " dp", rect.centerX(),
+                canvas.drawText(fanMode && tier == 2 ? "+" + fanCornerDistanceDp + " dp"
+                                : distances[tier] + " dp", rect.centerX(),
                         rect.centerY() + dp(14), textPaint);
             }
             float buttonTop = height - navigationBarHeight() - dp(58);
@@ -705,6 +914,11 @@ public final class SideGestureZoneOverlay {
                     if (tierControls[tier].contains(x, y)) return true;
                 }
                 dragging = hitHandle(x, y);
+                if (fanMode && dragging != DRAG_NONE) {
+                    dragOffsetX = x;
+                    dragOffsetY = y;
+                    return true;
+                }
                 if (cornerMode && dragging != DRAG_NONE) {
                     int distance = dragging == DRAG_SHORT ? shortDistanceDp
                             : dragging == DRAG_LONG ? longDistanceDp : farDistanceDp;
@@ -726,6 +940,37 @@ public final class SideGestureZoneOverlay {
                 }
             } else if (action == MotionEvent.ACTION_MOVE) {
                 if (dragging != DRAG_NONE) {
+                    if (fanMode) {
+                        float inward = Math.max(1f, (x - originX) * direction);
+                        if (dragging <= DRAG_FAR) {
+                            int distance = Math.round(inward / scale);
+                            if (dragging == DRAG_SHORT) shortDistanceDp = clamp(distance,
+                                    SettingsStore.MIN_ASSISTANT_GESTURE_DISTANCE_DP, longDistanceDp - 1);
+                            else if (dragging == DRAG_LONG) longDistanceDp = clamp(distance,
+                                    shortDistanceDp + 1, SettingsStore.MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP);
+                            else fanCornerDistanceDp = clamp(distance - longDistanceDp, 0, 240);
+                        } else {
+                            int[] boundaries = dragging <= DRAG_FAN_SHORT_2
+                                    ? fanShortBoundaries : fanLongBoundaries;
+                            int index = dragging <= DRAG_FAN_SHORT_2
+                                    ? dragging - DRAG_FAN_SHORT_1 : dragging - DRAG_FAN_LONG_1;
+                            int angle = Math.round((float) Math.toDegrees(Math.atan2(y - centerY, inward)) * 10f);
+                            int lower = index == 0 ? -850 : boundaries[index - 1] + 10;
+                            int upper = index + 1 == boundaries.length ? 850 : boundaries[index + 1] - 10;
+                            angle = clamp(angle, lower, upper);
+                            int[] other = dragging <= DRAG_FAN_SHORT_2
+                                    ? fanLongBoundaries : fanShortBoundaries;
+                            for (int candidate : other) {
+                                if (Math.abs(candidate - angle) <= 20) {
+                                    angle = candidate;
+                                    break;
+                                }
+                            }
+                            boundaries[index] = clamp(angle, lower, upper);
+                        }
+                        invalidate();
+                        return true;
+                    }
                     if (dragging == DRAG_SHORT || dragging == DRAG_LONG || dragging == DRAG_FAR) {
                         float handleX = x - dragOffsetX;
                         float inward = Math.max(0f, (handleX - originX) * direction);
@@ -787,10 +1032,24 @@ public final class SideGestureZoneOverlay {
                 }
                 int actionLabel = hitActionLabel(x, y);
                 if (actionLabel >= 0) {
-                    openActionForSlot(actionLabel % 3, actionLabel / 3);
+                    if (fanMode) openFanActionForSlot(actionLabel % 10, actionLabel / 10);
+                    else openActionForSlot(actionLabel % 3, actionLabel / 3);
                     return true;
                 }
                 float inward = (x - originX) * direction;
+                if (fanMode) {
+                    float distance = (float) Math.hypot(inward, y - centerY) / scale;
+                    if (inward > 0 && distance >= shortDistanceDp) {
+                        float angle = (float) Math.toDegrees(Math.atan2(y - centerY, inward));
+                        int band = distance >= longDistanceDp + fanCornerDistanceDp ? 2
+                                : distance >= longDistanceDp ? 1 : 0;
+                        int[] boundaries = band == 0 ? fanShortBoundaries : fanLongBoundaries;
+                        int zone = band == 2 ? (angle < 0 ? 0 : 1)
+                                : SettingsStore.sideGestureFanZone(angle, boundaries);
+                        openFanActionForSlot(zone, band);
+                    }
+                    return true;
+                }
                 if (cornerMode) {
                     float distance = (float) Math.hypot(inward, y - centerY) / scale;
                     if (inward > 0f && y < centerY && y > topInset()
@@ -852,6 +1111,31 @@ public final class SideGestureZoneOverlay {
         }
 
         private void showTierSettings(int tier) {
+            if (fanMode) {
+                int count = tier == 0 ? 3 : tier == 1 ? 5 : 2;
+                String[] items = new String[count + 1];
+                items[0] = tier == 0 ? "最短触发距离 · " + shortDistanceDp + " dp"
+                        : tier == 1 ? "长滑分界 · " + longDistanceDp + " dp"
+                        : "角落起点 · +" + fanCornerDistanceDp + " dp";
+                int side = leftSide ? 0 : 1;
+                for (int i = 0; i < count; i++) {
+                    items[i + 1] = fanDirectionName(tier, i) + " · "
+                            + actionLabelForFan(tier, i, side);
+                }
+                new AlertDialog.Builder(activity)
+                        .setTitle((leftSide ? "左侧" : "右侧") + " · " + items[0].split(" · ")[0])
+                        .setItems(items, (dialog, which) -> {
+                            if (which == 0) {
+                                if (tier == 2) activity.showIntInputDialog("角落区延伸距离",
+                                        fanCornerDistanceDp, 0, 240, "dp", value -> {
+                                            fanCornerDistanceDp = value;
+                                            invalidate();
+                                        });
+                                else showDistanceInput(tier);
+                            } else openFanActionForSlot(which - 1, tier);
+                        }).setNegativeButton("完成", null).show();
+                return;
+            }
             int[] distances = {shortDistanceDp, longDistanceDp, farDistanceDp};
             int offset = cornerMode ? (leftSide ? 0 : 1) : (leftSide ? 0 : 3);
             String[] items = new String[cornerMode ? 2 : 4];
@@ -889,13 +1173,35 @@ public final class SideGestureZoneOverlay {
             showActionPicker(directionIndex, tier);
         }
 
+        private void openFanActionForSlot(int zone, int band) {
+            int side = leftSide ? 0 : 1;
+            int slot = fanSlot(band, zone, side);
+            int action = fanActions[band][slot];
+            if (SideGestureTargetStore.isDynamicAction(action)) {
+                SideGestureTargetStore.Target target = SideGestureTargetStore.find(
+                        SideGestureTargetStore.readRaw(prefs), action);
+                if (target != null) {
+                    showCustomTargetEditor(zone, band, slot, action, target);
+                    return;
+                }
+            }
+            showFanActionPicker(zone, band, slot);
+        }
+
+        private void showFanActionPicker(int zone, int band, int slot) {
+            showActionPicker(zone, band, slot, null);
+        }
+
         private void showActionPicker(int directionIndex, int tier) {
             showActionPicker(directionIndex, tier, null);
         }
 
         private void showActionPicker(int directionIndex, int tier, IntConsumer onSelected) {
-            int slot = cornerMode ? (leftSide ? 0 : 1)
-                    : (leftSide ? 0 : 3) + directionIndex;
+            showActionPicker(directionIndex, tier, cornerMode ? (leftSide ? 0 : 1)
+                    : (leftSide ? 0 : 3) + directionIndex, onSelected);
+        }
+
+        private void showActionPicker(int directionIndex, int tier, int slot, IntConsumer onSelected) {
             int currentAction = actions[tier][slot];
             boolean inheritAvailable = tier == SIDE_GESTURE_FAR
                     || (cornerMode && tier > SIDE_GESTURE_SHORT);
@@ -1004,7 +1310,8 @@ public final class SideGestureZoneOverlay {
             content.addView(list, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, Math.round(dp(48 * visibleRows))));
             AlertDialog.Builder builder = new AlertDialog.Builder(activity)
-                    .setTitle(directionName(directionIndex) + " · " + TIER_NAMES[tier] + "动作")
+                    .setTitle((fanMode ? "扇形区域" : directionName(directionIndex)) + " · "
+                            + TIER_NAMES[tier] + "动作")
                     .setView(content)
                     .setNegativeButton("取消", null);
             if (SideGestureTargetStore.isDynamicAction(currentAction)) {
@@ -1285,15 +1592,20 @@ public final class SideGestureZoneOverlay {
                     saved = new SideGestureTargetStore.Target(old.id, old.type, value, value,
                             customName);
                 }
-                activity.commitSideGestureTarget(cornerMode, tier, slot, draftAction[0], saved);
-                actions[tier][slot] = draftAction[0];
+                if (fanMode) {
+                    activity.commitSideGestureFanTarget(tier, slot, draftAction[0], saved);
+                    fanActions[tier][slot] = draftAction[0];
+                } else {
+                    activity.commitSideGestureTarget(cornerMode, tier, slot, draftAction[0], saved);
+                    actions[tier][slot] = draftAction[0];
+                }
                 invalidate();
                 dialog.dismiss();
             });
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
                 Runnable switchAction = () -> {
                     dialog.dismiss();
-                    showActionPicker(directionIndex, tier, selected -> {
+                    IntConsumer onSelected = selected -> {
                         draftAction[0] = selected;
                         if (SideGestureTargetStore.isDynamicAction(selected)) {
                             SideGestureTargetStore.Target next = SideGestureTargetStore.find(
@@ -1303,7 +1615,9 @@ public final class SideGestureZoneOverlay {
                         } else {
                             showPendingActionEditor(directionIndex, tier, slot, selected);
                         }
-                    });
+                    };
+                    if (fanMode) showActionPicker(directionIndex, tier, slot, onSelected);
+                    else showActionPicker(directionIndex, tier, onSelected);
                 };
                 if (editorHasChanges(target, draftTarget[0], draftAction[0], action, nameInput,
                         finalValueInput, finalDataInput, finalExtrasInput, finalCustomActionInput2,
@@ -1354,8 +1668,13 @@ public final class SideGestureZoneOverlay {
             dialog.show();
             styleBottomDialog(dialog);
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                activity.commitSideGestureAction(cornerMode, tier, slot, action);
-                actions[tier][slot] = action;
+                if (fanMode) {
+                    prefs.edit().putInt(SettingsStore.SIDE_GESTURE_FAN_ACTION_KEYS[tier][slot], action).apply();
+                    fanActions[tier][slot] = action;
+                } else {
+                    activity.commitSideGestureAction(cornerMode, tier, slot, action);
+                    actions[tier][slot] = action;
+                }
                 invalidate();
                 dialog.dismiss();
             });
@@ -1446,6 +1765,41 @@ public final class SideGestureZoneOverlay {
 
         private int hitHandle(float x, float y) {
             float hit = dp(28);
+            if (fanMode) {
+                float inward = (x - originX) * direction;
+                float radius = (float) Math.hypot(inward, y - centerY);
+                float[] radii = {shortDistanceDp * scale, longDistanceDp * scale,
+                        (longDistanceDp + fanCornerDistanceDp) * scale};
+                int side = leftSide ? 0 : 1;
+                int[][] bounds = {fanShortBoundariesBySide[side], fanLongBoundariesBySide[side]};
+                int[] boundaryRadii = {
+                        Math.round((radii[0] + radii[1]) * 0.5f),
+                        Math.round((radii[1] + radii[2]) * 0.5f)
+                };
+                int target = DRAG_NONE;
+                for (int band = 0; band < bounds.length; band++) {
+                    for (int i = 0; i < bounds[band].length; i++) {
+                        float angle = bounds[band][i] / 10f;
+                        float bx = originX + direction * (float) Math.cos(Math.toRadians(angle)) * boundaryRadii[band];
+                        float by = centerY + (float) Math.sin(Math.toRadians(angle)) * boundaryRadii[band];
+                        float distance = (float) Math.hypot(x - bx, y - by);
+                        if (distance < hit) {
+                            hit = distance;
+                            target = band == 0 ? DRAG_FAN_SHORT_1 + i : DRAG_FAN_LONG_1 + i;
+                        }
+                    }
+                }
+                if (target != DRAG_NONE) return target;
+                int[] distanceTargets = {DRAG_SHORT, DRAG_LONG, DRAG_FAR};
+                for (int i = 0; i < radii.length; i++) {
+                    float distance = Math.abs(radius - radii[i]);
+                    if (distance < hit && inward > 0f) {
+                        hit = distance;
+                        target = distanceTargets[i];
+                    }
+                }
+                return target;
+            }
             if (cornerMode) {
                 int[] distances = {shortDistanceDp, longDistanceDp, farDistanceDp};
                 int[] targets = {DRAG_SHORT, DRAG_LONG, DRAG_FAR};
@@ -1500,7 +1854,7 @@ public final class SideGestureZoneOverlay {
             for (int mode = farEnabled ? SIDE_GESTURE_FAR : splitEnabled ? SIDE_GESTURE_LONG : SIDE_GESTURE_SHORT; mode >= 0; mode--) {
                 for (int index = 0; index < 6; index++) {
                     if (actionLabelBounds[mode][index].contains(x, y)) {
-                        return mode * 3 + (cornerMode ? 0 : index % 3);
+                        return fanMode ? mode * 10 + index : mode * 3 + (cornerMode ? 0 : index % 3);
                     }
                 }
             }
@@ -1517,6 +1871,16 @@ public final class SideGestureZoneOverlay {
                 action = actions[SIDE_GESTURE_LONG][index];
             }
             return actionLabelForAction(action);
+        }
+
+        private int fanSlot(int band, int zone, int side) {
+            return band == 0 ? side * 3 + zone
+                    : band == 1 ? side * 5 + zone : side * 2 + zone;
+        }
+
+        private String actionLabelForFan(int band, int zone, int side) {
+            int slot = fanSlot(band, zone, side);
+            return actionLabelForAction(fanActions[band][slot]);
         }
 
         private String actionLabelForAction(int action) {
@@ -1558,6 +1922,12 @@ public final class SideGestureZoneOverlay {
         private String directionName(int direction) {
             if (cornerMode) return leftSide ? "左底角" : "右底角";
             return direction == 0 ? "横向滑动" : direction == 1 ? "上斜滑动" : "下斜滑动";
+        }
+
+        private String fanDirectionName(int band, int zone) {
+            if (band == 0) return new String[]{"上侧", "中间", "下侧"}[zone];
+            if (band == 1) return new String[]{"上外侧", "上中侧", "中间", "下中侧", "下外侧"}[zone];
+            return zone == 0 ? "顶部角落" : "底部角落";
         }
 
         private int clamp(int value, int min, int max) {

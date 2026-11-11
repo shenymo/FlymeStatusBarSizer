@@ -44,6 +44,16 @@ public final class AssistantGestureZoneOverlay {
         show(config);
     }
 
+    void showFan(float startX, float startY, boolean fromLeft, float shortDistancePx,
+            float longDistancePx, float cornerDistancePx, ModuleConfig config) {
+        view.setSpec(startX, startY, fromLeft, shortDistancePx, longDistancePx,
+                cornerDistancePx, 0f, 0f, 0f, false);
+        int side = fromLeft ? 0 : 1;
+        view.setFanSpec(config.sideGestureFanShortBoundaries[side], config.sideGestureFanLongBoundaries[side],
+                cornerDistancePx);
+        show(config);
+    }
+
     public void showCorner(float startX, float startY, boolean fromLeft, ModuleConfig config) {
         float density = context.getResources().getDisplayMetrics().density;
         view.setSpec(startX, startY, fromLeft, config.cornerGestureDistanceDp * density,
@@ -167,6 +177,10 @@ public final class AssistantGestureZoneOverlay {
         private AssistantGestureGeometry geometry;
         private boolean fromLeft;
         private boolean cornerMode;
+        private boolean fanMode;
+        private int[] fanShortBoundaries;
+        private int[] fanLongBoundaries;
+        private float fanCornerDistance;
 
         ZoneView(Context context) {
             super(context);
@@ -216,9 +230,17 @@ public final class AssistantGestureZoneOverlay {
             this.longDistance = longDistance;
             this.farDistance = farDistance;
             this.cornerMode = cornerMode;
+            fanMode = false;
             geometry = cornerMode ? null
                     : new AssistantGestureGeometry(shortDistance, upAngle, downAngle, minVertical);
             setPointer(startX, startY);
+        }
+
+        void setFanSpec(int[] shortBoundaries, int[] longBoundaries, float cornerDistance) {
+            fanMode = true;
+            fanShortBoundaries = shortBoundaries;
+            fanLongBoundaries = longBoundaries;
+            fanCornerDistance = cornerDistance;
         }
 
         @Override protected void onDraw(Canvas canvas) {
@@ -240,6 +262,16 @@ public final class AssistantGestureZoneOverlay {
             Matrix transform = new Matrix();
             transform.setScale(direction, 1f);
             transform.postTranslate(startX, startY);
+            if (fanMode) {
+                drawFanBand(canvas, transform, shortDistance, longDistance, fanShortBoundaries, shortFill, shortStroke,
+                        availableX);
+                drawFanBand(canvas, transform, longDistance, fanCornerDistance, fanLongBoundaries, longFill, longStroke,
+                        availableX);
+                drawFanBand(canvas, transform, fanCornerDistance, Float.POSITIVE_INFINITY,
+                        new int[]{0}, farFill, farStroke, availableX);
+                canvas.restore();
+                return;
+            }
             for (int tier = 0; tier < count; tier++) {
                 float outer = tier + 1 < count ? distances[tier + 1] : Float.POSITIVE_INFINITY;
                 for (int zone = 0; zone < (cornerMode ? 1 : 3); zone++) {
@@ -265,6 +297,34 @@ public final class AssistantGestureZoneOverlay {
                 }
             }
             canvas.restore();
+        }
+
+        private void drawFanBand(Canvas canvas, Matrix transform, float inner, float outer,
+                int[] boundaries, Paint fill, Paint stroke, float maxRadius) {
+            float radius = Math.min(maxRadius, Float.isFinite(outer) ? outer : maxRadius);
+            if (radius <= inner) return;
+            int zones = boundaries.length + 1;
+            for (int zone = 0; zone < zones; zone++) {
+                float startAngle = zone == 0 ? -90f : boundaries[zone - 1] / 10f;
+                float endAngle = zone == boundaries.length ? 90f : boundaries[zone] / 10f;
+                Path path = new Path();
+                float sx = (float) Math.cos(Math.toRadians(startAngle));
+                float sy = (float) Math.sin(Math.toRadians(startAngle));
+                path.moveTo(sx * inner, sy * inner);
+                path.lineTo(sx * radius, sy * radius);
+                path.arcTo(new android.graphics.RectF(-radius, -radius, radius, radius),
+                        startAngle, endAngle - startAngle);
+                float ex = (float) Math.cos(Math.toRadians(endAngle));
+                float ey = (float) Math.sin(Math.toRadians(endAngle));
+                path.lineTo(ex * inner, ey * inner);
+                if (inner > 0f) path.arcTo(new android.graphics.RectF(-inner, -inner, inner, inner),
+                        endAngle, startAngle - endAngle);
+                else path.lineTo(0f, 0f);
+                path.close();
+                path.transform(transform);
+                canvas.drawPath(path, fill);
+                canvas.drawPath(path, stroke);
+            }
         }
 
         private float dp(float value) {

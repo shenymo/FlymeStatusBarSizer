@@ -165,6 +165,14 @@ final class AssistantGestureHooks {
         float longDistancePx;
         float farDistancePx;
         int sideOffset;
+        boolean fanMode;
+        int fanBand;
+        int fanZone;
+        int fanZoneKey = -1;
+        boolean fanZoneValid;
+        int[] fanShortBoundaries;
+        int[] fanLongBoundaries;
+        float fanCornerDistancePx;
         final AssistantGestureActionOverlay actionOverlay;
         final AssistantGestureZoneOverlay zoneOverlay;
         final Method sendEvent;
@@ -229,6 +237,21 @@ final class AssistantGestureHooks {
             farDistancePx = config.assistantGestureFarEnabled
                     ? config.assistantGestureFarDistanceDp * density : Float.POSITIVE_INFINITY;
             sideOffset = leftEdge ? 0 : 3;
+            fanMode = config.sideGestureMode == SettingsStore.SIDE_GESTURE_MODE_FAN;
+            fanBand = 0;
+            fanZone = 0;
+            fanZoneKey = -1;
+            fanZoneValid = false;
+            int fanSide = leftEdge ? 0 : 1;
+            fanShortBoundaries = config.sideGestureFanShortBoundaries[fanSide];
+            fanLongBoundaries = config.sideGestureFanLongBoundaries[fanSide];
+            if (fanMode) {
+                longDistancePx = Math.max(config.assistantGestureDistanceDp + 1,
+                        config.assistantGestureLongDistanceDp) * density;
+                fanCornerDistancePx = longDistancePx
+                        + config.sideGestureFanCornerDistanceDp * density;
+                triggerOnRelease = true;
+            }
             remember(event);
         }
 
@@ -250,11 +273,16 @@ final class AssistantGestureHooks {
                 gestureStarted = true;
                 if (zoneOverlayEnabled) {
                     float density = context.getResources().getDisplayMetrics().density;
-                    zoneOverlay.show(gestureStartX, state.startY(), fromLeft, shortDistancePx,
-                            longDistancePx, farDistancePx,
-                            gestureConfig.assistantGestureUpAngle / 10f,
-                            gestureConfig.assistantGestureDownAngle / 10f,
-                            gestureConfig.assistantGestureMinVerticalDp * density, gestureConfig);
+                    if (fanMode) {
+                        zoneOverlay.showFan(gestureStartX, state.startY(), fromLeft, shortDistancePx,
+                                longDistancePx, fanCornerDistancePx, gestureConfig);
+                    } else {
+                        zoneOverlay.show(gestureStartX, state.startY(), fromLeft, shortDistancePx,
+                                longDistancePx, farDistancePx,
+                                gestureConfig.assistantGestureUpAngle / 10f,
+                                gestureConfig.assistantGestureDownAngle / 10f,
+                                gestureConfig.assistantGestureMinVerticalDp * density, gestureConfig);
+                    }
                 }
             }
             if (zoneOverlayEnabled && gestureStarted) zoneOverlay.updatePointer(rawX, rawY);
@@ -262,16 +290,17 @@ final class AssistantGestureHooks {
         }
 
         void updateDistanceHaptics() {
-            if (!state.ready()) {
+            if (!gestureReady()) {
                 return;
             }
+            if (fanMode) updateFanZone();
             int direction = state.direction();
             int tier = distanceTier();
-            int zone = direction + tier * 3;
+            int zone = fanMode ? fanZoneKey : direction + tier * 3;
             if (zone == hapticCandidateZone) return;
             hapticCandidateZone = zone;
             if (zone == hapticZone) return;
-            int actionId = gestureConfig.sideGestureActions[tier][sideOffset + direction];
+            int actionId = currentActionId();
             if (actionId == SettingsStore.SIDE_GESTURE_ACTION_NONE
                     || actionId == SettingsStore.SIDE_GESTURE_ACTION_BACK) return;
             Object target = owner.get();
@@ -286,8 +315,10 @@ final class AssistantGestureHooks {
             if (!isNavigationAction(actionId) && (action == null || !action.isReady())) return;
             hapticZone = zone;
             Object panel = target == null ? null : ReflectUtils.getField(target, "mEdgeBackPlugin");
-            int feedback = tier == SettingsStore.SIDE_GESTURE_FAR ? HapticFeedbackConstants.CONFIRM
-                    : tier == SettingsStore.SIDE_GESTURE_LONG ? HapticFeedbackConstants.LONG_PRESS
+            int feedback = !fanMode && tier == SettingsStore.SIDE_GESTURE_FAR
+                    ? HapticFeedbackConstants.CONFIRM
+                    : (fanMode ? fanBand > 0 : tier == SettingsStore.SIDE_GESTURE_LONG)
+                    ? HapticFeedbackConstants.LONG_PRESS
                     : HapticFeedbackConstants.CLOCK_TICK;
             handler.post(() -> HapticFeedbackUtils.perform(context,
                     panel instanceof View ? (View) panel : null, feedback));
@@ -295,7 +326,7 @@ final class AssistantGestureHooks {
 
         boolean tryClaim(boolean onRelease) {
             Object target = owner.get();
-            if (last == null || target == null || consumed || !gestureStarted || !state.ready()) {
+            if (last == null || target == null || consumed || !gestureStarted || !gestureReady()) {
                 return false;
             }
             if (triggerOnRelease && !onRelease) return false;
@@ -306,7 +337,8 @@ final class AssistantGestureHooks {
                 reset();
                 return false;
             }
-            int actionId = config.sideGestureActions[distanceTier()][sideOffset + state.direction()];
+            if (fanMode) updateFanZone();
+            int actionId = currentActionId();
             if (actionId == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
                     && !AssistantGestureScenes.allows(config.assistantGestureScenes, target)) {
                 return false;
@@ -343,9 +375,55 @@ final class AssistantGestureHooks {
             return SettingsStore.sideGestureTier(state.travelDistance(), longDistancePx, farDistancePx);
         }
 
+        boolean gestureReady() {
+            return fanMode ? state.readyForFan(shortDistancePx) : state.ready();
+        }
+
+        void updateFanZone() {
+            float distance = state.travelDistance();
+            float angle = state.angleDegrees();
+            int oldBand = fanBand;
+            int oldZone = fanZone;
+            int nextBand;
+            int nextZone;
+            if (distance >= fanCornerDistancePx) {
+                nextBand = 2;
+                nextZone = angle < 0f ? 0 : 1;
+            } else if (distance >= longDistancePx) {
+                nextBand = 1;
+                nextZone = SettingsStore.sideGestureFanZone(angle, fanLongBoundaries);
+            } else {
+                nextBand = 0;
+                nextZone = SettingsStore.sideGestureFanZone(angle, fanShortBoundaries);
+            }
+            if (fanZoneValid && oldBand == nextBand && oldZone != nextZone) {
+                if (nextBand == 2) {
+                    if (Math.abs(angle) < 3f) nextZone = oldZone;
+                } else {
+                    int[] bounds = nextBand == 0 ? fanShortBoundaries : fanLongBoundaries;
+                    float boundary = bounds[nextZone > oldZone ? oldZone : nextZone] / 10f;
+                    if (Math.abs(angle - boundary) < 3f) nextZone = oldZone;
+                }
+            }
+            fanBand = nextBand;
+            fanZone = nextZone;
+            fanZoneValid = true;
+            fanZoneKey = fanBand == 0 ? fanZone : fanBand == 1 ? 3 + fanZone : 8 + fanZone;
+        }
+
+        int currentActionId() {
+            if (!fanMode) {
+                return gestureConfig.sideGestureActions[distanceTier()][sideOffset + state.direction()];
+            }
+            int side = fromLeft ? 0 : 1;
+            int slot = fanBand == 0 ? side * 3 + fanZone
+                    : fanBand == 1 ? side * 5 + fanZone : side * 2 + fanZone;
+            return gestureConfig.sideGestureFanActions[fanBand][slot];
+        }
+
         void updateActionPreview() {
             if ((!actionPreviewEnabled && !actionIconPreviewEnabled)
-                    || !gestureStarted || !state.ready()) {
+                    || !gestureStarted || !gestureReady()) {
                 actionOverlay.hideAll();
                 return;
             }
@@ -356,7 +434,8 @@ final class AssistantGestureHooks {
             }
             ModuleConfig config = gestureConfig;
             int tier = distanceTier();
-            int actionId = config.sideGestureActions[tier][sideOffset + state.direction()];
+            if (fanMode) updateFanZone();
+            int actionId = currentActionId();
             if (actionId == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
                     && !AssistantGestureScenes.allows(config.assistantGestureScenes, target)) {
                 actionOverlay.hideAll();
@@ -380,9 +459,9 @@ final class AssistantGestureHooks {
                     + Math.min(170f * density, state.inwardDistance() * 0.72f);
             float anchorX = edge + horizontalDirection * reach;
             float anchorY = state.startY() + state.verticalDelta() * 0.58f;
-            if (actionId != previewActionId || tier != previewTier || !previewReady) {
+            if (actionId != previewActionId || (fanMode ? fanZoneKey : tier) != previewTier || !previewReady) {
                 previewActionId = actionId;
-                previewTier = tier;
+                previewTier = fanMode ? fanZoneKey : tier;
                 previewReady = true;
                 previewText = SideGestureActions.label(actionId, context);
             }
