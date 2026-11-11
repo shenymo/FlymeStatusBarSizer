@@ -608,6 +608,9 @@ public final class SettingsCardFactory {
         activity.addSwitchRow(previewOptions, "显示动作名称", null,
                 SettingsStore.KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED);
+        activity.addSwitchRow(previewOptions, "显示图标", null,
+                SettingsStore.KEY_ASSISTANT_GESTURE_ICON_PREVIEW_ENABLED,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ICON_PREVIEW_ENABLED);
         activity.addSwitchRow(previewOptions, "显示触发区域", null,
                 SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED);

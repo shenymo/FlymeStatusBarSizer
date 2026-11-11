@@ -232,6 +232,8 @@ public final class SettingsStore {
     public static final int DEFAULT_SIDE_BACK_ANIMATION_STYLE = SIDE_BACK_ANIMATION_RIBBON;
     public static final String KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED =
             "assistant_gesture_preview_enabled";
+    public static final String KEY_ASSISTANT_GESTURE_ICON_PREVIEW_ENABLED =
+            "assistant_gesture_icon_preview_enabled";
     public static final String KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED =
             "assistant_gesture_zone_overlay_enabled";
     public static final String KEY_ASSISTANT_GESTURE_ZONE_RADIUS_DP =
@@ -305,6 +307,7 @@ public final class SettingsStore {
             "workspace_flow_logging_enabled";
     public static final boolean DEFAULT_ASSISTANT_GESTURE_ENABLED = false;
     public static final boolean DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED = true;
+    public static final boolean DEFAULT_ASSISTANT_GESTURE_ICON_PREVIEW_ENABLED = false;
     public static final boolean DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED = false;
     public static final int DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP = 140;
     public static final int MIN_ASSISTANT_GESTURE_DISTANCE_DP = 0;
@@ -1020,6 +1023,7 @@ public final class SettingsStore {
             KEY_ASSISTANT_GESTURE_ENABLED,
             KEY_LAUNCHER_SIDE_GESTURE_ENABLED,
             KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
+            KEY_ASSISTANT_GESTURE_ICON_PREVIEW_ENABLED,
             KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED,
             KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
             KEY_ASSISTANT_GESTURE_FAR_ENABLED,
@@ -1645,6 +1649,8 @@ public final class SettingsStore {
                 return DEFAULT_LAUNCHER_SIDE_GESTURE_ENABLED;
             case KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED:
                 return DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED;
+            case KEY_ASSISTANT_GESTURE_ICON_PREVIEW_ENABLED:
+                return DEFAULT_ASSISTANT_GESTURE_ICON_PREVIEW_ENABLED;
             case KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED:
                 return DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED;
             case KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED:

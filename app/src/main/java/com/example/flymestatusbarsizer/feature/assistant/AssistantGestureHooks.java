@@ -149,6 +149,7 @@ final class AssistantGestureHooks {
         boolean fromLeft;
         boolean triggerOnRelease;
         boolean actionPreviewEnabled;
+        boolean actionIconPreviewEnabled;
         boolean zoneOverlayEnabled;
         boolean gestureStarted;
         int hapticZone = -1;
@@ -220,6 +221,7 @@ final class AssistantGestureHooks {
             fromLeft = leftEdge;
             zoneOverlayEnabled = config.assistantGestureZoneOverlayEnabled;
             actionPreviewEnabled = config.assistantGesturePreviewEnabled;
+            actionIconPreviewEnabled = config.assistantGestureIconPreviewEnabled;
             triggerOnRelease = config.assistantGestureDistanceSplitEnabled
                     || config.assistantGestureTriggerMode == SettingsStore.ASSISTANT_GESTURE_TRIGGER_ON_RELEASE;
             longDistancePx = config.assistantGestureDistanceSplitEnabled
@@ -342,32 +344,33 @@ final class AssistantGestureHooks {
         }
 
         void updateActionPreview() {
-            if (!actionPreviewEnabled || !gestureStarted || !state.ready()) {
-                actionOverlay.hide();
+            if ((!actionPreviewEnabled && !actionIconPreviewEnabled)
+                    || !gestureStarted || !state.ready()) {
+                actionOverlay.hideAll();
                 return;
             }
             Object target = owner.get();
             if (target == null) {
-                actionOverlay.hide();
+                actionOverlay.hideAll();
                 return;
             }
             ModuleConfig config = gestureConfig;
             int tier = distanceTier();
             int actionId = config.sideGestureActions[tier][sideOffset + state.direction()];
-            if (actionId == SettingsStore.SIDE_GESTURE_ACTION_BACK
-                    || (actionId == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                    && !AssistantGestureScenes.allows(config.assistantGestureScenes, target))) {
-                actionOverlay.hide();
+            if (actionId == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
+                    && !AssistantGestureScenes.allows(config.assistantGestureScenes, target)) {
+                actionOverlay.hideAll();
                 return;
             }
             SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant,
                     com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.ACTION,
                     taskSwitcher, quickTools, appLauncher, context);
             if (actionId != SettingsStore.SIDE_GESTURE_ACTION_NONE
+                    && actionId != SettingsStore.SIDE_GESTURE_ACTION_BACK
                     && !isNavigationAction(actionId)
                     && (action == null || !action.isReady())) {
                 previewReady = false;
-                actionOverlay.hide();
+                actionOverlay.hideAll();
                 return;
             }
             float density = context.getResources().getDisplayMetrics().density;
@@ -383,7 +386,13 @@ final class AssistantGestureHooks {
                 previewReady = true;
                 previewText = SideGestureActions.label(actionId, context);
             }
-            actionOverlay.show(previewText, anchorX, anchorY);
+            if (actionPreviewEnabled && actionId != SettingsStore.SIDE_GESTURE_ACTION_BACK) {
+                actionOverlay.show(previewText, anchorX, anchorY);
+            } else {
+                actionOverlay.hide();
+            }
+            if (actionIconPreviewEnabled) actionOverlay.showIcon(actionId, config);
+            else actionOverlay.hideIcon();
         }
 
         void executeCornerAction(ModuleConfig config, boolean left, int tier) {
@@ -474,7 +483,7 @@ final class AssistantGestureHooks {
             previewReady = false;
             previewText = "";
             gestureConfig = null;
-            actionOverlay.hide();
+            actionOverlay.hideAll();
             zoneOverlay.hide();
             if (last != null) { last.recycle(); last = null; }
         }

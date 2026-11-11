@@ -1,15 +1,24 @@
 package com.example.flymestatusbarsizer.feature.assistant;
 
 import android.content.Context;
+import android.content.ComponentName;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
 import android.os.Binder;
+import android.content.pm.PackageManager;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
+
+import com.example.flymestatusbarsizer.BuildConfig;
+import com.example.flymestatusbarsizer.R;
+import com.example.flymestatusbarsizer.config.ModuleConfig;
+import com.example.flymestatusbarsizer.config.SettingsStore;
+import com.example.flymestatusbarsizer.config.SideGestureTargetStore;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -22,6 +31,7 @@ public final class AssistantGestureActionOverlay {
     private final ActionView view;
     private boolean attached;
     private boolean attempted;
+    private Context moduleContext;
 
     public AssistantGestureActionOverlay(Context context) {
         this.context = context;
@@ -31,29 +41,111 @@ public final class AssistantGestureActionOverlay {
 
     public void show(String text, float anchorX, float anchorY) {
         view.setText(text);
+        view.setTextVisible(true);
         view.setAnchor(anchorX, anchorY);
-        if (!attached && !attempted) {
-            attempted = true;
-            attach();
+        updateVisibility();
+    }
+
+    public void showIcon(int actionId, ModuleConfig config) {
+        if (view.iconActionId != actionId) {
+            view.iconActionId = actionId;
+            view.icon = resolveIcon(actionId, config);
         }
-        if (attached) {
-            view.setVisibility(View.VISIBLE);
-            view.postInvalidateOnAnimation();
-        }
+        view.setIconVisible(true);
+        updateVisibility();
     }
 
     public void hide() {
-        if (attached) {
-            view.setVisibility(View.INVISIBLE);
-        } else {
-            attempted = false;
-        }
+        view.setTextVisible(false);
+        updateVisibility();
+    }
+
+    public void hideIcon() {
+        view.setIconVisible(false);
+        updateVisibility();
+    }
+
+    public void hideAll() {
+        view.setTextVisible(false);
+        view.setIconVisible(false);
+        updateVisibility();
     }
 
     public void close() {
         if (attached) windowManager.removeViewImmediate(view);
         attached = false;
         attempted = false;
+    }
+
+    private void updateVisibility() {
+        boolean visible = view.textVisible || view.iconVisible;
+        if (visible && !attached && !attempted) {
+            attempted = true;
+            attach();
+        }
+        if (attached) {
+            view.setVisibility(visible ? View.VISIBLE : View.INVISIBLE);
+            if (visible) view.postInvalidateOnAnimation();
+        } else if (!visible) {
+            attempted = false;
+        }
+    }
+
+    private Drawable resolveIcon(int actionId, ModuleConfig config) {
+        Context resources = moduleContext;
+        if (resources == null) {
+            try {
+                resources = context.createPackageContext(BuildConfig.APPLICATION_ID,
+                        Context.CONTEXT_IGNORE_SECURITY);
+                moduleContext = resources;
+            } catch (PackageManager.NameNotFoundException ignored) {
+                resources = context;
+            }
+        }
+        String packageName = null;
+        ComponentName component = null;
+        SideGestureTargetStore.Target target = SideGestureTargetStore.isDynamicAction(actionId)
+                ? SideGestureTargetStore.find(config.sideGestureTargetsJson, actionId) : null;
+        int actionType = target == null ? actionId : target.type;
+        Drawable fallback = resources.getDrawable(actionIconResource(actionType)).mutate();
+        fallback.setTint(Color.WHITE);
+        String value = target == null ? "" : target.value;
+        if (actionType == SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP) {
+            packageName = target == null ? config.sideGestureTargetApp : value;
+        } else if (actionType == SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY) {
+            component = ComponentName.unflattenFromString(
+                    target == null ? config.sideGestureTargetActivity : value);
+        }
+        try {
+            if (component != null) return context.getPackageManager().getActivityIcon(component);
+            if (packageName != null && !packageName.isEmpty()) {
+                return context.getPackageManager().getApplicationIcon(packageName);
+            }
+        } catch (PackageManager.NameNotFoundException ignored) {
+        }
+        return fallback;
+    }
+
+    private static int actionIconResource(int actionId) {
+        switch (actionId) {
+            case SettingsStore.SIDE_GESTURE_ACTION_BACK: return R.drawable.gesture_action_back;
+            case SettingsStore.SIDE_GESTURE_ACTION_HOME: return R.drawable.gesture_action_home;
+            case SettingsStore.SIDE_GESTURE_ACTION_RECENTS: return R.drawable.gesture_action_recents;
+            case SettingsStore.SIDE_GESTURE_ACTION_LOCK_SCREEN: return R.drawable.gesture_action_lock;
+            case SettingsStore.SIDE_GESTURE_ACTION_END_CURRENT_TASK: return R.drawable.gesture_action_end_task;
+            case SettingsStore.SIDE_GESTURE_ACTION_WINDOWMODE_PANEL: return R.drawable.gesture_action_window_panel;
+            case SettingsStore.SIDE_GESTURE_ACTION_WELT_WINDOW: return R.drawable.gesture_action_welt_window;
+            case SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER: return R.drawable.gesture_action_task_switcher;
+            case SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT: return R.drawable.gesture_action_global_assistant;
+            case SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE: return R.drawable.gesture_action_task_scale;
+            case SettingsStore.SIDE_GESTURE_ACTION_QUICK_TOOLS: return R.drawable.gesture_action_quick_tools;
+            case SettingsStore.SIDE_GESTURE_ACTION_APP_LAUNCHER: return R.drawable.gesture_action_app_launcher;
+            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP: return R.drawable.gesture_action_open_app;
+            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY: return R.drawable.gesture_action_open_activity;
+            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI: return R.drawable.gesture_action_open_intent_uri;
+            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL: return R.drawable.gesture_action_open_scheme_url;
+            default: return R.drawable.gesture_action_none;
+        }
     }
 
     private void attach() {
@@ -124,6 +216,10 @@ public final class AssistantGestureActionOverlay {
         private final float scaledDensity;
         private final int statusBarHeight;
         private String text = "";
+        private Drawable icon;
+        private int iconActionId = Integer.MIN_VALUE;
+        private boolean textVisible;
+        private boolean iconVisible;
         private float anchorX;
         private float anchorY;
 
@@ -145,6 +241,10 @@ public final class AssistantGestureActionOverlay {
             this.text = text == null ? "" : text;
         }
 
+        void setTextVisible(boolean visible) { textVisible = visible; }
+
+        void setIconVisible(boolean visible) { iconVisible = visible; }
+
         void setAnchor(float x, float y) {
             anchorX = x;
             anchorY = y;
@@ -152,7 +252,22 @@ public final class AssistantGestureActionOverlay {
 
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
-            if (text.length() == 0 || getWidth() <= 0) return;
+            if (getWidth() <= 0) return;
+            if (iconVisible && icon != null) {
+                float size = dp(44);
+                float top = statusBarHeight + dp(8);
+                float left = (getWidth() - size) / 2f;
+                float right = left + size;
+                float bottom = top + size;
+                canvas.drawRoundRect(left, top, right, bottom, dp(12), dp(12), background);
+                canvas.drawRoundRect(left, top, right, bottom, dp(12), dp(12), outline);
+                int iconSize = Math.round(dp(26));
+                int iconLeft = Math.round((getWidth() - iconSize) / 2f);
+                int iconTop = Math.round(top + (size - iconSize) / 2f);
+                icon.setBounds(iconLeft, iconTop, iconLeft + iconSize, iconTop + iconSize);
+                icon.draw(canvas);
+            }
+            if (!textVisible || text.length() == 0) return;
             textPaint.getTextBounds(text, 0, text.length(), textBounds);
             float horizontalPadding = dp(18);
             float height = dp(40);

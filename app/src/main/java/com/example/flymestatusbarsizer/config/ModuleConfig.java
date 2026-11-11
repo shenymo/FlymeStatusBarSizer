@@ -143,6 +143,8 @@ public final class ModuleConfig {
             SettingsStore.DEFAULT_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR;
     public boolean assistantGesturePreviewEnabled =
             SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED;
+    public boolean assistantGestureIconPreviewEnabled =
+            SettingsStore.DEFAULT_ASSISTANT_GESTURE_ICON_PREVIEW_ENABLED;
     public boolean assistantGestureZoneOverlayEnabled =
             SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED;
     public int assistantGestureZoneRadiusDp =
@@ -818,6 +820,9 @@ public final class ModuleConfig {
             config.assistantGesturePreviewEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
                     SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED);
+            config.assistantGestureIconPreviewEnabled = SettingsStore.readBoolean(prefs,
+                    SettingsStore.KEY_ASSISTANT_GESTURE_ICON_PREVIEW_ENABLED,
+                    SettingsStore.DEFAULT_ASSISTANT_GESTURE_ICON_PREVIEW_ENABLED);
             config.assistantGestureZoneOverlayEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED,
                     SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED);

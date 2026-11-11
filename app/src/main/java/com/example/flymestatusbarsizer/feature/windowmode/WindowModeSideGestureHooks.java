@@ -202,6 +202,13 @@ public final class WindowModeSideGestureHooks {
                         if (target != null) label = target.label;
                     }
                     preview.show(label, event.getRawX(), event.getRawY());
+                } else {
+                    preview.hide();
+                }
+                if (config.assistantGestureIconPreviewEnabled) {
+                    preview.showIcon(config.cornerGestureActions[tier][fromLeft ? 0 : 1], config);
+                } else {
+                    preview.hideIcon();
                 }
                 if (tier != lastTier) {
                     lastTier = tier;
@@ -211,7 +218,7 @@ public final class WindowModeSideGestureHooks {
                                     : HapticFeedbackConstants.CLOCK_TICK);
                 }
             } else {
-                preview.hide();
+                preview.hideAll();
             }
             if (action == MotionEvent.ACTION_UP && ready) {
                 context.sendBroadcast(new Intent(SideGestureActions.ACTION_CORNER_GESTURE)
