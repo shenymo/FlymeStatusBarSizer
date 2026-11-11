@@ -766,7 +766,11 @@ public class MainActivity extends Activity {
     }
 
     public void openSideGestureZoneOverlay() {
-        showSideGestureZoneOverlay();
+        showSideGestureZoneOverlay(false);
+    }
+
+    public void openCornerGestureZoneOverlay() {
+        showSideGestureZoneOverlay(true);
     }
 
     public void configureSideGestureTarget(int type, IntConsumer onSelected) {
@@ -1335,9 +1339,9 @@ public class MainActivity extends Activity {
         return id;
     }
 
-    private void showSideGestureZoneOverlay() {
+    private void showSideGestureZoneOverlay(boolean cornerMode) {
         if (sideGestureZoneOverlay != null) return;
-        sideGestureZoneOverlay = new SideGestureZoneOverlay(this, prefs, primaryColor(),
+        sideGestureZoneOverlay = new SideGestureZoneOverlay(this, prefs, primaryColor(), cornerMode,
                 this::notifySideGestureActionsChanged, () -> {
                     sideGestureZoneOverlay = null;
                 });
@@ -3580,7 +3584,7 @@ public class MainActivity extends Activity {
         return card;
     }
 
-    private void setEnabledRecursively(View view, boolean enabled) {
+    public void setEnabledRecursively(View view, boolean enabled) {
         view.setEnabled(enabled);
         if (!(view instanceof ViewGroup)) {
             return;

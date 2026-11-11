@@ -9,10 +9,12 @@ import com.example.flymestatusbarsizer.feature.assistant.AssistantGestureActionO
 import com.example.flymestatusbarsizer.feature.assistant.SideGestureActions;
 
 import android.app.ActivityManager;
+import android.app.KeyguardManager;
 import android.animation.ValueAnimator;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Point;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -22,6 +24,7 @@ import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -35,6 +38,8 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 public final class WindowModeSideGestureHooks {
+    private static final String ACTION_SHOW_PANEL = "action_show_gesture_window";
+    private static final String EXTRA_MODULE_REQUEST = "com.fiyme.statusbarsizer.SHOW_WINDOWMODE_PANEL";
     private static final Map<Object, CornerGesture> CORNER_GESTURES = new WeakHashMap<>();
     private static final Handler CORNER_HANDLER = new Handler(Looper.getMainLooper());
     private static final Map<Object, Boolean> PREWARMED_LAUNCHERS = new WeakHashMap<>();
@@ -51,6 +56,22 @@ public final class WindowModeSideGestureHooks {
     private static Class<?> appLauncherWindowClass;
 
     private WindowModeSideGestureHooks() {
+    }
+
+    public static SideGestureActions.Action action(Context context) {
+        return new SideGestureActions.Action() {
+            @Override public boolean isReady() {
+                return true;
+            }
+
+            @Override public void execute(boolean fromLeft, Runnable onSuccess) {
+                context.sendBroadcast(new Intent(ACTION_SHOW_PANEL)
+                        .setPackage("com.flyme.systemuitools")
+                        .putExtra(EXTRA_MODULE_REQUEST, true)
+                        .putExtra("from_left", fromLeft));
+                if (onSuccess != null) onSuccess.run();
+            }
+        };
     }
 
     public static void install(FlymeStatusBarSizer module, ClassLoader loader) {
@@ -182,6 +203,7 @@ public final class WindowModeSideGestureHooks {
                     false,
                     loader);
             appLauncherWindowClass = clazz;
+            installNativeAppLauncherShowHook(module, loader, clazz);
             Method method = clazz.getDeclaredMethod("X");
             method.setAccessible(true);
             module.intercept(method, chain -> {
@@ -215,6 +237,51 @@ public final class WindowModeSideGestureHooks {
             FlymeStatusBarSizer.logWindowModeWarning(
                     "Failed to hook Flyme window mode app launcher prewarm",
                     t);
+        }
+    }
+
+    private static void installNativeAppLauncherShowHook(
+            FlymeStatusBarSizer module, ClassLoader loader, Class<?> appLauncherClass) {
+        try {
+            Method receive = appLauncherClass.getDeclaredMethod("f", Context.class, Intent.class);
+            Method prepare = appLauncherClass.getDeclaredMethod("Q");
+            Method show = appLauncherClass.getDeclaredMethod("O");
+            Method setCenter = Class.forName(
+                    "com.flyme.systemuitools.windowmode.widget.GestureAppLauncher", false, loader)
+                    .getDeclaredMethod("setCenterPosition", int.class);
+            receive.setAccessible(true);
+            prepare.setAccessible(true);
+            show.setAccessible(true);
+            module.intercept(receive, chain -> {
+                Intent intent = (Intent) chain.getArg(1);
+                if (!ACTION_SHOW_PANEL.equals(intent.getAction())
+                        || !intent.getBooleanExtra(EXTRA_MODULE_REQUEST, false)) {
+                    return chain.proceed();
+                }
+                Context context = (Context) chain.getArg(0);
+                ModuleConfig config = ModuleConfig.load(context);
+                if (!config.enabled || !config.assistantGestureEnabled
+                        || context.getSystemService(KeyguardManager.class).isKeyguardLocked()) {
+                    return null;
+                }
+                try {
+                    Object target = chain.getThisObject();
+                    prepare.invoke(target);
+                    View launcher = (View) resolveAppWindowGestureLauncher(target);
+                    Point size = new Point();
+                    context.getSystemService(WindowManager.class).getDefaultDisplay().getRealSize(size);
+                    setCenter.invoke(launcher, size.y);
+                    launcher.setLayoutDirection(intent.getBooleanExtra("from_left", true) ? 0 : 1);
+                    show.invoke(target);
+                } catch (ReflectiveOperationException | IllegalStateException error) {
+                    FlymeStatusBarSizer.logWindowModeWarning(
+                            "Failed to show Flyme native app launcher", error);
+                }
+                return null;
+            });
+        } catch (ReflectiveOperationException error) {
+            FlymeStatusBarSizer.logWindowModeWarning(
+                    "Failed to hook Flyme native app launcher show request", error);
         }
     }
 

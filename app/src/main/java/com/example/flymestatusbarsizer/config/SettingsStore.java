@@ -137,6 +137,7 @@ public final class SettingsStore {
     public static final int SIDE_GESTURE_ACTION_OPEN_ACTIVITY = 10;
     public static final int SIDE_GESTURE_ACTION_OPEN_INTENT_URI = 11;
     public static final int SIDE_GESTURE_ACTION_OPEN_SCHEME_URL = 12;
+    public static final int SIDE_GESTURE_ACTION_WINDOWMODE_PANEL = 13;
     public static final int DEFAULT_SIDE_GESTURE_ACTION = SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
     public static final String KEY_SIDE_GESTURE_TARGET_APP = "side_gesture_target_app";
     public static final String KEY_SIDE_GESTURE_TARGET_ACTIVITY = "side_gesture_target_activity";
@@ -1761,6 +1762,7 @@ public final class SettingsStore {
             case SIDE_GESTURE_ACTION_TASK_SWITCHER:
             case SIDE_GESTURE_ACTION_QUICK_TOOLS:
             case SIDE_GESTURE_ACTION_APP_LAUNCHER:
+            case SIDE_GESTURE_ACTION_WINDOWMODE_PANEL:
             case SIDE_GESTURE_ACTION_OPEN_APP:
             case SIDE_GESTURE_ACTION_OPEN_ACTIVITY:
             case SIDE_GESTURE_ACTION_OPEN_INTENT_URI:
