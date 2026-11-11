@@ -14,7 +14,7 @@ import android.view.WindowManager;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
-final class AssistantGestureActionOverlay {
+public final class AssistantGestureActionOverlay {
     private static final int[] WINDOW_TYPES = {2041, 2017, 2040};
     private static final String TITLE = "FlymeStatusBarSizer:GestureAction";
     private final Context context;
@@ -23,13 +23,13 @@ final class AssistantGestureActionOverlay {
     private boolean attached;
     private boolean attempted;
 
-    AssistantGestureActionOverlay(Context context) {
+    public AssistantGestureActionOverlay(Context context) {
         this.context = context;
         windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
         view = new ActionView(context);
     }
 
-    void show(String text, float anchorX, float anchorY) {
+    public void show(String text, float anchorX, float anchorY) {
         view.setText(text);
         view.setAnchor(anchorX, anchorY);
         if (!attached && !attempted) {
@@ -42,12 +42,18 @@ final class AssistantGestureActionOverlay {
         }
     }
 
-    void hide() {
+    public void hide() {
         if (attached) {
             view.setVisibility(View.INVISIBLE);
         } else {
             attempted = false;
         }
+    }
+
+    public void close() {
+        if (attached) windowManager.removeViewImmediate(view);
+        attached = false;
+        attempted = false;
     }
 
     private void attach() {

@@ -157,6 +157,34 @@ public final class SettingsStore {
     public static final String KEY_SIDE_GESTURE_RIGHT_LONG_ACTION = "side_gesture_right_long_action";
     public static final String KEY_SIDE_GESTURE_RIGHT_UP_LONG_ACTION = "side_gesture_right_up_long_action";
     public static final String KEY_SIDE_GESTURE_RIGHT_DOWN_LONG_ACTION = "side_gesture_right_down_long_action";
+    public static final String KEY_SIDE_GESTURE_LEFT_FAR_ACTION = "side_gesture_left_far_action";
+    public static final String KEY_SIDE_GESTURE_LEFT_UP_FAR_ACTION = "side_gesture_left_up_far_action";
+    public static final String KEY_SIDE_GESTURE_LEFT_DOWN_FAR_ACTION = "side_gesture_left_down_far_action";
+    public static final String KEY_SIDE_GESTURE_RIGHT_FAR_ACTION = "side_gesture_right_far_action";
+    public static final String KEY_SIDE_GESTURE_RIGHT_UP_FAR_ACTION = "side_gesture_right_up_far_action";
+    public static final String KEY_SIDE_GESTURE_RIGHT_DOWN_FAR_ACTION = "side_gesture_right_down_far_action";
+    private static final String[] SIDE_GESTURE_LEGACY_KEYS = {
+            KEY_SIDE_GESTURE_ACTION, KEY_SIDE_GESTURE_UP_ACTION, KEY_SIDE_GESTURE_DOWN_ACTION,
+            KEY_SIDE_GESTURE_ACTION, KEY_SIDE_GESTURE_UP_ACTION, KEY_SIDE_GESTURE_DOWN_ACTION
+    };
+    private static final String[][] SIDE_GESTURE_ACTION_KEYS = {
+        {
+            KEY_SIDE_GESTURE_LEFT_ACTION, KEY_SIDE_GESTURE_LEFT_UP_ACTION, KEY_SIDE_GESTURE_LEFT_DOWN_ACTION,
+            KEY_SIDE_GESTURE_RIGHT_ACTION, KEY_SIDE_GESTURE_RIGHT_UP_ACTION, KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION
+        },
+        {
+            KEY_SIDE_GESTURE_LEFT_LONG_ACTION, KEY_SIDE_GESTURE_LEFT_UP_LONG_ACTION, KEY_SIDE_GESTURE_LEFT_DOWN_LONG_ACTION,
+            KEY_SIDE_GESTURE_RIGHT_LONG_ACTION, KEY_SIDE_GESTURE_RIGHT_UP_LONG_ACTION, KEY_SIDE_GESTURE_RIGHT_DOWN_LONG_ACTION
+        },
+        {
+            KEY_SIDE_GESTURE_LEFT_FAR_ACTION, KEY_SIDE_GESTURE_LEFT_UP_FAR_ACTION, KEY_SIDE_GESTURE_LEFT_DOWN_FAR_ACTION,
+            KEY_SIDE_GESTURE_RIGHT_FAR_ACTION, KEY_SIDE_GESTURE_RIGHT_UP_FAR_ACTION, KEY_SIDE_GESTURE_RIGHT_DOWN_FAR_ACTION
+        }
+    };
+    public static final int SIDE_GESTURE_SHORT = 0;
+    public static final int SIDE_GESTURE_LONG = 1;
+    public static final int SIDE_GESTURE_FAR = 2;
+    public static final int SIDE_GESTURE_INHERIT_LONG = -1;
     public static final String KEY_ONE_HANDED_MODE_ENABLED = "one_handed_mode_enabled";
     public static final boolean DEFAULT_ONE_HANDED_MODE_ENABLED = false;
     public static final String KEY_ONE_HANDED_MODE_ACTION = "one_handed_mode_action";
@@ -253,6 +281,10 @@ public final class SettingsStore {
     public static final int DEFAULT_ASSISTANT_GESTURE_LONG_DISTANCE_DP = 280;
     public static final int MIN_ASSISTANT_GESTURE_LONG_DISTANCE_DP = 0;
     public static final int MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP = 480;
+    public static final String KEY_ASSISTANT_GESTURE_FAR_ENABLED = "assistant_gesture_far_enabled";
+    public static final String KEY_ASSISTANT_GESTURE_FAR_DISTANCE_DP = "assistant_gesture_far_distance_dp";
+    public static final int DEFAULT_ASSISTANT_GESTURE_FAR_DISTANCE_DP = 360;
+    public static final int MAX_ASSISTANT_GESTURE_FAR_DISTANCE_DP = 720;
     public static final String KEY_ASSISTANT_GESTURE_TRIGGER_MODE = "assistant_gesture_trigger_mode";
     public static final int ASSISTANT_GESTURE_TRIGGER_AT_DISTANCE = 0;
     public static final int ASSISTANT_GESTURE_TRIGGER_ON_RELEASE = 1;
@@ -276,6 +308,25 @@ public final class SettingsStore {
     public static final String KEY_WINDOWMODE_SIDE_GESTURE_ENABLED = "windowmode_side_gesture_enabled";
     public static final String KEY_WINDOWMODE_SIDE_GESTURE_ACTION = "windowmode_side_gesture_action";
     public static final String KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI = "windowmode_side_gesture_intent_uri";
+    public static final String KEY_CORNER_GESTURE_LEFT_ACTION = "corner_gesture_left_action";
+    public static final String KEY_CORNER_GESTURE_RIGHT_ACTION = "corner_gesture_right_action";
+    public static final String KEY_CORNER_GESTURE_LEFT_LONG_ACTION = "corner_gesture_left_long_action";
+    public static final String KEY_CORNER_GESTURE_RIGHT_LONG_ACTION = "corner_gesture_right_long_action";
+    public static final String KEY_CORNER_GESTURE_LEFT_FAR_ACTION = "corner_gesture_left_far_action";
+    public static final String KEY_CORNER_GESTURE_RIGHT_FAR_ACTION = "corner_gesture_right_far_action";
+    public static final String KEY_CORNER_GESTURE_SPLIT_ENABLED = "corner_gesture_split_enabled";
+    public static final String KEY_CORNER_GESTURE_FAR_ENABLED = "corner_gesture_far_enabled";
+    public static final String KEY_CORNER_GESTURE_DISTANCE_DP = "corner_gesture_distance_dp";
+    public static final String KEY_CORNER_GESTURE_LONG_DISTANCE_DP = "corner_gesture_long_distance_dp";
+    public static final String KEY_CORNER_GESTURE_FAR_DISTANCE_DP = "corner_gesture_far_distance_dp";
+    public static final int DEFAULT_CORNER_GESTURE_DISTANCE_DP = 80;
+    public static final int DEFAULT_CORNER_GESTURE_LONG_DISTANCE_DP = 180;
+    public static final int DEFAULT_CORNER_GESTURE_FAR_DISTANCE_DP = 280;
+    private static final String[][] CORNER_GESTURE_ACTION_KEYS = {
+            {KEY_CORNER_GESTURE_LEFT_ACTION, KEY_CORNER_GESTURE_RIGHT_ACTION},
+            {KEY_CORNER_GESTURE_LEFT_LONG_ACTION, KEY_CORNER_GESTURE_RIGHT_LONG_ACTION},
+            {KEY_CORNER_GESTURE_LEFT_FAR_ACTION, KEY_CORNER_GESTURE_RIGHT_FAR_ACTION}
+    };
     public static final String KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED =
             "windowmode_side_gesture_prewarm_enabled";
     public static final String KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED =
@@ -586,8 +637,6 @@ public final class SettingsStore {
     public static final int DEFAULT_MBACK_LONG_TOUCH_ACTION = MBACK_LONG_TOUCH_ACTION_STAR_APPS;
     public static final String DEFAULT_MBACK_LONG_TOUCH_INTENT_URI = "";
     public static final boolean DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED = false;
-    public static final int DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION = MBACK_LONG_TOUCH_ACTION_INTENT_URI;
-    public static final String DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI = "";
     public static final boolean DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED = false;
     public static final boolean DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED = false;
     public static final int DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS = 1000;
@@ -725,6 +774,15 @@ public final class SettingsStore {
     public static final int DEFAULT_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE = TELEPHONY_DEBUG_NETWORK_PROFILE_4G;
     public static final int DEFAULT_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL = 2;
     public static final String[] INT_KEYS = {
+            KEY_CORNER_GESTURE_LEFT_ACTION,
+            KEY_CORNER_GESTURE_RIGHT_ACTION,
+            KEY_CORNER_GESTURE_LEFT_LONG_ACTION,
+            KEY_CORNER_GESTURE_RIGHT_LONG_ACTION,
+            KEY_CORNER_GESTURE_LEFT_FAR_ACTION,
+            KEY_CORNER_GESTURE_RIGHT_FAR_ACTION,
+            KEY_CORNER_GESTURE_DISTANCE_DP,
+            KEY_CORNER_GESTURE_LONG_DISTANCE_DP,
+            KEY_CORNER_GESTURE_FAR_DISTANCE_DP,
             KEY_SIDE_GESTURE_ACTION,
             KEY_SIDE_GESTURE_UP_ACTION,
             KEY_SIDE_GESTURE_DOWN_ACTION,
@@ -740,6 +798,12 @@ public final class SettingsStore {
             KEY_SIDE_GESTURE_RIGHT_LONG_ACTION,
             KEY_SIDE_GESTURE_RIGHT_UP_LONG_ACTION,
             KEY_SIDE_GESTURE_RIGHT_DOWN_LONG_ACTION,
+            KEY_SIDE_GESTURE_LEFT_FAR_ACTION,
+            KEY_SIDE_GESTURE_LEFT_UP_FAR_ACTION,
+            KEY_SIDE_GESTURE_LEFT_DOWN_FAR_ACTION,
+            KEY_SIDE_GESTURE_RIGHT_FAR_ACTION,
+            KEY_SIDE_GESTURE_RIGHT_UP_FAR_ACTION,
+            KEY_SIDE_GESTURE_RIGHT_DOWN_FAR_ACTION,
             KEY_ONE_HANDED_MODE_ACTION,
             KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE,
             KEY_ASSISTANT_GESTURE_SCENES,
@@ -760,6 +824,7 @@ public final class SettingsStore {
             KEY_ASSISTANT_GESTURE_DOWN_ANGLE,
             KEY_ASSISTANT_GESTURE_MIN_VERTICAL_DP,
             KEY_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
+            KEY_ASSISTANT_GESTURE_FAR_DISTANCE_DP,
             KEY_ASSISTANT_GESTURE_TRIGGER_MODE,
             KEY_WORKSPACE_TOOLBAR_HEIGHT_DP,
             KEY_WORKSPACE_TOOLBAR_POSITION_DP,
@@ -901,6 +966,7 @@ public final class SettingsStore {
             KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
             KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED,
             KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
+            KEY_ASSISTANT_GESTURE_FAR_ENABLED,
             KEY_ONE_HANDED_MODE_ENABLED,
             KEY_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
             KEY_ONE_HANDED_WORKSPACE_DEFAULT_SIDEBAR_ENABLED,
@@ -933,6 +999,8 @@ public final class SettingsStore {
             KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED,
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
             KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
+            KEY_CORNER_GESTURE_SPLIT_ENABLED,
+            KEY_CORNER_GESTURE_FAR_ENABLED,
             KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
             KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED,
             KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
@@ -1104,7 +1172,12 @@ public final class SettingsStore {
                     .putBoolean(KEY_IME_VERIFICATION_CODE_SLOT_MIGRATED, true)
                     .apply();
         }
-        CircleBatteryAnimationConfig.migrate(prefs(context));
+        if (prefs.contains(KEY_WINDOWMODE_SIDE_GESTURE_ACTION)
+                || prefs.contains(KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI)) {
+            prefs.edit().remove(KEY_WINDOWMODE_SIDE_GESTURE_ACTION)
+                    .remove(KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI).apply();
+        }
+        CircleBatteryAnimationConfig.migrate(prefs);
         migratePositionOffsetStorageIfNeeded(context);
         RemoteSettingsSync.prepare(context);
     }
@@ -1137,7 +1210,10 @@ public final class SettingsStore {
     }
 
     public static int readInt(SharedPreferences prefs, String key, int defaultValue) {
-        Object raw = getRawValue(prefs, key);
+        return readIntValue(getRawValue(prefs, key), defaultValue);
+    }
+
+    private static int readIntValue(Object raw, int defaultValue) {
         if (raw == null) {
             return defaultValue;
         }
@@ -1191,6 +1267,15 @@ public final class SettingsStore {
     public static int defaultInt(String key) {
         if (CircleBatteryAnimationConfig.isKey(key)) return CircleBatteryAnimationConfig.defaultInt(key);
         switch (key) {
+            case KEY_CORNER_GESTURE_LEFT_ACTION:
+            case KEY_CORNER_GESTURE_RIGHT_ACTION: return SIDE_GESTURE_ACTION_NONE;
+            case KEY_CORNER_GESTURE_LEFT_LONG_ACTION:
+            case KEY_CORNER_GESTURE_RIGHT_LONG_ACTION:
+            case KEY_CORNER_GESTURE_LEFT_FAR_ACTION:
+            case KEY_CORNER_GESTURE_RIGHT_FAR_ACTION: return SIDE_GESTURE_INHERIT_LONG;
+            case KEY_CORNER_GESTURE_DISTANCE_DP: return DEFAULT_CORNER_GESTURE_DISTANCE_DP;
+            case KEY_CORNER_GESTURE_LONG_DISTANCE_DP: return DEFAULT_CORNER_GESTURE_LONG_DISTANCE_DP;
+            case KEY_CORNER_GESTURE_FAR_DISTANCE_DP: return DEFAULT_CORNER_GESTURE_FAR_DISTANCE_DP;
             case KEY_ANIP_SOURCE_TYPE: return DEFAULT_ANIP_SOURCE_TYPE;
             case KEY_ANIP_ICON_COLOR_MODE: return DEFAULT_ANIP_ICON_COLOR_MODE;
             case KEY_ASSISTANT_BACKGROUND_FOREGROUND_MODE: return ASSISTANT_FOREGROUND_FOLLOW_STATUS_BAR;
@@ -1235,6 +1320,14 @@ public final class SettingsStore {
             case KEY_ASSISTANT_GESTURE_MIN_VERTICAL_DP:
                 return DEFAULT_ASSISTANT_GESTURE_MIN_VERTICAL_DP;
             case KEY_ASSISTANT_GESTURE_LONG_DISTANCE_DP: return DEFAULT_ASSISTANT_GESTURE_LONG_DISTANCE_DP;
+            case KEY_ASSISTANT_GESTURE_FAR_DISTANCE_DP: return DEFAULT_ASSISTANT_GESTURE_FAR_DISTANCE_DP;
+            case KEY_SIDE_GESTURE_LEFT_FAR_ACTION:
+            case KEY_SIDE_GESTURE_LEFT_UP_FAR_ACTION:
+            case KEY_SIDE_GESTURE_LEFT_DOWN_FAR_ACTION:
+            case KEY_SIDE_GESTURE_RIGHT_FAR_ACTION:
+            case KEY_SIDE_GESTURE_RIGHT_UP_FAR_ACTION:
+            case KEY_SIDE_GESTURE_RIGHT_DOWN_FAR_ACTION:
+                return SIDE_GESTURE_INHERIT_LONG;
             case KEY_ASSISTANT_GESTURE_TRIGGER_MODE: return DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE;
             case KEY_WORKSPACE_TOOLBAR_HEIGHT_DP: return DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP;
             case KEY_WORKSPACE_TOOLBAR_POSITION_DP: return DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP;
@@ -1322,8 +1415,6 @@ public final class SettingsStore {
                 return DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT;
             case KEY_MBACK_LONG_TOUCH_ACTION:
                 return DEFAULT_MBACK_LONG_TOUCH_ACTION;
-            case KEY_WINDOWMODE_SIDE_GESTURE_ACTION:
-                return DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION;
             case KEY_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS:
                 return DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS;
             case KEY_WINDOWMODE_TWO_RING_OUTER_APP_COUNT:
@@ -1629,9 +1720,6 @@ public final class SettingsStore {
         if (KEY_MBACK_LONG_TOUCH_INTENT_URI.equals(key)) {
             return DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
         }
-        if (KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI.equals(key)) {
-            return DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI;
-        }
         if (KEY_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON.equals(key)) {
             return DEFAULT_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON;
         }
@@ -1683,15 +1771,63 @@ public final class SettingsStore {
         }
     }
 
-    public static int readSideGestureAction(SharedPreferences prefs, String key, String legacyKey) {
-        int fallback = readInt(prefs, legacyKey, DEFAULT_SIDE_GESTURE_ACTION);
-        return normalizeSideGestureAction(readInt(prefs, key, fallback));
+    public static String sideGestureActionKey(int tier, int slot) {
+        return SIDE_GESTURE_ACTION_KEYS[tier][slot];
     }
 
-    public static int readSideGestureActionWithFallback(SharedPreferences prefs, String key,
-            String fallbackKey, String legacyKey) {
-        int fallback = readSideGestureAction(prefs, fallbackKey, legacyKey);
-        return normalizeSideGestureAction(readInt(prefs, key, fallback));
+    public static int[][] readSideGestureActions(SharedPreferences prefs, boolean resolveFar) {
+        Map<String, ?> values = prefs == null ? java.util.Collections.emptyMap() : prefs.getAll();
+        int[][] actions = new int[3][6];
+        for (int slot = 0; slot < actions[0].length; slot++) {
+            int legacy = readIntValue(values.get(SIDE_GESTURE_LEGACY_KEYS[slot]),
+                    DEFAULT_SIDE_GESTURE_ACTION);
+            actions[SIDE_GESTURE_SHORT][slot] = normalizeSideGestureAction(
+                    readIntValue(values.get(sideGestureActionKey(SIDE_GESTURE_SHORT, slot)), legacy));
+            actions[SIDE_GESTURE_LONG][slot] = normalizeSideGestureAction(
+                    readIntValue(values.get(sideGestureActionKey(SIDE_GESTURE_LONG, slot)),
+                            actions[SIDE_GESTURE_SHORT][slot]));
+            int far = readIntValue(values.get(sideGestureActionKey(SIDE_GESTURE_FAR, slot)),
+                    SIDE_GESTURE_INHERIT_LONG);
+            actions[SIDE_GESTURE_FAR][slot] = far != SIDE_GESTURE_INHERIT_LONG
+                    ? normalizeSideGestureAction(far)
+                    : resolveFar ? actions[SIDE_GESTURE_LONG][slot] : SIDE_GESTURE_INHERIT_LONG;
+        }
+        return actions;
+    }
+
+    public static String cornerGestureActionKey(int tier, int side) {
+        return CORNER_GESTURE_ACTION_KEYS[tier][side];
+    }
+
+    public static int[][] readCornerGestureActions(SharedPreferences prefs, boolean resolveInherited) {
+        Map<String, ?> values = prefs == null ? java.util.Collections.emptyMap() : prefs.getAll();
+        int[][] actions = new int[3][2];
+        for (int side = 0; side < 2; side++) {
+            int previous = SIDE_GESTURE_ACTION_NONE;
+            for (int tier = 0; tier < 3; tier++) {
+                int action = readIntValue(values.get(cornerGestureActionKey(tier, side)),
+                        tier == 0 ? SIDE_GESTURE_ACTION_NONE : SIDE_GESTURE_INHERIT_LONG);
+                if (tier > 0 && action == SIDE_GESTURE_INHERIT_LONG) {
+                    actions[tier][side] = resolveInherited ? previous : SIDE_GESTURE_INHERIT_LONG;
+                } else {
+                    previous = normalizeSideGestureAction(action);
+                    actions[tier][side] = previous;
+                }
+            }
+        }
+        return actions;
+    }
+
+    public static int readSideGestureFarDistance(SharedPreferences prefs, int longDistance) {
+        int defaultDistance = longDistance >= DEFAULT_ASSISTANT_GESTURE_FAR_DISTANCE_DP
+                ? longDistance + 80 : DEFAULT_ASSISTANT_GESTURE_FAR_DISTANCE_DP;
+        return Math.max(longDistance + 1, Math.min(MAX_ASSISTANT_GESTURE_FAR_DISTANCE_DP,
+                readInt(prefs, KEY_ASSISTANT_GESTURE_FAR_DISTANCE_DP, defaultDistance)));
+    }
+
+    public static int sideGestureTier(float distance, float longDistance, float farDistance) {
+        if (distance >= farDistance) return SIDE_GESTURE_FAR;
+        return distance >= longDistance ? SIDE_GESTURE_LONG : SIDE_GESTURE_SHORT;
     }
 
     public static int normalizeOneHandedModeAction(int value) {
@@ -1742,12 +1878,6 @@ public final class SettingsStore {
             default:
                 return MBACK_LONG_TOUCH_ACTION_INTENT_URI;
         }
-    }
-
-    static int normalizeWindowModeSideGestureAction(int value) {
-        return value == MBACK_LONG_TOUCH_ACTION_INTENT_URI
-                ? value
-                : MBACK_LONG_TOUCH_ACTION_INTENT_URI;
     }
 
     static int normalizeWindowModeHoverFullscreenTimeoutMs(int value) {

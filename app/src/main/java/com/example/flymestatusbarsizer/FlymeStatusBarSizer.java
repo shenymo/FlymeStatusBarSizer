@@ -7447,8 +7447,6 @@ public class FlymeStatusBarSizer extends XposedModule {
     public static final class WindowModeSideGestureConfigSnapshot {
         public final boolean enabled;
         public final boolean sideGestureEnabled;
-        public final int sideGestureAction;
-        public final String sideGestureIntentUri;
         public final boolean sideGesturePrewarmEnabled;
         public final boolean hoverFullscreenEnabled;
         public final int hoverFullscreenTimeoutMs;
@@ -7464,11 +7462,8 @@ public class FlymeStatusBarSizer extends XposedModule {
 
         private WindowModeSideGestureConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
-            sideGestureEnabled = config != null && config.windowModeSideGestureEnabled;
-            sideGestureAction = config == null
-                    ? SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION
-                    : config.windowModeSideGestureAction;
-            sideGestureIntentUri = config == null ? "" : config.windowModeSideGestureIntentUri;
+            sideGestureEnabled = enabled && config.assistantGestureEnabled
+                    && config.windowModeSideGestureEnabled;
             sideGesturePrewarmEnabled = config != null
                     && config.windowModeSideGesturePrewarmEnabled;
             hoverFullscreenEnabled = config != null

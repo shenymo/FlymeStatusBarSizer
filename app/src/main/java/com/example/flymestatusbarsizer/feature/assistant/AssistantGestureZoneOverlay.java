@@ -31,12 +31,10 @@ final class AssistantGestureZoneOverlay {
     }
 
     void show(float startX, float startY, boolean fromLeft, float shortDistancePx,
-            float longDistancePx, boolean splitEnabled, int horizontalAction, int upAction,
-            int downAction, int horizontalLongAction, int upLongAction, int downLongAction,
+            float longDistancePx, float farDistancePx, int[][] actions, int sideOffset,
             float upAngle, float downAngle, float minVertical) {
-        view.setSpec(startX, startY, fromLeft, shortDistancePx, longDistancePx, splitEnabled,
-                horizontalAction, upAction, downAction, horizontalLongAction, upLongAction,
-                downLongAction, upAngle, downAngle, minVertical);
+        view.setSpec(startX, startY, fromLeft, shortDistancePx, longDistancePx, farDistancePx,
+                actions, sideOffset, upAngle, downAngle, minVertical);
         if (!attached && !attempted) {
             attempted = true;
             attach();
@@ -113,6 +111,8 @@ final class AssistantGestureZoneOverlay {
 
     private final class ZoneView extends View {
         private final Paint shortFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint farFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint farStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint longFill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint shortStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint longStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -128,17 +128,12 @@ final class AssistantGestureZoneOverlay {
         private float pointerY;
         private float shortDistance;
         private float longDistance;
+        private float farDistance;
         private float upAngleTan;
         private float downAngleTan;
         private float minVertical;
         private boolean fromLeft;
-        private boolean splitEnabled;
-        private int horizontalAction;
-        private int upAction;
-        private int downAction;
-        private int horizontalLongAction;
-        private int upLongAction;
-        private int downLongAction;
+        private final String[][] actionLabels = new String[3][3];
 
         ZoneView(Context context) {
             super(context);
@@ -146,12 +141,16 @@ final class AssistantGestureZoneOverlay {
             scaledDensity = getResources().getDisplayMetrics().scaledDensity;
             shortFill.setColor(0x263f8cff);
             longFill.setColor(0x2affaa55);
+            farFill.setColor(0x2a61c69b);
             shortStroke.setColor(0xa869a9ff);
             longStroke.setColor(0xb8ffb45f);
+            farStroke.setColor(0xb86de1ad);
             shortStroke.setStyle(Paint.Style.STROKE);
             longStroke.setStyle(Paint.Style.STROKE);
+            farStroke.setStyle(Paint.Style.STROKE);
             shortStroke.setStrokeWidth(dp(1));
             longStroke.setStrokeWidth(dp(1));
+            farStroke.setStrokeWidth(dp(1));
             startPaint.setColor(Color.WHITE);
             ringPaint.setStyle(Paint.Style.STROKE);
             ringPaint.setStrokeWidth(dp(1));
@@ -163,9 +162,8 @@ final class AssistantGestureZoneOverlay {
         }
 
         void setSpec(float startX, float startY, boolean fromLeft, float shortDistance,
-                float longDistance, boolean splitEnabled, int horizontalAction, int upAction,
-                int downAction, int horizontalLongAction, int upLongAction,
-                int downLongAction, float upAngle, float downAngle, float minVertical) {
+                float longDistance, float farDistance, int[][] actions, int sideOffset,
+                float upAngle, float downAngle, float minVertical) {
             this.startX = startX;
             this.startY = startY;
             pointerX = startX;
@@ -173,13 +171,14 @@ final class AssistantGestureZoneOverlay {
             this.fromLeft = fromLeft;
             this.shortDistance = shortDistance;
             this.longDistance = longDistance;
-            this.splitEnabled = splitEnabled;
-            this.horizontalAction = horizontalAction;
-            this.upAction = upAction;
-            this.downAction = downAction;
-            this.horizontalLongAction = horizontalLongAction;
-            this.upLongAction = upLongAction;
-            this.downLongAction = downLongAction;
+            this.farDistance = farDistance;
+            int tierCount = Float.isFinite(farDistance) ? 3 : Float.isFinite(longDistance) ? 2 : 1;
+            for (int tier = 0; tier < tierCount; tier++) {
+                for (int direction = 0; direction < 3; direction++) {
+                    actionLabels[tier][direction] = SideGestureActions.label(
+                            actions[tier][sideOffset + direction], getContext());
+                }
+            }
             upAngleTan = (float) Math.tan(Math.toRadians(upAngle));
             downAngleTan = (float) Math.tan(Math.toRadians(downAngle));
             this.minVertical = minVertical;
@@ -195,64 +194,54 @@ final class AssistantGestureZoneOverlay {
             float lowerY = getHeight() - startY;
             canvas.save();
             canvas.clipRect(0, 0, getWidth(), getHeight());
-            drawMode(canvas, availableX, upperY, lowerY, direction, false);
-            if (splitEnabled) drawMode(canvas, availableX, upperY, lowerY, direction, true);
-            drawThresholds(canvas, direction, availableX);
+            boolean splitEnabled = Float.isFinite(longDistance);
+            boolean farEnabled = Float.isFinite(farDistance);
+            if (!splitEnabled || longDistance > shortDistance) {
+                drawMode(canvas, availableX, upperY, lowerY, direction, 0,
+                        shortDistance, splitEnabled ? longDistance : 0f, shortFill, shortStroke,
+                        splitEnabled ? "短" : "");
+            }
+            if (splitEnabled) {
+                drawMode(canvas, availableX, upperY, lowerY, direction, 1,
+                        Math.max(shortDistance, longDistance), farEnabled ? farDistance : 0f,
+                        longFill, longStroke, "长");
+            }
+            if (farEnabled) {
+                drawMode(canvas, availableX, upperY, lowerY, direction, 2,
+                        farDistance, 0f, farFill, farStroke, "远");
+            }
+            drawThresholds(canvas, direction);
             canvas.restore();
             drawStartLabel(canvas, direction);
         }
 
         private void drawMode(Canvas canvas, float availableX, float upperY, float lowerY,
-                int direction, boolean longMode) {
-            float minRadius;
-            float maxRadius;
-            int horizontal;
-            int up;
-            int down;
-            Paint fill;
-            Paint stroke;
-            if (!splitEnabled || !longMode) {
-                minRadius = shortDistance;
-                maxRadius = splitEnabled ? longDistance : 0f;
-                horizontal = horizontalAction;
-                up = upAction;
-                down = downAction;
-                fill = shortFill;
-                stroke = shortStroke;
-                if (splitEnabled && longDistance <= shortDistance) return;
-            } else {
-                minRadius = Math.max(shortDistance, longDistance);
-                maxRadius = 0f;
-                horizontal = horizontalLongAction;
-                up = upLongAction;
-                down = downLongAction;
-                fill = longFill;
-                stroke = longStroke;
-            }
-            if (minRadius < 0f || (maxRadius > 0f && maxRadius <= minRadius)) return;
+                int direction, int tier, float minRadius, float maxRadius,
+                Paint fill, Paint stroke, String mode) {
+            String[] labels = actionLabels[tier];
             drawHorizontal(canvas, availableX, upperY, lowerY, direction, minRadius, maxRadius,
                     fill, stroke);
             drawDiagonal(canvas, availableX, upperY, lowerY, direction, minRadius, maxRadius,
                     true, fill, stroke);
             drawDiagonal(canvas, availableX, upperY, lowerY, direction, minRadius, maxRadius,
                     false, fill, stroke);
-            String mode = splitEnabled ? (longMode ? "长" : "短") : "";
             float labelDistance = maxRadius > 0f
                     ? (minRadius + maxRadius) * 0.5f : minRadius + dp(56);
-            drawLabel(canvas, direction, labelDistance, startY,
+            float labelOffset = Float.isFinite(farDistance) ? dp(34) * (tier - 1) : 0f;
+            drawLabel(canvas, direction, labelDistance, startY + labelOffset,
                     (mode.length() == 0 ? "横向" : mode + "距离横向") + " · "
-                            + SideGestureActions.label(horizontal),
+                            + labels[0],
                     fill.getColor());
             float diagonalX = Math.max(shortDistance * 0.35f + dp(22), labelDistance);
             diagonalX = Math.min(availableX * 0.82f, Math.max(shortDistance * 0.35f, diagonalX));
             float upDiagonalY = angleBand(diagonalX, true) + dp(26);
             float downDiagonalY = angleBand(diagonalX, false) + dp(26);
-            drawLabel(canvas, direction, diagonalX, startY - upDiagonalY,
+            drawLabel(canvas, direction, diagonalX, startY - upDiagonalY - labelOffset,
                     (mode.length() == 0 ? "上斜" : mode + "距离上斜") + " · "
-                            + SideGestureActions.label(up), fill.getColor());
-            drawLabel(canvas, direction, diagonalX, startY + downDiagonalY,
+                            + labels[1], fill.getColor());
+            drawLabel(canvas, direction, diagonalX, startY + downDiagonalY + labelOffset,
                     (mode.length() == 0 ? "下斜" : mode + "距离下斜") + " · "
-                            + SideGestureActions.label(down), fill.getColor());
+                            + labels[2], fill.getColor());
         }
 
         private void drawHorizontal(Canvas canvas, float availableX, float upperY, float lowerY,
@@ -348,16 +337,22 @@ final class AssistantGestureZoneOverlay {
             canvas.drawPath(path, stroke);
         }
 
-        private void drawThresholds(Canvas canvas, int direction, float availableX) {
+        private void drawThresholds(Canvas canvas, int direction) {
             ringPaint.setColor(shortStroke.getColor());
             canvas.drawCircle(startX, startY, shortDistance, ringPaint);
             drawDistanceLabel(canvas, direction, shortDistance, "短 " + distanceText(shortDistance),
                     shortStroke.getColor());
-            if (splitEnabled) {
+            if (Float.isFinite(longDistance)) {
                 ringPaint.setColor(longStroke.getColor());
                 canvas.drawCircle(startX, startY, longDistance, ringPaint);
                 drawDistanceLabel(canvas, direction, longDistance,
                         "长 " + distanceText(longDistance), longStroke.getColor());
+            }
+            if (Float.isFinite(farDistance)) {
+                ringPaint.setColor(farStroke.getColor());
+                canvas.drawCircle(startX, startY, farDistance, ringPaint);
+                drawDistanceLabel(canvas, direction, farDistance,
+                        "远 " + distanceText(farDistance), farStroke.getColor());
             }
             startPaint.setColor(Color.WHITE);
             startPaint.setStyle(Paint.Style.FILL);
@@ -370,7 +365,7 @@ final class AssistantGestureZoneOverlay {
         private void drawDistanceLabel(Canvas canvas, int direction, float distance, String text,
                 int color) {
             if (distance <= 0f) return;
-            drawLabel(canvas, direction, Math.min(distance, Math.max(0f, getWidth() / 2f)),
+            drawLabel(canvas, direction, distance,
                     startY - dp(18), text, color);
         }
 

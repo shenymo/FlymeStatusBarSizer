@@ -145,18 +145,7 @@ public final class ModuleConfig {
             SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED;
     public boolean assistantGestureZoneOverlayEnabled =
             SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED;
-    public int sideGestureLeftAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
-    public int sideGestureLeftUpAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
-    public int sideGestureLeftDownAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
-    public int sideGestureRightAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
-    public int sideGestureRightUpAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
-    public int sideGestureRightDownAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
-    public int sideGestureLeftLongAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
-    public int sideGestureLeftUpLongAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
-    public int sideGestureLeftDownLongAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
-    public int sideGestureRightLongAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
-    public int sideGestureRightUpLongAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
-    public int sideGestureRightDownLongAction = SettingsStore.DEFAULT_SIDE_GESTURE_ACTION;
+    public int[][] sideGestureActions = SettingsStore.readSideGestureActions(null, true);
     public String sideGestureTargetApp = "";
     public String sideGestureTargetActivity = "";
     public String sideGestureTargetIntentUri = "";
@@ -173,6 +162,8 @@ public final class ModuleConfig {
     public int assistantGestureTriggerMode = SettingsStore.DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE;
     public boolean assistantGestureDistanceSplitEnabled =
             SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED;
+    public boolean assistantGestureFarEnabled;
+    public int assistantGestureFarDistanceDp = SettingsStore.DEFAULT_ASSISTANT_GESTURE_FAR_DISTANCE_DP;
     public int assistantGestureLongDistanceDp = SettingsStore.DEFAULT_ASSISTANT_GESTURE_LONG_DISTANCE_DP;
     public int workspaceToolbarHeightDp = SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_HEIGHT_DP;
     public int workspaceToolbarPositionDp = SettingsStore.DEFAULT_WORKSPACE_TOOLBAR_POSITION_DP;
@@ -188,9 +179,13 @@ public final class ModuleConfig {
     public boolean workspaceFlowLoggingEnabled = SettingsStore.DEFAULT_WORKSPACE_FLOW_LOGGING_ENABLED;
     public int mbackLongTouchAction = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION;
     public String mbackLongTouchIntentUri = SettingsStore.DEFAULT_MBACK_LONG_TOUCH_INTENT_URI;
+    public int[][] cornerGestureActions = SettingsStore.readCornerGestureActions(null, true);
+    public boolean cornerGestureSplitEnabled;
+    public boolean cornerGestureFarEnabled;
+    public int cornerGestureDistanceDp = SettingsStore.DEFAULT_CORNER_GESTURE_DISTANCE_DP;
+    public int cornerGestureLongDistanceDp = SettingsStore.DEFAULT_CORNER_GESTURE_LONG_DISTANCE_DP;
+    public int cornerGestureFarDistanceDp = SettingsStore.DEFAULT_CORNER_GESTURE_FAR_DISTANCE_DP;
     public boolean windowModeSideGestureEnabled = SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED;
-    public int windowModeSideGestureAction = SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION;
-    public String windowModeSideGestureIntentUri = SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI;
     public boolean windowModeSideGesturePrewarmEnabled =
             SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED;
     public boolean windowModeHoverFullscreenEnabled =
@@ -800,36 +795,7 @@ public final class ModuleConfig {
             config.assistantGestureZoneOverlayEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED,
                     SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED);
-            config.sideGestureLeftAction = SettingsStore.readSideGestureAction(prefs,
-                    SettingsStore.KEY_SIDE_GESTURE_LEFT_ACTION, SettingsStore.KEY_SIDE_GESTURE_ACTION);
-            config.sideGestureLeftUpAction = SettingsStore.readSideGestureAction(prefs,
-                    SettingsStore.KEY_SIDE_GESTURE_LEFT_UP_ACTION, SettingsStore.KEY_SIDE_GESTURE_UP_ACTION);
-            config.sideGestureLeftDownAction = SettingsStore.readSideGestureAction(prefs,
-                    SettingsStore.KEY_SIDE_GESTURE_LEFT_DOWN_ACTION, SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION);
-            config.sideGestureRightAction = SettingsStore.readSideGestureAction(prefs,
-                    SettingsStore.KEY_SIDE_GESTURE_RIGHT_ACTION, SettingsStore.KEY_SIDE_GESTURE_ACTION);
-            config.sideGestureRightUpAction = SettingsStore.readSideGestureAction(prefs,
-                    SettingsStore.KEY_SIDE_GESTURE_RIGHT_UP_ACTION, SettingsStore.KEY_SIDE_GESTURE_UP_ACTION);
-            config.sideGestureRightDownAction = SettingsStore.readSideGestureAction(prefs,
-                    SettingsStore.KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION, SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION);
-            config.sideGestureLeftLongAction = SettingsStore.readSideGestureActionWithFallback(prefs,
-                    SettingsStore.KEY_SIDE_GESTURE_LEFT_LONG_ACTION,
-                    SettingsStore.KEY_SIDE_GESTURE_LEFT_ACTION, SettingsStore.KEY_SIDE_GESTURE_ACTION);
-            config.sideGestureLeftUpLongAction = SettingsStore.readSideGestureActionWithFallback(prefs,
-                    SettingsStore.KEY_SIDE_GESTURE_LEFT_UP_LONG_ACTION,
-                    SettingsStore.KEY_SIDE_GESTURE_LEFT_UP_ACTION, SettingsStore.KEY_SIDE_GESTURE_UP_ACTION);
-            config.sideGestureLeftDownLongAction = SettingsStore.readSideGestureActionWithFallback(prefs,
-                    SettingsStore.KEY_SIDE_GESTURE_LEFT_DOWN_LONG_ACTION,
-                    SettingsStore.KEY_SIDE_GESTURE_LEFT_DOWN_ACTION, SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION);
-            config.sideGestureRightLongAction = SettingsStore.readSideGestureActionWithFallback(prefs,
-                    SettingsStore.KEY_SIDE_GESTURE_RIGHT_LONG_ACTION,
-                    SettingsStore.KEY_SIDE_GESTURE_RIGHT_ACTION, SettingsStore.KEY_SIDE_GESTURE_ACTION);
-            config.sideGestureRightUpLongAction = SettingsStore.readSideGestureActionWithFallback(prefs,
-                    SettingsStore.KEY_SIDE_GESTURE_RIGHT_UP_LONG_ACTION,
-                    SettingsStore.KEY_SIDE_GESTURE_RIGHT_UP_ACTION, SettingsStore.KEY_SIDE_GESTURE_UP_ACTION);
-            config.sideGestureRightDownLongAction = SettingsStore.readSideGestureActionWithFallback(prefs,
-                    SettingsStore.KEY_SIDE_GESTURE_RIGHT_DOWN_LONG_ACTION,
-                    SettingsStore.KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION, SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION);
+            config.sideGestureActions = SettingsStore.readSideGestureActions(prefs, true);
             config.sideGestureTargetApp = SettingsStore.readString(prefs,
                     SettingsStore.KEY_SIDE_GESTURE_TARGET_APP, "");
             config.sideGestureTargetActivity = SettingsStore.readString(prefs,
@@ -877,6 +843,14 @@ public final class ModuleConfig {
                     Math.min(SettingsStore.MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
                             SettingsStore.readInt(prefs, SettingsStore.KEY_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
                                     SettingsStore.DEFAULT_ASSISTANT_GESTURE_LONG_DISTANCE_DP)));
+            config.assistantGestureFarEnabled = config.assistantGestureDistanceSplitEnabled
+                    && SettingsStore.readBoolean(prefs, SettingsStore.KEY_ASSISTANT_GESTURE_FAR_ENABLED, false);
+            if (config.assistantGestureFarEnabled) {
+                config.assistantGestureLongDistanceDp = Math.max(config.assistantGestureDistanceDp + 1,
+                        config.assistantGestureLongDistanceDp);
+                config.assistantGestureFarDistanceDp = SettingsStore.readSideGestureFarDistance(
+                        prefs, config.assistantGestureLongDistanceDp);
+            }
             config.workspaceToolbarHeightDp = Math.max(
                     SettingsStore.MIN_WORKSPACE_TOOLBAR_HEIGHT_DP,
                     Math.min(SettingsStore.MAX_WORKSPACE_TOOLBAR_HEIGHT_DP, SettingsStore.readInt(prefs,
@@ -923,15 +897,22 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
                     SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED);
-            config.windowModeSideGestureAction = SettingsStore.normalizeWindowModeSideGestureAction(
-                    SettingsStore.readInt(
-                            prefs,
-                            SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ACTION,
-                            SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION));
-            config.windowModeSideGestureIntentUri = SettingsStore.readString(
-                    prefs,
-                    SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
-                    SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI);
+            config.cornerGestureActions = SettingsStore.readCornerGestureActions(prefs, true);
+            config.cornerGestureSplitEnabled = SettingsStore.readBoolean(prefs,
+                    SettingsStore.KEY_CORNER_GESTURE_SPLIT_ENABLED, false);
+            config.cornerGestureFarEnabled = config.cornerGestureSplitEnabled
+                    && SettingsStore.readBoolean(prefs, SettingsStore.KEY_CORNER_GESTURE_FAR_ENABLED, false);
+            config.cornerGestureDistanceDp = Math.max(0, Math.min(240, SettingsStore.readInt(prefs,
+                    SettingsStore.KEY_CORNER_GESTURE_DISTANCE_DP,
+                    SettingsStore.DEFAULT_CORNER_GESTURE_DISTANCE_DP)));
+            config.cornerGestureLongDistanceDp = Math.max(config.cornerGestureDistanceDp + 1,
+                    Math.min(480, SettingsStore.readInt(prefs,
+                            SettingsStore.KEY_CORNER_GESTURE_LONG_DISTANCE_DP,
+                            SettingsStore.DEFAULT_CORNER_GESTURE_LONG_DISTANCE_DP)));
+            config.cornerGestureFarDistanceDp = Math.max(config.cornerGestureLongDistanceDp + 1,
+                    Math.min(720, SettingsStore.readInt(prefs,
+                            SettingsStore.KEY_CORNER_GESTURE_FAR_DISTANCE_DP,
+                            SettingsStore.DEFAULT_CORNER_GESTURE_FAR_DISTANCE_DP)));
             config.windowModeSideGesturePrewarmEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,

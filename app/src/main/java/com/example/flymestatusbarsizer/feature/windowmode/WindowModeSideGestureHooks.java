@@ -1,8 +1,12 @@
 package com.example.flymestatusbarsizer.feature.windowmode;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
-import com.example.flymestatusbarsizer.feature.mback.MBackHooks;
-import com.example.flymestatusbarsizer.feature.onehanded.OneStepFlowLog;
+import com.example.flymestatusbarsizer.config.ModuleConfig;
+import com.example.flymestatusbarsizer.config.SettingsStore;
+import com.example.flymestatusbarsizer.config.SideGestureTargetStore;
+import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
+import com.example.flymestatusbarsizer.feature.assistant.AssistantGestureActionOverlay;
+import com.example.flymestatusbarsizer.feature.assistant.SideGestureActions;
 
 import android.app.ActivityManager;
 import android.animation.ValueAnimator;
@@ -31,7 +35,8 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 public final class WindowModeSideGestureHooks {
-    private static final Map<Object, Boolean> ACTIVE_ACTIONS = new WeakHashMap<>();
+    private static final Map<Object, CornerGesture> CORNER_GESTURES = new WeakHashMap<>();
+    private static final Handler CORNER_HANDLER = new Handler(Looper.getMainLooper());
     private static final Map<Object, Boolean> PREWARMED_LAUNCHERS = new WeakHashMap<>();
     private static final Map<Object, HoverState> HOVER_STATES = new WeakHashMap<>();
     private static final Map<Object, RecentRingState> RECENT_RING_STATES = new WeakHashMap<>();
@@ -57,26 +62,116 @@ public final class WindowModeSideGestureHooks {
                     "com.flyme.systemuitools.windowmode.views.SlideGestureForwarding",
                     false,
                     loader);
-            Method method = clazz.getDeclaredMethod(
-                    "onGestureTriggered",
-                    int.class,
-                    MotionEvent.class);
-            method.setAccessible(true);
-            module.intercept(method, chain -> {
-                Object target = chain.getThisObject();
-                MotionEvent event = chain.getArg(1) instanceof MotionEvent
-                        ? (MotionEvent) chain.getArg(1)
-                        : null;
-                if (consumeActiveGesture(target, event) || handleGesture(target, event)) {
-                    return null;
+            Method prepare = clazz.getDeclaredMethod("handleOnGesturePreTrigger",
+                    int.class, MotionEvent.class);
+            prepare.setAccessible(true);
+            module.intercept(prepare, chain -> {
+                Object result = chain.proceed();
+                MotionEvent event = (MotionEvent) chain.getArg(1);
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    Object target = chain.getThisObject();
+                    CornerGesture previous = CORNER_GESTURES.remove(target);
+                    if (previous != null) previous.preview.close();
+                    Context context = (Context) readField(target, "mContext");
+                    ModuleConfig config = ModuleConfig.load(context);
+                    if (config.enabled && config.assistantGestureEnabled
+                            && config.windowModeSideGestureEnabled) {
+                        CORNER_GESTURES.put(target, new CornerGesture(context, config, event));
+                    }
                 }
+                return result;
+            });
+            Method triggered = clazz.getDeclaredMethod("handleOnGestureTriggered",
+                    int.class, MotionEvent.class);
+            triggered.setAccessible(true);
+            module.intercept(triggered, chain -> {
+                Object target = chain.getThisObject();
+                CornerGesture gesture = CORNER_GESTURES.get(target);
+                if (gesture == null) return chain.proceed();
+                MotionEvent event = (MotionEvent) chain.getArg(1);
+                gesture.update(event);
+                if (isTerminalEvent(event)) {
+                    CORNER_GESTURES.remove(target);
+                    gesture.preview.close();
+                }
+                return null;
+            });
+            Method canceled = clazz.getDeclaredMethod("onGestureCanceled", int.class);
+            canceled.setAccessible(true);
+            module.intercept(canceled, chain -> {
+                Object target = chain.getThisObject();
+                CORNER_HANDLER.post(() -> {
+                    CornerGesture gesture = CORNER_GESTURES.remove(target);
+                    if (gesture != null) gesture.preview.close();
+                });
                 return chain.proceed();
             });
-            installAppLauncherPrewarmHook(module, loader);
         } catch (Throwable t) {
             FlymeStatusBarSizer.logWindowModeWarning(
                     "Failed to hook Flyme window mode side gesture",
                     t);
+        }
+        installAppLauncherPrewarmHook(module, loader);
+    }
+
+    private static final class CornerGesture {
+        final Context context;
+        final ModuleConfig config;
+        final float startX;
+        final float startY;
+        final boolean fromLeft;
+        final float density;
+        final AssistantGestureActionOverlay preview;
+        int lastTier = -1;
+        boolean canceled;
+
+        CornerGesture(Context context, ModuleConfig config, MotionEvent event) {
+            this.context = context;
+            this.config = config;
+            startX = event.getRawX();
+            startY = event.getRawY();
+            fromLeft = startX < context.getResources().getDisplayMetrics().widthPixels / 2f;
+            density = context.getResources().getDisplayMetrics().density;
+            preview = new AssistantGestureActionOverlay(context);
+        }
+
+        void update(MotionEvent event) {
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_CANCEL || event.getPointerCount() != 1) canceled = true;
+            float inward = (event.getRawX() - startX) * (fromLeft ? 1 : -1);
+            float distance = (float) Math.hypot(inward, event.getRawY() - startY) / density;
+            boolean ready = !canceled && inward > 0 && distance >= config.cornerGestureDistanceDp;
+            int tier = SettingsStore.sideGestureTier(distance,
+                    config.cornerGestureSplitEnabled ? config.cornerGestureLongDistanceDp : Float.POSITIVE_INFINITY,
+                    config.cornerGestureFarEnabled ? config.cornerGestureFarDistanceDp : Float.POSITIVE_INFINITY);
+            if (ready && action == MotionEvent.ACTION_MOVE) {
+                if (config.assistantGesturePreviewEnabled) {
+                    int actionId = config.cornerGestureActions[tier][fromLeft ? 0 : 1];
+                    String label = SideGestureActions.label(actionId);
+                    if (SideGestureTargetStore.isDynamicAction(actionId)) {
+                        SideGestureTargetStore.Target target =
+                                SideGestureTargetStore.find(
+                                        config.sideGestureTargetsJson, actionId);
+                        if (target != null) label = target.label;
+                    }
+                    preview.show(label, event.getRawX(), event.getRawY());
+                }
+                if (tier != lastTier) {
+                    lastTier = tier;
+                    HapticFeedbackUtils.perform(context, null,
+                            tier == SettingsStore.SIDE_GESTURE_FAR ? HapticFeedbackConstants.CONFIRM
+                                    : tier == SettingsStore.SIDE_GESTURE_LONG ? HapticFeedbackConstants.LONG_PRESS
+                                    : HapticFeedbackConstants.CLOCK_TICK);
+                }
+            } else {
+                preview.hide();
+            }
+            if (action == MotionEvent.ACTION_UP && ready) {
+                context.sendBroadcast(new Intent(SideGestureActions.ACTION_CORNER_GESTURE)
+                        .setPackage("com.android.systemui")
+                        .putExtra("from_left", fromLeft)
+                        .putExtra("tier", tier));
+            }
         }
     }
 
@@ -1177,57 +1272,12 @@ public final class WindowModeSideGestureHooks {
         }
     }
 
-    private static boolean handleGesture(Object target, MotionEvent event) {
-        Context context = resolveContext(target);
-        FlymeStatusBarSizer.WindowModeSideGestureConfigSnapshot config =
-                FlymeStatusBarSizer.loadWindowModeSideGestureConfig(context);
-        if (!config.enabled || !config.sideGestureEnabled) {
-            OneStepFlowLog.info("gesture_ignored", "reason=disabled");
-            return false;
-        }
-        boolean handled = MBackHooks.launchConfiguredIntent(context, config.sideGestureIntentUri);
-        OneStepFlowLog.info("gesture_dispatch", "result=" + (handled ? "launched" : "not_handled"));
-        if (handled && target != null) {
-            synchronized (ACTIVE_ACTIONS) {
-                ACTIVE_ACTIONS.put(target, Boolean.TRUE);
-            }
-        }
-        return handled;
-    }
-
-    private static boolean consumeActiveGesture(Object target, MotionEvent event) {
-        synchronized (ACTIVE_ACTIONS) {
-            if (target == null || !ACTIVE_ACTIONS.containsKey(target)) {
-                return false;
-            }
-            if (event != null && event.getActionMasked() == MotionEvent.ACTION_DOWN) {
-                ACTIVE_ACTIONS.remove(target);
-                return false;
-            }
-        }
-        if (isTerminalEvent(event)) {
-            synchronized (ACTIVE_ACTIONS) {
-                ACTIVE_ACTIONS.remove(target);
-            }
-        }
-        return true;
-    }
-
     private static boolean isTerminalEvent(MotionEvent event) {
         if (event == null) {
             return false;
         }
         int action = event.getActionMasked();
         return action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL;
-    }
-
-    private static Context resolveContext(Object target) {
-        Object value = readField(target, "mContext");
-        if (value instanceof Context) {
-            return (Context) value;
-        }
-        View anchor = resolveAnchor(target);
-        return anchor == null ? null : anchor.getContext();
     }
 
     private static Context resolveAppLauncherContext(Object target) {
@@ -1238,11 +1288,6 @@ public final class WindowModeSideGestureHooks {
     private static Object resolveAppWindowGestureLauncher(Object target) {
         Object value = readField(target, "j");
         return value != null ? value : readField(target, "mGestureAppLauncher");
-    }
-
-    private static View resolveAnchor(Object target) {
-        Object value = readField(target, "mGestureAppLauncher");
-        return value instanceof View ? (View) value : null;
     }
 
     private static Object readField(Object target, String name) {

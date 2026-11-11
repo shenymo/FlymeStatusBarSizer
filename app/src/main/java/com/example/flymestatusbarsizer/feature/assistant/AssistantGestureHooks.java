@@ -2,6 +2,9 @@ package com.example.flymestatusbarsizer.feature.assistant;
 
 import android.app.KeyguardManager;
 import android.content.Context;
+import android.content.BroadcastReceiver;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.HapticFeedbackConstants;
@@ -25,6 +28,7 @@ import java.util.WeakHashMap;
 
 final class AssistantGestureHooks {
     private static final Map<Object, Gesture> GESTURES = new WeakHashMap<>();
+    private static boolean cornerReceiverInstalled;
 
     static void install(FlymeStatusBarSizer module, ClassLoader loader) throws ReflectiveOperationException {
         QuickToolsPanel.install(module, loader);
@@ -102,6 +106,34 @@ final class AssistantGestureHooks {
         });
     }
 
+    private static void registerCornerReceiver(Context context) {
+        if (cornerReceiverInstalled) return;
+        context.registerReceiver(new BroadcastReceiver() {
+            @Override public void onReceive(Context c, Intent intent) {
+                int tier = intent.getIntExtra("tier", -1);
+                if (tier < 0 || tier > SettingsStore.SIDE_GESTURE_FAR) return;
+                ModuleConfig config = ModuleConfig.load(c);
+                if (!config.enabled || !config.assistantGestureEnabled
+                        || !config.windowModeSideGestureEnabled) return;
+                synchronized (GESTURES) {
+                    for (Gesture gesture : GESTURES.values()) {
+                        Object owner = gesture.owner.get();
+                        if (owner != null && ReflectUtils.getIntField(owner, "mDisplayId", -1) == 0) {
+                            if (!gesture.locked()) {
+                                gesture.executeCornerAction(config,
+                                        intent.getBooleanExtra("from_left", true), tier);
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+        }, new IntentFilter(SideGestureActions.ACTION_CORNER_GESTURE),
+                "android.permission.STATUS_BAR_SERVICE", new Handler(Looper.getMainLooper()),
+                Context.RECEIVER_EXPORTED);
+        cornerReceiverInstalled = true;
+    }
+
     static final class Gesture {
         final WeakReference<Object> owner;
         final Context context;
@@ -118,12 +150,11 @@ final class AssistantGestureHooks {
         boolean triggerOnRelease;
         boolean actionPreviewEnabled;
         boolean zoneOverlayEnabled;
-        boolean distanceSplitEnabled;
         boolean gestureStarted;
         int hapticZone = -1;
         int hapticCandidateZone = -1;
         int previewActionId = Integer.MIN_VALUE;
-        boolean previewLongDistance;
+        int previewTier;
         boolean previewReady;
         String previewText = "";
         ModuleConfig gestureConfig;
@@ -131,11 +162,11 @@ final class AssistantGestureHooks {
         float gestureStartX;
         float shortDistancePx;
         float longDistancePx;
+        float farDistancePx;
+        int sideOffset;
         final AssistantGestureActionOverlay actionOverlay;
         final AssistantGestureZoneOverlay zoneOverlay;
         final Method sendEvent;
-        int horizontalActionId, upActionId, downActionId;
-        int horizontalLongActionId, upLongActionId, downLongActionId;
 
         Gesture(Object owner, Context context, Method cancel, Method pilfer,
                 Method sendEvent, SideGestureActions.Action globalAssistant) {
@@ -150,6 +181,7 @@ final class AssistantGestureHooks {
             this.appLauncher = AppLauncherPanel.action(context);
             this.actionOverlay = new AssistantGestureActionOverlay(context);
             this.zoneOverlay = new AssistantGestureZoneOverlay(context);
+            registerCornerReceiver(context);
         }
 
         void begin(MotionEvent event) {
@@ -188,19 +220,13 @@ final class AssistantGestureHooks {
             fromLeft = leftEdge;
             zoneOverlayEnabled = config.assistantGestureZoneOverlayEnabled;
             actionPreviewEnabled = config.assistantGesturePreviewEnabled;
-            distanceSplitEnabled = config.assistantGestureDistanceSplitEnabled;
-            triggerOnRelease = distanceSplitEnabled || config.assistantGestureTriggerMode
-                    == SettingsStore.ASSISTANT_GESTURE_TRIGGER_ON_RELEASE;
-            longDistancePx = config.assistantGestureLongDistanceDp * density;
-            horizontalActionId = leftEdge ? config.sideGestureLeftAction : config.sideGestureRightAction;
-            upActionId = leftEdge ? config.sideGestureLeftUpAction : config.sideGestureRightUpAction;
-            downActionId = leftEdge ? config.sideGestureLeftDownAction : config.sideGestureRightDownAction;
-            horizontalLongActionId = leftEdge
-                    ? config.sideGestureLeftLongAction : config.sideGestureRightLongAction;
-            upLongActionId = leftEdge
-                    ? config.sideGestureLeftUpLongAction : config.sideGestureRightUpLongAction;
-            downLongActionId = leftEdge
-                    ? config.sideGestureLeftDownLongAction : config.sideGestureRightDownLongAction;
+            triggerOnRelease = config.assistantGestureDistanceSplitEnabled
+                    || config.assistantGestureTriggerMode == SettingsStore.ASSISTANT_GESTURE_TRIGGER_ON_RELEASE;
+            longDistancePx = config.assistantGestureDistanceSplitEnabled
+                    ? config.assistantGestureLongDistanceDp * density : Float.POSITIVE_INFINITY;
+            farDistancePx = config.assistantGestureFarEnabled
+                    ? config.assistantGestureFarDistanceDp * density : Float.POSITIVE_INFINITY;
+            sideOffset = leftEdge ? 0 : 3;
             remember(event);
         }
 
@@ -223,9 +249,8 @@ final class AssistantGestureHooks {
                 if (zoneOverlayEnabled) {
                     float density = context.getResources().getDisplayMetrics().density;
                     zoneOverlay.show(gestureStartX, state.startY(), fromLeft, shortDistancePx,
-                            longDistancePx, distanceSplitEnabled, horizontalActionId, upActionId,
-                            downActionId, horizontalLongActionId, upLongActionId,
-                            downLongActionId, gestureConfig.assistantGestureUpAngle / 10f,
+                            longDistancePx, farDistancePx, gestureConfig.sideGestureActions, sideOffset,
+                            gestureConfig.assistantGestureUpAngle / 10f,
                             gestureConfig.assistantGestureDownAngle / 10f,
                             gestureConfig.assistantGestureMinVerticalDp * density);
                 }
@@ -239,12 +264,12 @@ final class AssistantGestureHooks {
                 return;
             }
             int direction = state.direction();
-            boolean longDistance = distanceSplitEnabled && state.travelDistance() >= longDistancePx;
-            int zone = direction + (longDistance ? 3 : 0);
+            int tier = distanceTier();
+            int zone = direction + tier * 3;
             if (zone == hapticCandidateZone) return;
             hapticCandidateZone = zone;
             if (zone == hapticZone) return;
-            int actionId = actionId(direction);
+            int actionId = gestureConfig.sideGestureActions[tier][sideOffset + direction];
             if (actionId == SettingsStore.SIDE_GESTURE_ACTION_NONE
                     || actionId == SettingsStore.SIDE_GESTURE_ACTION_BACK) return;
             Object target = owner.get();
@@ -259,7 +284,8 @@ final class AssistantGestureHooks {
             if (!isNavigationAction(actionId) && (action == null || !action.isReady())) return;
             hapticZone = zone;
             Object panel = target == null ? null : ReflectUtils.getField(target, "mEdgeBackPlugin");
-            int feedback = longDistance ? HapticFeedbackConstants.LONG_PRESS
+            int feedback = tier == SettingsStore.SIDE_GESTURE_FAR ? HapticFeedbackConstants.CONFIRM
+                    : tier == SettingsStore.SIDE_GESTURE_LONG ? HapticFeedbackConstants.LONG_PRESS
                     : HapticFeedbackConstants.CLOCK_TICK;
             handler.post(() -> HapticFeedbackUtils.perform(context,
                     panel instanceof View ? (View) panel : null, feedback));
@@ -278,10 +304,7 @@ final class AssistantGestureHooks {
                 reset();
                 return false;
             }
-            int direction = state.direction();
-            int actionId = actionId(direction);
-            boolean longDistance = distanceSplitEnabled && state.travelDistance() >= longDistancePx;
-            if (actionId != configuredAction(config, direction, longDistance)) { reset(); return false; }
+            int actionId = config.sideGestureActions[distanceTier()][sideOffset + state.direction()];
             if (actionId == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
                     && !AssistantGestureScenes.allows(config.assistantGestureScenes, target)) {
                 return false;
@@ -314,15 +337,8 @@ final class AssistantGestureHooks {
             }
         }
 
-        int actionId(int direction) {
-            if (distanceSplitEnabled && state.travelDistance() >= longDistancePx) {
-                if (direction == AssistantGestureState.UP) return upLongActionId;
-                if (direction == AssistantGestureState.DOWN) return downLongActionId;
-                return horizontalLongActionId;
-            }
-            if (direction == AssistantGestureState.UP) return upActionId;
-            if (direction == AssistantGestureState.DOWN) return downActionId;
-            return horizontalActionId;
+        int distanceTier() {
+            return SettingsStore.sideGestureTier(state.travelDistance(), longDistancePx, farDistancePx);
         }
 
         void updateActionPreview() {
@@ -335,16 +351,10 @@ final class AssistantGestureHooks {
                 actionOverlay.hide();
                 return;
             }
-            int gestureDirection = state.direction();
-            int actionId = actionId(gestureDirection);
             ModuleConfig config = gestureConfig;
-            if (config == null) {
-                actionOverlay.hide();
-                return;
-            }
-            boolean longDistance = distanceSplitEnabled && state.travelDistance() >= longDistancePx;
-            if (actionId != configuredAction(config, gestureDirection, longDistance)
-                    || actionId == SettingsStore.SIDE_GESTURE_ACTION_BACK
+            int tier = distanceTier();
+            int actionId = config.sideGestureActions[tier][sideOffset + state.direction()];
+            if (actionId == SettingsStore.SIDE_GESTURE_ACTION_BACK
                     || (actionId == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
                     && !AssistantGestureScenes.allows(config.assistantGestureScenes, target))) {
                 actionOverlay.hide();
@@ -367,28 +377,36 @@ final class AssistantGestureHooks {
                     + Math.min(170f * density, state.inwardDistance() * 0.72f);
             float anchorX = edge + horizontalDirection * reach;
             float anchorY = state.startY() + state.verticalDelta() * 0.58f;
-            if (actionId != previewActionId || longDistance != previewLongDistance || !previewReady) {
+            if (actionId != previewActionId || tier != previewTier || !previewReady) {
                 previewActionId = actionId;
-                previewLongDistance = longDistance;
+                previewTier = tier;
                 previewReady = true;
                 previewText = SideGestureActions.label(actionId, context);
             }
             actionOverlay.show(previewText, anchorX, anchorY);
         }
 
-        int configuredAction(ModuleConfig config, int direction, boolean longDistance) {
-            if (fromLeft) {
-                if (direction == AssistantGestureState.UP) return longDistance
-                        ? config.sideGestureLeftUpLongAction : config.sideGestureLeftUpAction;
-                if (direction == AssistantGestureState.DOWN) return longDistance
-                        ? config.sideGestureLeftDownLongAction : config.sideGestureLeftDownAction;
-                return longDistance ? config.sideGestureLeftLongAction : config.sideGestureLeftAction;
+        void executeCornerAction(ModuleConfig config, boolean left, int tier) {
+            int actionId = config.cornerGestureActions[tier][left ? 0 : 1];
+            if (actionId == SettingsStore.SIDE_GESTURE_ACTION_NONE) return;
+            Object target = owner.get();
+            if (actionId == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
+                    && !AssistantGestureScenes.allows(config.assistantGestureScenes, target)) return;
+            if (actionId == SettingsStore.SIDE_GESTURE_ACTION_BACK || isNavigationAction(actionId)) {
+                try {
+                    executeNavigationAction(target, actionId);
+                } catch (ReflectiveOperationException | IllegalStateException error) {
+                    AssistantHooks.warn("Cannot execute bottom corner navigation", error);
+                }
+                return;
             }
-            if (direction == AssistantGestureState.UP) return longDistance
-                    ? config.sideGestureRightUpLongAction : config.sideGestureRightUpAction;
-            if (direction == AssistantGestureState.DOWN) return longDistance
-                    ? config.sideGestureRightDownLongAction : config.sideGestureRightDownAction;
-            return longDistance ? config.sideGestureRightLongAction : config.sideGestureRightAction;
+            SideGestureActions.Action action = SideGestureActions.resolve(actionId, globalAssistant,
+                    com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.ACTION,
+                    taskSwitcher, quickTools, appLauncher, context);
+            if (action != null && action.isReady()) {
+                action.execute(left, context.getResources().getDisplayMetrics().heightPixels * 0.75f,
+                        () -> { });
+            }
         }
 
         boolean isNavigationAction(int actionId) {
@@ -397,7 +415,8 @@ final class AssistantGestureHooks {
         }
 
         void executeNavigationAction(Object target, int actionId) throws ReflectiveOperationException {
-            int keyCode = actionId == SettingsStore.SIDE_GESTURE_ACTION_HOME
+            int keyCode = actionId == SettingsStore.SIDE_GESTURE_ACTION_BACK ? KeyEvent.KEYCODE_BACK
+                    : actionId == SettingsStore.SIDE_GESTURE_ACTION_HOME
                     ? KeyEvent.KEYCODE_HOME : KeyEvent.KEYCODE_APP_SWITCH;
             Object down = sendEvent.invoke(target, 0, keyCode);
             Object up = sendEvent.invoke(target, 1, keyCode);

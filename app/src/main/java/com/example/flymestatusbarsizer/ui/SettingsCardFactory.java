@@ -369,7 +369,7 @@ public final class SettingsCardFactory {
     public View createWindowModeSideGestureSettingsCard() {
         return activity.buildSectionCard(
                 "小窗选择面板",
-                "调整 Flyme 原生小窗选择面板及其侧边触发手势。",
+                "调整 Flyme 原生小窗选择面板。",
                 buildWindowModeSideGesturePage());
     }
 
@@ -462,46 +462,35 @@ public final class SettingsCardFactory {
                 buildTaskWorkbenchOptions(false), true);
         workspaceCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
 
-        String[] shortActionKeys = {
-                SettingsStore.KEY_SIDE_GESTURE_LEFT_ACTION,
-                SettingsStore.KEY_SIDE_GESTURE_LEFT_UP_ACTION,
-                SettingsStore.KEY_SIDE_GESTURE_LEFT_DOWN_ACTION,
-                SettingsStore.KEY_SIDE_GESTURE_RIGHT_ACTION,
-                SettingsStore.KEY_SIDE_GESTURE_RIGHT_UP_ACTION,
-                SettingsStore.KEY_SIDE_GESTURE_RIGHT_DOWN_ACTION
-        };
-        String[] legacyActionKeys = {
-                SettingsStore.KEY_SIDE_GESTURE_ACTION,
-                SettingsStore.KEY_SIDE_GESTURE_UP_ACTION,
-                SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION,
-                SettingsStore.KEY_SIDE_GESTURE_ACTION,
-                SettingsStore.KEY_SIDE_GESTURE_UP_ACTION,
-                SettingsStore.KEY_SIDE_GESTURE_DOWN_ACTION
-        };
-        String[] longActionKeys = {
-                SettingsStore.KEY_SIDE_GESTURE_LEFT_LONG_ACTION,
-                SettingsStore.KEY_SIDE_GESTURE_LEFT_UP_LONG_ACTION,
-                SettingsStore.KEY_SIDE_GESTURE_LEFT_DOWN_LONG_ACTION,
-                SettingsStore.KEY_SIDE_GESTURE_RIGHT_LONG_ACTION,
-                SettingsStore.KEY_SIDE_GESTURE_RIGHT_UP_LONG_ACTION,
-                SettingsStore.KEY_SIDE_GESTURE_RIGHT_DOWN_LONG_ACTION
-        };
         Runnable updateActionVisibility = () -> {
             boolean splitEnabled = SettingsStore.readBoolean(activity.prefs(),
                     SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
                     SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED);
+            boolean farEnabled = splitEnabled && SettingsStore.readBoolean(activity.prefs(),
+                    SettingsStore.KEY_ASSISTANT_GESTURE_FAR_ENABLED, false);
+            int tierCount = farEnabled ? 3 : splitEnabled ? 2 : 1;
+            int[][] actions = SettingsStore.readSideGestureActions(activity.prefs(), true);
             boolean hasAssistant = false;
             boolean hasWorkspace = false;
-            for (int i = 0; i < shortActionKeys.length; i++) {
-                int action = SettingsStore.readSideGestureAction(activity.prefs(),
-                        shortActionKeys[i], legacyActionKeys[i]);
-                hasAssistant |= action == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
-                hasWorkspace |= action == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
-                if (splitEnabled) {
-                    action = SettingsStore.readSideGestureActionWithFallback(activity.prefs(),
-                            longActionKeys[i], shortActionKeys[i], legacyActionKeys[i]);
+            for (int tier = 0; tier < tierCount; tier++) {
+                for (int action : actions[tier]) {
                     hasAssistant |= action == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
                     hasWorkspace |= action == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
+                }
+            }
+            if (SettingsStore.readBoolean(activity.prefs(),
+                    SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ENABLED, false)) {
+                boolean cornerSplit = SettingsStore.readBoolean(activity.prefs(),
+                        SettingsStore.KEY_CORNER_GESTURE_SPLIT_ENABLED, false);
+                boolean cornerFar = cornerSplit && SettingsStore.readBoolean(activity.prefs(),
+                        SettingsStore.KEY_CORNER_GESTURE_FAR_ENABLED, false);
+                int cornerTierCount = cornerFar ? 3 : cornerSplit ? 2 : 1;
+                int[][] cornerActions = SettingsStore.readCornerGestureActions(activity.prefs(), true);
+                for (int tier = 0; tier < cornerTierCount; tier++) {
+                    for (int action : cornerActions[tier]) {
+                        hasAssistant |= action == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT;
+                        hasWorkspace |= action == SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE;
+                    }
                 }
             }
             appearanceCard.setVisibility(hasAssistant ? View.VISIBLE : View.GONE);
@@ -522,17 +511,30 @@ public final class SettingsCardFactory {
                 new int[]{SettingsStore.ASSISTANT_GESTURE_TRIGGER_AT_DISTANCE,
                         SettingsStore.ASSISTANT_GESTURE_TRIGGER_ON_RELEASE},
                 new String[]{"达到距离立即触发", "松手后触发"});
+        activity.addActionButtonRow(gestureOptions, "底角手势单设置",
+                "保留原来的底角斜滑入口，单独设置左右底角的触发功能和距离。",
+                "打开", () -> activity.openPage(MainActivity.Page.CORNER_GESTURE_SETTINGS));
+        activity.addDivider(gestureOptions);
+        LinearLayout farOptions = new LinearLayout(activity);
+        farOptions.setOrientation(LinearLayout.VERTICAL);
+        farOptions.setVisibility(splitEnabled ? View.VISIBLE : View.GONE);
+        activity.addSwitchRow(farOptions, "启用远距离动作",
+                "在长距离之外加一档。未单独设置时，沿用同方向的长距离动作。",
+                SettingsStore.KEY_ASSISTANT_GESTURE_FAR_ENABLED, false,
+                (buttonView, isChecked) -> updateActionVisibility.run());
         activity.addSwitchRow(gestureOptions, "区分短距离和长距离动作",
                 "开启后等手指松开，再按最终滑动距离选择对应动作。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
                 (buttonView, isChecked) -> {
                     triggerOptions.setVisibility(isChecked ? View.GONE : View.VISIBLE);
+                    farOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE);
                     updateActionVisibility.run();
                 });
+        gestureOptions.addView(farOptions, PageViewUtils.matchWrap());
         activity.addDivider(gestureOptions);
         activity.addProfileSectionHeader(gestureOptions, "滑动距离",
-                "达到最短距离后才会触发；开启分段后，按长距离阈值切换动作。");
+                "达到最短距离后才会触发；开启分段后，按松手时所在的距离档位选择动作。");
         activity.addSwitchRow(gestureOptions, "显示当前功能提示",
                 "手势过程中显示当前对应的功能名称。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
@@ -1430,42 +1432,6 @@ public final class SettingsCardFactory {
         LinearLayout.LayoutParams twoRingOptionsLp = PageViewUtils.matchWrap();
         twoRingOptionsLp.leftMargin = activity.dp(12);
         page.addView(twoRingOptions, twoRingOptionsLp);
-        activity.addDivider(page);
-        LinearLayout sideGestureOptions = new LinearLayout(activity);
-        sideGestureOptions.setOrientation(LinearLayout.VERTICAL);
-        boolean sideGestureEnabled = SettingsStore.readBoolean(
-                activity.prefs(),
-                SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
-                SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED);
-        sideGestureOptions.setVisibility(sideGestureEnabled ? View.VISIBLE : View.GONE);
-        activity.addSwitchRow(page, "接管小窗侧边手势",
-                "拦截屏幕左右侧边的小窗触发手势，改为执行这里配置的动作。",
-                SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
-                SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED,
-                (buttonView, isChecked) -> sideGestureOptions.setVisibility(
-                        isChecked ? View.VISIBLE : View.GONE));
-        activity.addDivider(sideGestureOptions);
-        activity.addChoiceRow(sideGestureOptions, "触发动作",
-                "发送 URL / Intent。",
-                SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ACTION,
-                SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ACTION,
-                new int[]{
-                        SettingsStore.MBACK_LONG_TOUCH_ACTION_INTENT_URI
-                },
-                new String[]{"URL / Intent"});
-        activity.addDivider(sideGestureOptions);
-        activity.addTextSettingRow(sideGestureOptions, "目标 URL / Intent URI",
-                "只在“URL / Intent”模式下生效。支持 https://、自定义 scheme 和 intent:// URI。留空则回退 Flyme 小窗面板。",
-                SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
-                SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_INTENT_URI,
-                "未设置");
-        activity.addDivider(sideGestureOptions);
-        activity.addActionButtonRow(sideGestureOptions, "测试 URL / Intent",
-                "只测试当前填写的 URL / Intent URI。",
-                "立即测试", activity::testLaunchWindowModeSideGestureIntent);
-        LinearLayout.LayoutParams sideGestureOptionsLp = PageViewUtils.matchWrap();
-        sideGestureOptionsLp.leftMargin = activity.dp(12);
-        page.addView(sideGestureOptions, sideGestureOptionsLp);
         return page;
     }
 

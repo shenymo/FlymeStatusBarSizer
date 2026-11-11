@@ -73,20 +73,22 @@ final class AssistantClient implements SideGestureActions.Action {
 
     static boolean enabled(Context context) {
         ModuleConfig c = ModuleConfig.load(context);
-        return c.enabled && c.assistantGestureEnabled
-                && (c.sideGestureLeftAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                || c.sideGestureLeftUpAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                || c.sideGestureLeftDownAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                || c.sideGestureRightAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                || c.sideGestureRightUpAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                || c.sideGestureRightDownAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                || (c.assistantGestureDistanceSplitEnabled
-                && (c.sideGestureLeftLongAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                || c.sideGestureLeftUpLongAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                || c.sideGestureLeftDownLongAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                || c.sideGestureRightLongAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                || c.sideGestureRightUpLongAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT
-                || c.sideGestureRightDownLongAction == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT)));
+        if (!c.enabled || !c.assistantGestureEnabled) return false;
+        int tierCount = c.assistantGestureFarEnabled ? 3 : c.assistantGestureDistanceSplitEnabled ? 2 : 1;
+        for (int tier = 0; tier < tierCount; tier++) {
+            for (int action : c.sideGestureActions[tier]) {
+                if (action == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT) return true;
+            }
+        }
+        if (c.windowModeSideGestureEnabled) {
+            int cornerTierCount = c.cornerGestureFarEnabled ? 3 : c.cornerGestureSplitEnabled ? 2 : 1;
+            for (int tier = 0; tier < cornerTierCount; tier++) {
+                for (int action : c.cornerGestureActions[tier]) {
+                    if (action == SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT) return true;
+                }
+            }
+        }
+        return false;
     }
 
     @Override public boolean isReady() {

@@ -8,6 +8,8 @@ import com.example.flymestatusbarsizer.config.ModuleConfig;
 
 /** Keeps action availability and execution separate from edge gesture recognition. */
 public final class SideGestureActions {
+    public static final String ACTION_CORNER_GESTURE =
+            "com.fiyme.statusbarsizer.action.CORNER_GESTURE";
     public interface Action {
         boolean isReady();
         void execute(boolean fromLeft, Runnable onSuccess);
@@ -67,7 +69,7 @@ public final class SideGestureActions {
         }
     }
 
-    static String label(int action) {
+    public static String label(int action) {
         switch (action) {
             case SettingsStore.SIDE_GESTURE_ACTION_BACK: return "返回";
             case SettingsStore.SIDE_GESTURE_ACTION_HOME: return "主页";
