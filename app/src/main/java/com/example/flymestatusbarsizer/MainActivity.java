@@ -778,6 +778,38 @@ public class MainActivity extends Activity {
         showSideGestureZoneOverlay(true);
     }
 
+    public void commitSideGestureTarget(boolean cornerMode, int tier, int slot, int action,
+            SideGestureTargetStore.Target target) {
+        List<SideGestureTargetStore.Target> targets = SideGestureTargetStore.parse(
+                SideGestureTargetStore.readRaw(prefs));
+        if (target != null) {
+            boolean replaced = false;
+            for (int i = 0; i < targets.size(); i++) {
+                if (targets.get(i).id == target.id) {
+                    targets.set(i, target);
+                    replaced = true;
+                    break;
+                }
+            }
+            if (!replaced) targets.add(target);
+        }
+        String key = cornerMode ? SettingsStore.cornerGestureActionKey(tier, slot)
+                : SettingsStore.sideGestureActionKey(tier, slot);
+        prefs.edit().putInt(key, action)
+                .putString(SettingsStore.KEY_SIDE_GESTURE_TARGETS_JSON,
+                        SideGestureTargetStore.encode(targets)).apply();
+        SettingsStore.notifyChanged(this);
+        notifySideGestureActionsChanged();
+    }
+
+    public void commitSideGestureAction(boolean cornerMode, int tier, int slot, int action) {
+        String key = cornerMode ? SettingsStore.cornerGestureActionKey(tier, slot)
+                : SettingsStore.sideGestureActionKey(tier, slot);
+        prefs.edit().putInt(key, action).apply();
+        SettingsStore.notifyChanged(this);
+        notifySideGestureActionsChanged();
+    }
+
     public void configureSideGestureTarget(int type, IntConsumer onSelected) {
         if (type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI
                 || type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL) {

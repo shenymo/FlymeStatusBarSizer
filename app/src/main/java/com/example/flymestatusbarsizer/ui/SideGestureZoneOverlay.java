@@ -14,12 +14,22 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
+import android.widget.BaseAdapter;
+import android.widget.CheckBox;
+import android.widget.CheckedTextView;
+import android.widget.EditText;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
+import android.widget.ScrollView;
+import android.widget.TextView;
 
 import com.example.flymestatusbarsizer.MainActivity;
 import com.example.flymestatusbarsizer.config.SettingsStore;
@@ -27,6 +37,7 @@ import com.example.flymestatusbarsizer.config.SideGestureTargetStore;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.IntConsumer;
 
 /** Interactive trigger-zone editor drawn above the settings screen. */
 public final class SideGestureZoneOverlay {
@@ -55,6 +66,20 @@ public final class SideGestureZoneOverlay {
             "小窗选择面板", "贴边", "任务切换器", "全局负一屏", "多应用工作台",
             "快捷工具", "应用启动器", "打开指定应用", "打开 Activity", "打开 Intent URI", "打开 Scheme URL"
     };
+    private static final String[] ACTION_CATEGORIES = {
+            "基础控制", "多任务与桌面", "应用与快捷方式", "高级扩展"
+    };
+    private static final int[] ACTION_CATEGORY_STARTS = {0, 6, 11, 14};
+    private static final int[] ACTION_CATEGORY_ENDS = {6, 11, 14, 17};
+    private static final class ActionChoice {
+        final int value;
+        final String label;
+
+        ActionChoice(int value, String label) {
+            this.value = value;
+            this.label = label;
+        }
+    }
     private static final int DRAG_NONE = 0;
     private static final int DRAG_SHORT = 1;
     private static final int DRAG_LONG = 2;
@@ -871,7 +896,7 @@ public final class SideGestureZoneOverlay {
                 }
                 int actionLabel = hitActionLabel(x, y);
                 if (actionLabel >= 0) {
-                    showActionPicker(actionLabel % 3, actionLabel / 3);
+                    openActionForSlot(actionLabel % 3, actionLabel / 3);
                     return true;
                 }
                 float inward = (x - originX) * direction;
@@ -879,7 +904,7 @@ public final class SideGestureZoneOverlay {
                     float distance = (float) Math.hypot(inward, y - centerY) / scale;
                     if (inward > 0f && y < centerY && y > topInset()
                             && distance >= shortDistanceDp) {
-                        showActionPicker(0, SettingsStore.sideGestureTier(distance,
+                        openActionForSlot(0, SettingsStore.sideGestureTier(distance,
                                 splitEnabled ? longDistanceDp : Float.POSITIVE_INFINITY,
                                 farEnabled ? farDistanceDp : Float.POSITIVE_INFINITY));
                     }
@@ -893,7 +918,7 @@ public final class SideGestureZoneOverlay {
                             inward * (float) Math.tan(Math.toRadians(angle)))
                             ? 0 : dy < 0 ? 1 : 2;
                     if (distanceDp > 8f) {
-                        showActionPicker(directionIndex, SettingsStore.sideGestureTier(distanceDp,
+                        openActionForSlot(directionIndex, SettingsStore.sideGestureTier(distanceDp,
                                 splitEnabled ? longDistanceDp : Float.POSITIVE_INFINITY,
                                 farEnabled ? farDistanceDp : Float.POSITIVE_INFINITY));
                     }
@@ -952,44 +977,130 @@ public final class SideGestureZoneOverlay {
                             + " · " + (splitEnabled ? TIER_NAMES[tier] : "触发设置"))
                     .setItems(items, (d, which) -> {
                         if (which == 0) showDistanceInput(tier);
-                        else showActionPicker(which - 1, tier);
+                        else openActionForSlot(which - 1, tier);
                     })
                     .setNegativeButton("完成", null)
                     .show();
             activity.attachDialogButtonHaptics(dialog);
         }
 
+        private void openActionForSlot(int directionIndex, int tier) {
+            int slot = cornerMode ? (leftSide ? 0 : 1)
+                    : (leftSide ? 0 : 3) + directionIndex;
+            int action = actions[tier][slot];
+            if (SideGestureTargetStore.isDynamicAction(action)) {
+                SideGestureTargetStore.Target target = SideGestureTargetStore.find(
+                        SideGestureTargetStore.readRaw(prefs), action);
+                if (target != null) {
+                    showCustomTargetEditor(directionIndex, tier, slot, action, target);
+                    return;
+                }
+            }
+            showActionPicker(directionIndex, tier);
+        }
+
         private void showActionPicker(int directionIndex, int tier) {
+            showActionPicker(directionIndex, tier, null);
+        }
+
+        private void showActionPicker(int directionIndex, int tier, IntConsumer onSelected) {
             int slot = cornerMode ? (leftSide ? 0 : 1)
                     : (leftSide ? 0 : 3) + directionIndex;
             int currentAction = actions[tier][slot];
-            int[] values = ACTION_VALUES;
-            String[] labels = ACTION_LABELS;
-            if (tier == SIDE_GESTURE_FAR || (cornerMode && tier > SIDE_GESTURE_SHORT)) {
-                values = java.util.Arrays.copyOf(values, values.length + 1);
-                labels = java.util.Arrays.copyOf(labels, labels.length + 1);
-                values[values.length - 1] = SIDE_GESTURE_INHERIT_LONG;
-                labels[labels.length - 1] = tier == SIDE_GESTURE_FAR
-                        ? "沿用中距离动作" : "沿用近距离动作";
-            }
-            int selectedIndex = -1;
-            for (int i = 0; i < values.length; i++) {
-                if (values[i] == currentAction) {
-                    selectedIndex = i;
-                    break;
+            boolean inheritAvailable = tier == SIDE_GESTURE_FAR
+                    || (cornerMode && tier > SIDE_GESTURE_SHORT);
+            SideGestureTargetStore.Target currentTarget = SideGestureTargetStore.isDynamicAction(currentAction)
+                    ? SideGestureTargetStore.find(SideGestureTargetStore.readRaw(prefs), currentAction)
+                    : null;
+            int initialCategory = 0;
+            if (currentTarget != null) {
+                initialCategory = currentTarget.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP ? 2 : 3;
+            } else if (currentAction != SIDE_GESTURE_INHERIT_LONG) {
+                for (int category = 0; category < ACTION_CATEGORIES.length; category++) {
+                    for (int i = ACTION_CATEGORY_STARTS[category]; i < ACTION_CATEGORY_ENDS[category]; i++) {
+                        if (ACTION_VALUES[i] == currentAction) initialCategory = category;
+                    }
                 }
             }
+            List<ActionChoice> choices = new ArrayList<>();
+            final int[] categoryState = {initialCategory};
             ListView list = new ListView(activity);
             list.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
             list.setDivider(null);
-            list.setAdapter(new ArrayAdapter<>(activity,
-                    android.R.layout.simple_list_item_single_choice, labels));
-            if (selectedIndex >= 0) list.setItemChecked(selectedIndex, true);
+            BaseAdapter adapter = new BaseAdapter() {
+                @Override public int getCount() { return choices.size(); }
+                @Override public Object getItem(int position) { return choices.get(position); }
+                @Override public long getItemId(int position) { return position; }
+                @Override public View getView(int position, View convertView, ViewGroup parent) {
+                    ActionChoice choice = choices.get(position);
+                    CheckedTextView row = convertView instanceof CheckedTextView
+                            ? (CheckedTextView) convertView
+                            : (CheckedTextView) activity.getLayoutInflater().inflate(
+                                    android.R.layout.simple_list_item_single_choice, parent, false);
+                    row.setText(choice.value == currentAction
+                            ? choice.label + "  ·  当前" : choice.label);
+                    row.setTextColor(choice.value == currentAction
+                            ? activity.primaryColor() : activity.textColor());
+                    row.setMinHeight(Math.round(dp(48)));
+                    row.setPadding(Math.round(dp(14)), 0, Math.round(dp(14)), 0);
+                    row.setBackground(activity.roundRect(choice.value == currentAction
+                            ? activity.surfaceSoftColor() : Color.TRANSPARENT, 8));
+                    return row;
+                }
+            };
+            list.setAdapter(adapter);
 
             LinearLayout content = new LinearLayout(activity);
             content.setOrientation(LinearLayout.VERTICAL);
             content.setPadding(Math.round(dp(8)), 0, Math.round(dp(8)), Math.round(dp(6)));
-            int visibleRows = Math.min(6, labels.length);
+
+            View inheritContainer = null;
+            if (inheritAvailable) {
+                inheritContainer = activity.getLayoutInflater().inflate(
+                        android.R.layout.simple_list_item_single_choice, content, false);
+                CheckedTextView inheritRow = (CheckedTextView) inheritContainer
+                        .findViewById(android.R.id.text1);
+                inheritRow.setText(tier == SIDE_GESTURE_FAR
+                        ? "沿用中距离动作" : "沿用近距离动作");
+                inheritRow.setChecked(currentAction == SIDE_GESTURE_INHERIT_LONG);
+                inheritRow.setTextColor(currentAction == SIDE_GESTURE_INHERIT_LONG
+                        ? activity.primaryColor() : activity.textColor());
+                inheritRow.setMinHeight(Math.round(dp(48)));
+                inheritRow.setPadding(Math.round(dp(14)), 0, Math.round(dp(14)), 0);
+                inheritRow.setBackground(activity.roundRect(currentAction == SIDE_GESTURE_INHERIT_LONG
+                        ? activity.surfaceSoftColor() : Color.TRANSPARENT, 8));
+                content.addView(inheritContainer, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, Math.round(dp(48))));
+            }
+
+            HorizontalScrollView tabScroll = new HorizontalScrollView(activity);
+            tabScroll.setHorizontalScrollBarEnabled(false);
+            LinearLayout tabs = new LinearLayout(activity);
+            tabs.setOrientation(LinearLayout.HORIZONTAL);
+            tabScroll.addView(tabs, new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            List<TextView> tabLabels = new ArrayList<>();
+            List<View> tabViews = new ArrayList<>();
+            for (int category = 0; category < ACTION_CATEGORIES.length; category++) {
+                TextView label = new TextView(activity);
+                label.setText(ACTION_CATEGORIES[category]);
+                label.setTextSize(13f);
+                label.setGravity(Gravity.CENTER);
+                label.setPadding(Math.round(dp(14)), 0, Math.round(dp(14)), 0);
+                label.setMinHeight(Math.round(dp(36)));
+                LinearLayout.LayoutParams tabParams = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, Math.round(dp(36)));
+                tabParams.rightMargin = Math.round(dp(8));
+                tabs.addView(label, tabParams);
+                tabLabels.add(label);
+                tabViews.add(label);
+            }
+            tabs.setPadding(Math.round(dp(4)), Math.round(dp(4)), Math.round(dp(4)),
+                    Math.round(dp(4)));
+            content.addView(tabScroll, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, Math.round(dp(44))));
+
+            int visibleRows = 5;
             content.addView(list, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, Math.round(dp(48 * visibleRows))));
             AlertDialog.Builder builder = new AlertDialog.Builder(activity)
@@ -997,12 +1108,10 @@ public final class SideGestureZoneOverlay {
                     .setView(content)
                     .setNegativeButton("取消", null);
             if (SideGestureTargetStore.isDynamicAction(currentAction)) {
-                SideGestureTargetStore.Target target = SideGestureTargetStore.find(
-                        SideGestureTargetStore.readRaw(prefs), currentAction);
-                if (target != null) {
+                if (currentTarget != null) {
                     builder.setNeutralButton("查看当前目标", (d, which) ->
-                            activity.showSideGestureTargetDetails(target, () ->
-                                    activity.configureSideGestureTarget(target.type, targetId -> {
+                            activity.showSideGestureTargetDetails(currentTarget, () ->
+                                    activity.configureSideGestureTarget(currentTarget.type, targetId -> {
                                         actions[tier][slot] = targetId;
                                         invalidate();
                                     }), targetId -> {
@@ -1012,27 +1121,427 @@ public final class SideGestureZoneOverlay {
                 }
             }
             AlertDialog dialog = builder.create();
-            int[] choices = values;
             list.setOnItemClickListener((parent, row, position, id) -> {
-                int selected = choices[position];
+                ActionChoice choice = choices.get(position);
+                int selected = choice.value;
                 dialog.dismiss();
                 if (SideGestureTargetStore.isTargetType(selected)) {
                     activity.configureSideGestureTarget(selected, targetId -> {
-                        actions[tier][slot] = targetId;
-                        invalidate();
+                        if (onSelected != null) {
+                            onSelected.accept(targetId);
+                        } else {
+                            actions[tier][slot] = targetId;
+                            invalidate();
+                        }
                     });
                 } else {
-                    actions[tier][slot] = selected;
-                    invalidate();
+                    if (onSelected != null) {
+                        onSelected.accept(selected);
+                    } else {
+                        actions[tier][slot] = selected;
+                        invalidate();
+                    }
                 }
                 activity.performTapHaptic(this);
             });
+            if (inheritContainer != null) {
+                inheritContainer.setOnClickListener(v -> {
+                    dialog.dismiss();
+                    if (onSelected != null) {
+                        onSelected.accept(SIDE_GESTURE_INHERIT_LONG);
+                    } else {
+                        actions[tier][slot] = SIDE_GESTURE_INHERIT_LONG;
+                        invalidate();
+                    }
+                    activity.performTapHaptic(this);
+                });
+            }
+            final Runnable[] refreshCategory = new Runnable[1];
+            refreshCategory[0] = () -> {
+                int category = categoryState[0];
+                choices.clear();
+                for (int i = ACTION_CATEGORY_STARTS[category]; i < ACTION_CATEGORY_ENDS[category]; i++) {
+                    choices.add(new ActionChoice(ACTION_VALUES[i], ACTION_LABELS[i]));
+                }
+                adapter.notifyDataSetChanged();
+                list.clearChoices();
+                for (int i = 0; i < choices.size(); i++) {
+                    if (choices.get(i).value == currentAction) list.setItemChecked(i, true);
+                }
+                for (int i = 0; i < tabLabels.size(); i++) {
+                    boolean selected = i == category;
+                    tabLabels.get(i).setTextColor(selected
+                            ? Color.WHITE : activity.subtextColor());
+                    tabLabels.get(i).setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                    tabLabels.get(i).setBackground(activity.roundRect(selected
+                            ? activity.primaryColor() : activity.surfaceColor(), 18));
+                }
+                tabScroll.post(() -> tabScroll.smoothScrollTo(
+                        Math.max(0, tabViews.get(category).getLeft() - Math.round(dp(12))), 0));
+            };
+            for (int category = 0; category < tabViews.size(); category++) {
+                final int categoryIndex = category;
+                tabViews.get(category).setOnClickListener(v -> {
+                    categoryState[0] = categoryIndex;
+                    refreshCategory[0].run();
+                });
+            }
+            refreshCategory[0].run();
             dialog.show();
+            styleBottomDialog(dialog);
+            list.post(() -> {
+                for (int i = 0; i < choices.size(); i++) {
+                    if (choices.get(i).value == currentAction) list.setSelection(i);
+                }
+            });
+            activity.attachDialogButtonHaptics(dialog);
+        }
+
+        private void showCustomTargetEditor(int directionIndex, int tier, int slot,
+                int action, SideGestureTargetStore.Target target) {
+            final SideGestureTargetStore.Target[] draftTarget = {target};
+            final int[] draftAction = {action};
+            LinearLayout form = new LinearLayout(activity);
+            form.setOrientation(LinearLayout.VERTICAL);
+            form.setPadding(Math.round(dp(16)), Math.round(dp(4)),
+                    Math.round(dp(16)), Math.round(dp(8)));
+
+            TextView summary = new TextView(activity);
+            summary.setText(targetSummary(target));
+            summary.setTextColor(activity.subtextColor());
+            summary.setTextSize(13f);
+            summary.setPadding(Math.round(dp(12)), Math.round(dp(10)),
+                    Math.round(dp(12)), Math.round(dp(10)));
+            summary.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
+            form.addView(summary, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            TextView nameLabel = new TextView(activity);
+            nameLabel.setText("动作名称");
+            nameLabel.setTextColor(activity.subtextColor());
+            nameLabel.setTextSize(13f);
+            nameLabel.setPadding(Math.round(dp(2)), Math.round(dp(12)),
+                    Math.round(dp(2)), Math.round(dp(4)));
+            form.addView(nameLabel);
+            EditText nameInput = editorInput("动作名称（可选）", target.customName, false);
+            form.addView(nameInput);
+            EditText valueInput = null;
+            EditText dataInput = null;
+            EditText extrasInput = null;
+            EditText customActionInput = null;
+            RadioGroup actionGroup = null;
+            CheckBox newTaskInput = null;
+            CheckBox rootInput = null;
+            final EditText[] editorData = {null};
+            final EditText[] editorExtras = {null};
+            final EditText[] editorCustomAction = {null};
+            final CheckBox[] editorNewTask = {null};
+            final CheckBox[] editorRoot = {null};
+            final RadioButton[] editorViewAction = {null};
+            final RadioButton[] editorMainAction = {null};
+            final RadioButton[] editorCustomActionChoice = {null};
+
+            if (target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP) {
+                TextView replace = activity.filledButton("更换应用",
+                        activity.surfaceStrongColor(), activity.textColor());
+                form.addView(replace, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, Math.round(dp(44))));
+                replace.setOnClickListener(v -> activity.configureSideGestureTarget(
+                        SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP, id -> {
+                            SideGestureTargetStore.Target replacement = SideGestureTargetStore.find(
+                                    SideGestureTargetStore.readRaw(prefs), id);
+                            if (replacement == null) return;
+                            draftTarget[0] = replacement;
+                            draftAction[0] = replacement.id;
+                            nameInput.setText(replacement.customName);
+                            summary.setText(targetSummary(replacement));
+                        }));
+            } else if (target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY) {
+                TextView replace = activity.filledButton("更换 Activity",
+                        activity.surfaceStrongColor(), activity.textColor());
+                form.addView(replace, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, Math.round(dp(44))));
+                replace.setOnClickListener(v -> activity.configureSideGestureTarget(
+                        SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY, id -> {
+                            SideGestureTargetStore.Target replacement = SideGestureTargetStore.find(
+                                    SideGestureTargetStore.readRaw(prefs), id);
+                            if (replacement == null) return;
+                            draftTarget[0] = replacement;
+                            draftAction[0] = replacement.id;
+                            nameInput.setText(replacement.customName);
+                            editorData[0].setText(replacement.dataUri);
+                            editorExtras[0].setText(replacement.extras);
+                            editorCustomAction[0].setText(replacement.action);
+                            editorNewTask[0].setChecked(replacement.newTask);
+                            editorRoot[0].setChecked(replacement.root);
+                            if ("android.intent.action.MAIN".equals(replacement.action)) {
+                                editorMainAction[0].setChecked(true);
+                            } else if ("android.intent.action.VIEW".equals(replacement.action)
+                                    || replacement.action.isEmpty()) {
+                                editorViewAction[0].setChecked(true);
+                            } else {
+                                editorCustomActionChoice[0].setChecked(true);
+                            }
+                            summary.setText(targetSummary(replacement));
+                        }));
+                dataInput = editorInput("附加 Data（Uri，可选）", target.dataUri, false);
+                extrasInput = editorInput("附加 Extra（每行 key=value，可选）", target.extras, true);
+                editorData[0] = dataInput;
+                editorExtras[0] = extrasInput;
+                form.addView(dataInput);
+                form.addView(extrasInput);
+                TextView actionTitle = new TextView(activity);
+                actionTitle.setText("启动 Action");
+                actionTitle.setTextColor(activity.subtextColor());
+                actionTitle.setTextSize(13f);
+                actionTitle.setPadding(0, Math.round(dp(6)), 0, 0);
+                form.addView(actionTitle);
+                actionGroup = new RadioGroup(activity);
+                actionGroup.setOrientation(RadioGroup.VERTICAL);
+                RadioButton viewAction = new RadioButton(activity);
+                viewAction.setText("android.intent.action.VIEW");
+                RadioButton mainAction = new RadioButton(activity);
+                mainAction.setText("android.intent.action.MAIN");
+                RadioButton customAction = new RadioButton(activity);
+                customAction.setId(View.generateViewId());
+                customAction.setText("自定义 Action");
+                editorViewAction[0] = viewAction;
+                editorMainAction[0] = mainAction;
+                editorCustomActionChoice[0] = customAction;
+                actionGroup.addView(viewAction);
+                actionGroup.addView(mainAction);
+                actionGroup.addView(customAction);
+                if ("android.intent.action.MAIN".equals(target.action)) mainAction.setChecked(true);
+                else if ("android.intent.action.VIEW".equals(target.action) || target.action.isEmpty()) {
+                    viewAction.setChecked(true);
+                } else customAction.setChecked(true);
+                form.addView(actionGroup);
+                customActionInput = editorInput("输入自定义 Action", target.action, false);
+                editorCustomAction[0] = customActionInput;
+                customActionInput.setVisibility(customAction.isChecked() ? View.VISIBLE : View.GONE);
+                form.addView(customActionInput);
+                EditText finalCustomActionInput = customActionInput;
+                actionGroup.setOnCheckedChangeListener((group, checkedId) ->
+                        finalCustomActionInput.setVisibility(checkedId == customAction.getId()
+                                ? View.VISIBLE : View.GONE));
+                newTaskInput = new CheckBox(activity);
+                newTaskInput.setText("使用 NEW_TASK");
+                newTaskInput.setChecked(target.newTask);
+                editorNewTask[0] = newTaskInput;
+                form.addView(newTaskInput);
+                rootInput = new CheckBox(activity);
+                rootInput.setText("使用 Root 打开");
+                rootInput.setChecked(target.root);
+                editorRoot[0] = rootInput;
+                form.addView(rootInput);
+            } else {
+                valueInput = editorInput(target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI
+                        ? "Intent URI" : "Scheme URL", target.value, true);
+                form.addView(valueInput);
+            }
+
+            ScrollView scroll = new ScrollView(activity);
+            scroll.addView(form);
+            AlertDialog dialog = new AlertDialog.Builder(activity)
+                    .setTitle("编辑当前动作")
+                    .setView(scroll)
+                    .setNegativeButton("取消", null)
+                    .setNeutralButton("切换动作", null)
+                    .setPositiveButton("保存", null)
+                    .create();
+            dialog.show();
+            styleBottomDialog(dialog);
+            EditText finalValueInput = valueInput;
+            EditText finalDataInput = dataInput;
+            EditText finalExtrasInput = extrasInput;
+            EditText finalCustomActionInput2 = customActionInput;
+            RadioGroup finalActionGroup = actionGroup;
+            CheckBox finalNewTaskInput = newTaskInput;
+            CheckBox finalRootInput = rootInput;
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                String customName = nameInput.getText().toString().trim();
+                SideGestureTargetStore.Target old = draftTarget[0];
+                SideGestureTargetStore.Target saved;
+                if (old.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY) {
+                    String selectedAction = finalActionGroup.getCheckedRadioButtonId() ==
+                            finalActionGroup.getChildAt(1).getId()
+                            ? "android.intent.action.MAIN"
+                            : finalActionGroup.getCheckedRadioButtonId() ==
+                            finalActionGroup.getChildAt(0).getId()
+                            ? "android.intent.action.VIEW"
+                            : finalCustomActionInput2.getText().toString().trim();
+                    saved = new SideGestureTargetStore.Target(old.id, old.type, old.label, old.value,
+                            finalDataInput.getText().toString().trim(), finalExtrasInput.getText().toString(),
+                            selectedAction, finalNewTaskInput.isChecked(), finalRootInput.isChecked(), customName);
+                } else if (old.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP) {
+                    saved = new SideGestureTargetStore.Target(old.id, old.type, old.label, old.value,
+                            customName);
+                } else {
+                    String value = finalValueInput.getText().toString().trim();
+                    if (value.isEmpty()) {
+                        finalValueInput.setError("请输入目标内容");
+                        return;
+                    }
+                    saved = new SideGestureTargetStore.Target(old.id, old.type, value, value,
+                            customName);
+                }
+                activity.commitSideGestureTarget(cornerMode, tier, slot, draftAction[0], saved);
+                actions[tier][slot] = draftAction[0];
+                invalidate();
+                dialog.dismiss();
+            });
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+                Runnable switchAction = () -> {
+                    dialog.dismiss();
+                    showActionPicker(directionIndex, tier, selected -> {
+                        draftAction[0] = selected;
+                        if (SideGestureTargetStore.isDynamicAction(selected)) {
+                            SideGestureTargetStore.Target next = SideGestureTargetStore.find(
+                                    SideGestureTargetStore.readRaw(prefs), selected);
+                            if (next != null) showCustomTargetEditor(directionIndex, tier, slot,
+                                    selected, next);
+                        } else {
+                            showPendingActionEditor(directionIndex, tier, slot, selected);
+                        }
+                    });
+                };
+                if (editorHasChanges(target, draftTarget[0], draftAction[0], action, nameInput,
+                        finalValueInput, finalDataInput, finalExtrasInput, finalCustomActionInput2,
+                        finalActionGroup, finalNewTaskInput, finalRootInput)) {
+                    confirmDiscard(dialog, switchAction);
+                } else switchAction.run();
+            });
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> {
+                if (editorHasChanges(target, draftTarget[0], draftAction[0], action, nameInput,
+                        finalValueInput, finalDataInput, finalExtrasInput, finalCustomActionInput2,
+                        finalActionGroup, finalNewTaskInput, finalRootInput)) {
+                    confirmDiscard(dialog, dialog::dismiss);
+                } else dialog.dismiss();
+            });
+            dialog.setCanceledOnTouchOutside(false);
+            dialog.setOnKeyListener((d, keyCode, event) -> {
+                if (keyCode != KeyEvent.KEYCODE_BACK || event.getAction() != KeyEvent.ACTION_UP) {
+                    return false;
+                }
+                if (editorHasChanges(target, draftTarget[0], draftAction[0], action, nameInput,
+                        finalValueInput, finalDataInput, finalExtrasInput, finalCustomActionInput2,
+                        finalActionGroup, finalNewTaskInput, finalRootInput)) {
+                    confirmDiscard(dialog, dialog::dismiss);
+                } else {
+                    dialog.dismiss();
+                }
+                return true;
+            });
+            activity.attachDialogButtonHaptics(dialog);
+        }
+
+        private void showPendingActionEditor(int directionIndex, int tier, int slot, int action) {
+            TextView summary = new TextView(activity);
+            String label = action == SIDE_GESTURE_INHERIT_LONG
+                    ? (tier == SIDE_GESTURE_FAR ? "沿用中距离动作" : "沿用近距离动作")
+                    : actionLabelForAction(action);
+            summary.setText("将当前触发动作切换为\n" + label);
+            summary.setTextColor(activity.textColor());
+            summary.setTextSize(16f);
+            summary.setPadding(Math.round(dp(24)), Math.round(dp(12)),
+                    Math.round(dp(24)), Math.round(dp(18)));
+            AlertDialog dialog = new AlertDialog.Builder(activity)
+                    .setTitle("切换动作")
+                    .setView(summary)
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("保存", null)
+                    .create();
+            dialog.show();
+            styleBottomDialog(dialog);
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                activity.commitSideGestureAction(cornerMode, tier, slot, action);
+                actions[tier][slot] = action;
+                invalidate();
+                dialog.dismiss();
+            });
+            activity.attachDialogButtonHaptics(dialog);
+        }
+
+        private EditText editorInput(String hint, String value, boolean multiline) {
+            EditText input = new EditText(activity);
+            input.setHint(hint);
+            input.setText(value == null ? "" : value);
+            input.setTextColor(activity.textColor());
+            input.setHintTextColor(activity.subtextColor());
+            input.setTextSize(15f);
+            input.setPadding(Math.round(dp(12)), Math.round(dp(6)),
+                    Math.round(dp(12)), Math.round(dp(6)));
+            input.setBackground(activity.outlinedRect(activity.surfaceColor(),
+                    activity.strokeColor(), 1, 8));
+            if (multiline) {
+                input.setGravity(Gravity.TOP | Gravity.START);
+                input.setMinHeight(Math.round(dp(88)));
+                input.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                        | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+            } else {
+                input.setSingleLine(true);
+                input.setMinHeight(Math.round(dp(48)));
+            }
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            params.bottomMargin = Math.round(dp(8));
+            input.setLayoutParams(params);
+            return input;
+        }
+
+        private String targetSummary(SideGestureTargetStore.Target target) {
+            switch (target.type) {
+                case SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP:
+                    return "当前目标 · 指定应用\n" + target.label + "\n" + target.value;
+                case SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY:
+                    return "当前目标 · Activity\n" + target.label + "\n" + target.value;
+                case SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI:
+                    return "当前目标 · Intent URI\n" + target.value;
+                case SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL:
+                    return "当前目标 · Scheme URL\n" + target.value;
+                default:
+                    return target.label;
+            }
+        }
+
+        private boolean editorHasChanges(SideGestureTargetStore.Target original,
+                SideGestureTargetStore.Target draft, int draftAction, int originalAction,
+                EditText name, EditText value, EditText data, EditText extras, EditText customAction,
+                RadioGroup actionGroup, CheckBox newTask, CheckBox root) {
+            if (draftAction != originalAction || !name.getText().toString().trim().equals(draft.customName)) return true;
+            if (draft.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI
+                    || draft.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL) {
+                return value != null && !value.getText().toString().trim().equals(draft.value);
+            }
+            if (draft.type != SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY) return false;
+            String selectedAction = actionGroup.getCheckedRadioButtonId() ==
+                    actionGroup.getChildAt(1).getId()
+                    ? "android.intent.action.MAIN"
+                    : actionGroup.getCheckedRadioButtonId() == actionGroup.getChildAt(0).getId()
+                    ? "android.intent.action.VIEW" : customAction.getText().toString().trim();
+            return !selectedAction.equals(draft.action)
+                    || !data.getText().toString().trim().equals(draft.dataUri)
+                    || !extras.getText().toString().equals(draft.extras)
+                    || newTask.isChecked() != draft.newTask || root.isChecked() != draft.root;
+        }
+
+        private void confirmDiscard(AlertDialog owner, Runnable onDiscard) {
+            new AlertDialog.Builder(activity)
+                    .setMessage("放弃本次修改？")
+                    .setNegativeButton("继续编辑", null)
+                    .setPositiveButton("放弃", (d, which) -> onDiscard.run())
+                    .show();
+        }
+
+        private void styleBottomDialog(AlertDialog dialog) {
+            activity.styleDialog(dialog);
             if (dialog.getWindow() != null) {
-                dialog.getWindow().setLayout(getWidth() - Math.round(dp(32)),
+                dialog.getWindow().setGravity(Gravity.BOTTOM);
+                dialog.getWindow().setBackgroundDrawable(activity.roundRect(
+                        activity.surfaceSoftColor(), 20));
+                dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT);
             }
-            activity.attachDialogButtonHaptics(dialog);
         }
 
         private int hitHandle(float x, float y) {
@@ -1107,6 +1616,10 @@ public final class SideGestureZoneOverlay {
             } else if (action == SIDE_GESTURE_INHERIT_LONG) {
                 action = actions[SIDE_GESTURE_LONG][index];
             }
+            return actionLabelForAction(action);
+        }
+
+        private String actionLabelForAction(int action) {
             switch (action) {
                 case SettingsStore.SIDE_GESTURE_ACTION_BACK: return "返回";
                 case SettingsStore.SIDE_GESTURE_ACTION_HOME: return "返回桌面";
