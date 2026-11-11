@@ -376,8 +376,19 @@ public final class SettingsCardFactory {
     public View createSideGestureSettingsCard() {
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
+        activity.addActionButtonRow(page, "手势设置",
+                "设置侧边和底角手势的动作、触发区域、滑动提示与返回动画。", "打开",
+                () -> activity.openPage(MainActivity.Page.SIDE_GESTURE_SETTINGS));
+        return activity.buildSectionCard("手势增强",
+                "自定义侧边滑动和底角斜滑的动作。",
+                page, false, SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED,
+                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED);
+    }
+
+    public View createSideBackArrowSettingsPage() {
         LinearLayout arrowOptions = new LinearLayout(activity);
         arrowOptions.setOrientation(LinearLayout.VERTICAL);
+        activity.addProfileSectionHeader(arrowOptions, "形状与位置", null);
         activity.addSliderRow(arrowOptions, "箭头长度", "调整返回箭头沿指向方向的长度。",
                 SettingsStore.KEY_SIDE_BACK_ARROW_LENGTH_DP,
                 SettingsStore.DEFAULT_SIDE_BACK_ARROW_LENGTH_DP, 3, 20, "dp");
@@ -390,6 +401,8 @@ public final class SettingsCardFactory {
         activity.addSliderRow(arrowOptions, "边缘间距", "调整箭头初始位置与屏幕边缘的距离。",
                 SettingsStore.KEY_SIDE_BACK_ARROW_EDGE_OFFSET_DP,
                 SettingsStore.DEFAULT_SIDE_BACK_ARROW_EDGE_OFFSET_DP, 0, 48, "dp");
+        activity.addDivider(arrowOptions);
+        activity.addProfileSectionHeader(arrowOptions, "动画", null);
         activity.addSliderRow(arrowOptions, "长距离额外移动", "完成长距离返回时，箭头沿指向方向继续移动的距离。",
                 SettingsStore.KEY_SIDE_BACK_ARROW_LONG_EXTRA_DISTANCE_DP,
                 SettingsStore.DEFAULT_SIDE_BACK_ARROW_LONG_EXTRA_DISTANCE_DP, 0, 80, "dp");
@@ -397,47 +410,21 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_SIDE_BACK_ARROW_ANIMATION_DURATION_MS,
                 SettingsStore.DEFAULT_SIDE_BACK_ARROW_ANIMATION_DURATION_MS, 80, 500, "ms");
         activity.addDivider(arrowOptions);
+        activity.addProfileSectionHeader(arrowOptions, "颜色", null);
         ColorPreferenceEditor colorEditor = new ColorPreferenceEditor(activity);
-        colorEditor.addColor(arrowOptions, "短距离内线颜色",
+        colorEditor.addColor(arrowOptions, "短距离箭头颜色",
                 SettingsStore.KEY_SIDE_BACK_ARROW_SHORT_COLOR,
                 SettingsStore.DEFAULT_SIDE_BACK_ARROW_SHORT_COLOR);
-        colorEditor.addColor(arrowOptions, "长距离内线颜色",
+        colorEditor.addColor(arrowOptions, "长距离箭头颜色",
                 SettingsStore.KEY_SIDE_BACK_ARROW_LONG_COLOR,
                 SettingsStore.DEFAULT_SIDE_BACK_ARROW_LONG_COLOR);
-        colorEditor.addColor(arrowOptions, "短距离外描边颜色",
+        colorEditor.addColor(arrowOptions, "短距离描边颜色",
                 SettingsStore.KEY_SIDE_BACK_ARROW_SHORT_OUTLINE_COLOR,
                 SettingsStore.DEFAULT_SIDE_BACK_ARROW_SHORT_OUTLINE_COLOR);
-        colorEditor.addColor(arrowOptions, "长距离外描边颜色",
+        colorEditor.addColor(arrowOptions, "长距离描边颜色",
                 SettingsStore.KEY_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR,
                 SettingsStore.DEFAULT_SIDE_BACK_ARROW_LONG_OUTLINE_COLOR);
-        View arrowOptionsCard = activity.buildSectionCard("悬浮返回箭头自定义",
-                "调整箭头尺寸、位置、长距离位移、动画速度和短长距离颜色。", arrowOptions, false);
-        arrowOptionsCard.setVisibility(SettingsStore.readInt(activity.prefs(),
-                SettingsStore.KEY_SIDE_BACK_ANIMATION_STYLE,
-                SettingsStore.DEFAULT_SIDE_BACK_ANIMATION_STYLE)
-                == SettingsStore.SIDE_BACK_ANIMATION_FLOATING_ARROW ? View.VISIBLE : View.GONE);
-        activity.addSwitchRow(page, "桌面启用侧边手势",
-                "开启后，桌面边缘滑动交由侧边手势增强处理，不再用于左右翻页；重启桌面生效。",
-                SettingsStore.KEY_LAUNCHER_SIDE_GESTURE_ENABLED,
-                SettingsStore.DEFAULT_LAUNCHER_SIDE_GESTURE_ENABLED);
-        activity.addChoiceRow(page, "返回动画样式",
-                "选择侧边返回时显示的动画；悬浮箭头会跟随斜滑方向并轻微区分长短距离。",
-                SettingsStore.KEY_SIDE_BACK_ANIMATION_STYLE,
-                SettingsStore.DEFAULT_SIDE_BACK_ANIMATION_STYLE,
-                new int[]{SettingsStore.SIDE_BACK_ANIMATION_RIBBON,
-                        SettingsStore.SIDE_BACK_ANIMATION_FLOATING_ARROW},
-                new String[]{"Ribbon", "悬浮返回箭头"},
-                value -> arrowOptionsCard.setVisibility(
-                        value == SettingsStore.SIDE_BACK_ANIMATION_FLOATING_ARROW
-                                ? View.VISIBLE : View.GONE));
-        page.addView(arrowOptionsCard, PageViewUtils.matchWrap());
-        activity.addActionButtonRow(page, "手势动作与触发设置",
-                "分别设置左右边缘的动作、触发距离和预览。", "打开",
-                () -> activity.openPage(MainActivity.Page.SIDE_GESTURE_SETTINGS));
-        return activity.buildSectionCard("侧边手势增强",
-                "扩展系统侧滑手势；锁屏时不会触发。需在 LSPosed 启用 SystemUI 范围并重启 SystemUI。",
-                page, false, SettingsStore.KEY_ASSISTANT_GESTURE_ENABLED,
-                SettingsStore.DEFAULT_ASSISTANT_GESTURE_ENABLED);
+        return activity.buildSectionCard("悬浮箭头设置", null, arrowOptions, true);
     }
 
     public View createSideGestureSettingsPage() {
@@ -445,13 +432,13 @@ public final class SettingsCardFactory {
         page.setOrientation(LinearLayout.VERTICAL);
         LinearLayout assistantOptions = new LinearLayout(activity);
         assistantOptions.setOrientation(LinearLayout.VERTICAL);
-        activity.addMultiChoiceRow(assistantOptions, "生效场景",
-                "仅控制选择“全局负一屏”的手势在哪些界面生效。",
+        activity.addMultiChoiceRow(assistantOptions, "适用界面",
+                "选择“全局负一屏”手势可以在哪些界面执行。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_SCENES, SettingsStore.DEFAULT_ASSISTANT_GESTURE_SCENES,
                 new int[]{SettingsStore.ASSISTANT_GESTURE_SCENE_NORMAL,
                         SettingsStore.ASSISTANT_GESTURE_SCENE_NOTIFICATION,
                         SettingsStore.ASSISTANT_GESTURE_SCENE_CONTROL_CENTER},
-                new String[]{"应用和桌面", "通知栏", "控制中心"}, "未选择触发场景");
+                new String[]{"应用和桌面", "通知栏", "控制中心"}, "未选择适用界面");
         activity.addDivider(assistantOptions);
         AssistantBackgroundSettings.addRows(activity, assistantOptions);
         View appearanceCard = activity.buildSectionCard("全局负一屏",
@@ -499,31 +486,37 @@ public final class SettingsCardFactory {
 
         LinearLayout gestureOptions = new LinearLayout(activity);
         gestureOptions.setOrientation(LinearLayout.VERTICAL);
+        activity.addActionButtonRow(gestureOptions, "编辑动作与触发区域",
+                "分别设置左右侧横滑、上斜滑和下斜滑的动作；拖动圆点调整共用距离、角度和竖向范围。",
+                "编辑", activity::openSideGestureZoneOverlay);
+        activity.addDivider(gestureOptions);
         boolean splitEnabled = SettingsStore.readBoolean(activity.prefs(),
                 SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED);
         LinearLayout triggerOptions = new LinearLayout(activity);
         triggerOptions.setOrientation(LinearLayout.VERTICAL);
         triggerOptions.setVisibility(splitEnabled ? View.GONE : View.VISIBLE);
-        activity.addChoiceRow(triggerOptions, "触发时机", "达到触发距离后，选择立即执行或松手时执行。",
+        activity.addChoiceRow(triggerOptions, "执行时机", "达到触发距离后，选择立即执行或松手后执行。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_TRIGGER_MODE,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE,
                 new int[]{SettingsStore.ASSISTANT_GESTURE_TRIGGER_AT_DISTANCE,
                         SettingsStore.ASSISTANT_GESTURE_TRIGGER_ON_RELEASE},
-                new String[]{"达到距离时触发", "松手时触发"});
-        activity.addActionButtonRow(gestureOptions, "底角手势设置",
-                "独立设置左右底角斜滑的触发距离和对应动作。",
-                "编辑", () -> activity.openPage(MainActivity.Page.CORNER_GESTURE_SETTINGS));
-        activity.addDivider(gestureOptions);
+                new String[]{"达到距离立即执行", "松手后执行"});
         LinearLayout farOptions = new LinearLayout(activity);
         farOptions.setOrientation(LinearLayout.VERTICAL);
         farOptions.setVisibility(splitEnabled ? View.VISIBLE : View.GONE);
-        activity.addSwitchRow(farOptions, "启用远距离动作",
-                "在中距离之外增加一档；未单独设置动作时，沿用同方向的中距离动作。",
+        activity.addSwitchRow(farOptions, "增加远距离动作",
+                "在近距离和中距离之外增加一档；未单独设置时，沿用同方向的中距离动作。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_FAR_ENABLED, false,
                 (buttonView, isChecked) -> updateActionVisibility.run());
-        activity.addSwitchRow(gestureOptions, "按距离区分动作",
-                "开启后区分近距离和中距离，按松手时的滑动距离执行对应动作。",
+        TextView releaseNote = new TextView(activity);
+        releaseNote.setText("按松手时的滑动距离执行对应动作。");
+        releaseNote.setTextSize(12);
+        releaseNote.setTextColor(activity.subtextColor());
+        releaseNote.setPadding(0, activity.dp(4), 0, activity.dp(8));
+        farOptions.addView(releaseNote, PageViewUtils.matchWrap());
+        activity.addSwitchRow(gestureOptions, "按滑动距离设置不同动作",
+                "开启后可分别设置近距离和中距离动作，均在松手后执行。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
                 (buttonView, isChecked) -> {
@@ -532,29 +525,86 @@ public final class SettingsCardFactory {
                     updateActionVisibility.run();
                 });
         gestureOptions.addView(farOptions, PageViewUtils.matchWrap());
-        gestureOptions.addView(triggerOptions, activity.matchWrapWithTop(8));
+        gestureOptions.addView(triggerOptions, PageViewUtils.matchWrap());
         activity.addDivider(gestureOptions);
-        activity.addProfileSectionHeader(gestureOptions, "辅助提示",
-                "控制滑动时显示的动作名称和触发区域。");
-        activity.addSwitchRow(gestureOptions, "显示动作名称",
+        activity.addSwitchRow(gestureOptions, "在桌面启用侧边手势",
+                "开启后，桌面边缘滑动执行手势动作，不再用于左右翻页；需重启桌面生效。",
+                SettingsStore.KEY_LAUNCHER_SIDE_GESTURE_ENABLED,
+                SettingsStore.DEFAULT_LAUNCHER_SIDE_GESTURE_ENABLED);
+        page.addView(activity.buildSectionCard("侧边手势",
+                "设置从屏幕左右边缘向内滑动的动作。", gestureOptions, true), PageViewUtils.matchWrap());
+
+        LinearLayout cornerOptions = new LinearLayout(activity);
+        cornerOptions.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout cornerEntry = new LinearLayout(activity);
+        cornerEntry.setOrientation(LinearLayout.VERTICAL);
+        activity.addActionButtonRow(cornerEntry, "底角手势设置",
+                "独立设置左右底角的动作、触发距离和距离分档。", "打开",
+                () -> activity.openPage(MainActivity.Page.CORNER_GESTURE_SETTINGS));
+        Switch cornerSwitch = activity.addSwitchRow(cornerOptions, "自定义底角手势",
+                "开启后，从左右底角斜滑执行自定义动作；关闭后恢复系统小窗手势。",
+                SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
+                SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED,
+                (buttonView, isChecked) -> {
+                    activity.setEnabledRecursively(cornerEntry, isChecked);
+                    cornerEntry.setAlpha(isChecked ? 1f : 0.45f);
+                    updateActionVisibility.run();
+                });
+        cornerOptions.addView(cornerEntry, PageViewUtils.matchWrap());
+        activity.setEnabledRecursively(cornerEntry, cornerSwitch.isChecked());
+        cornerEntry.setAlpha(cornerSwitch.isChecked() ? 1f : 0.45f);
+        page.addView(activity.buildSectionCard("底角手势",
+                "从左右底角斜滑，松手后执行。默认不执行动作，请先设置。", cornerOptions, true),
+                activity.matchWrapWithTop(8));
+
+        LinearLayout previewOptions = new LinearLayout(activity);
+        previewOptions.setOrientation(LinearLayout.VERTICAL);
+        activity.addSwitchRow(previewOptions, "显示动作名称",
                 "滑动时显示当前对应的动作名称。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED);
-        activity.addSwitchRow(gestureOptions, "显示触发区域",
+        activity.addSwitchRow(previewOptions, "显示触发区域",
                 "滑动时标出各方向的触发区域、距离和对应动作。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED);
-        activity.addActionButtonRow(gestureOptions, "侧边手势设置",
-                "分别设置左右侧的动作，拖动圆点调整共用的触发距离、角度及竖向范围。",
-                "编辑", activity::openSideGestureZoneOverlay);
-        View gestureCard = activity.buildSectionCard("滑动距离与触发", null, gestureOptions, true);
-        gestureCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
+        page.addView(activity.buildSectionCard("滑动提示", null, previewOptions, true),
+                activity.matchWrapWithTop(8));
+
+        LinearLayout animationOptions = new LinearLayout(activity);
+        animationOptions.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout arrowEntry = new LinearLayout(activity);
+        arrowEntry.setOrientation(LinearLayout.VERTICAL);
+        activity.addActionButtonRow(arrowEntry, "悬浮箭头设置",
+                "调整箭头形状、位置、动画，以及短距离和长距离的颜色。", "打开",
+                () -> activity.openPage(MainActivity.Page.SIDE_BACK_ARROW_SETTINGS));
+        arrowEntry.setVisibility(SettingsStore.readInt(activity.prefs(),
+                SettingsStore.KEY_SIDE_BACK_ANIMATION_STYLE,
+                SettingsStore.DEFAULT_SIDE_BACK_ANIMATION_STYLE)
+                == SettingsStore.SIDE_BACK_ANIMATION_FLOATING_ARROW ? View.VISIBLE : View.GONE);
+        activity.addChoiceRow(animationOptions, "动画样式",
+                "选择侧边返回时显示的动画；悬浮箭头会跟随斜滑方向并区分长短距离。",
+                SettingsStore.KEY_SIDE_BACK_ANIMATION_STYLE,
+                SettingsStore.DEFAULT_SIDE_BACK_ANIMATION_STYLE,
+                new int[]{SettingsStore.SIDE_BACK_ANIMATION_RIBBON,
+                        SettingsStore.SIDE_BACK_ANIMATION_FLOATING_ARROW},
+                new String[]{"丝带动画（Ribbon）", "悬浮返回箭头"},
+                value -> arrowEntry.setVisibility(
+                        value == SettingsStore.SIDE_BACK_ANIMATION_FLOATING_ARROW
+                                ? View.VISIBLE : View.GONE));
+        animationOptions.addView(arrowEntry, PageViewUtils.matchWrap());
+        page.addView(activity.buildSectionCard("返回动画", null, animationOptions, true),
+                activity.matchWrapWithTop(8));
 
         activity.setSideGestureActionsChangedListener(updateActionVisibility);
         updateActionVisibility.run();
-        page.addView(gestureCard, activity.matchWrapWithTop(8));
         page.addView(appearanceCard, activity.matchWrapWithTop(8));
         page.addView(workspaceCard, activity.matchWrapWithTop(8));
+        TextView setupNote = new TextView(activity);
+        setupNote.setText("使用前请在 LSPosed 中启用 SystemUI 作用域并重启 SystemUI；底角手势还需启用 SystemUITools 作用域。锁屏时不触发手势增强。");
+        setupNote.setTextSize(12);
+        setupNote.setTextColor(activity.subtextColor());
+        setupNote.setPadding(activity.dp(16), activity.dp(12), activity.dp(16), activity.dp(4));
+        page.addView(setupNote, PageViewUtils.matchWrap());
         return page;
     }
 

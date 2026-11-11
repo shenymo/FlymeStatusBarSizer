@@ -200,7 +200,8 @@ public class MainActivity extends Activity {
         SYSTEM_APPEARANCE("系统外观", "调整摄像头挖孔、状态栏颜色、桌面整理和系统界面外观。", null, true),
         SYSTEM_INTERACTION("手势与系统交互", "调整侧边手势、单手模式、MBack、小窗、输入法和最近任务。", null, true),
         CORNER_GESTURE_SETTINGS("底角手势设置", "独立设置左右底角斜滑的触发距离和对应动作。", null, false),
-        SIDE_GESTURE_SETTINGS("侧边手势增强", "分别设置左右边缘的滑动动作和触发方式。", null, false),
+        SIDE_GESTURE_SETTINGS("手势增强", "设置侧边和底角手势的动作、提示与返回动画。", null, false),
+        SIDE_BACK_ARROW_SETTINGS("悬浮箭头设置", "调整箭头的形状、位置、动画和颜色。", null, false),
         ADVANCED_DEBUG("工具与调试", "管理配置、性能日志、布局微调和调试工具。", null, true),
         ABOUT("关于与支持", null, null, false),
         ABOUT_DETAILS("版本与适用范围", null, null, false),
@@ -348,6 +349,9 @@ public class MainActivity extends Activity {
                 SideGestureSettingsPageController::bind);
         registerPage(Page.CORNER_GESTURE_SETTINGS, R.layout.page_side_gesture,
                 com.example.flymestatusbarsizer.ui.CornerGestureSettingsPage::bind);
+        registerPage(Page.SIDE_BACK_ARROW_SETTINGS, R.layout.page_side_gesture,
+                (activity, root) -> root.addView(
+                        settingsCardFactory.createSideBackArrowSettingsPage(), PageViewUtils.matchWrap()));
         registerPage(Page.ADVANCED_DEBUG, R.layout.page_advanced_debug, AdvancedDebugPageController::bind);
         registerPage(Page.ABOUT, R.layout.page_about, AboutPageController::bind);
         registerPage(Page.ABOUT_DETAILS, R.layout.page_about, AboutPageController::bindDetails);
@@ -2609,7 +2613,7 @@ public class MainActivity extends Activity {
         return output.toString(StandardCharsets.UTF_8.name());
     }
 
-    void showIntInputDialog(String titleText, int currentValue, int min, int max, String suffix,
+    public void showIntInputDialog(String titleText, int currentValue, int min, int max, String suffix,
             IntValueConsumer consumer) {
         EditText input = new EditText(this);
         input.setText(String.valueOf(currentValue));
@@ -3682,7 +3686,7 @@ public class MainActivity extends Activity {
         return settingsUiFactory.dp(value);
     }
 
-    private interface IntValueConsumer {
+    public interface IntValueConsumer {
         void accept(int value);
     }
 

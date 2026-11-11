@@ -75,8 +75,8 @@ public final class SideGestureActions {
     public static String label(int action) {
         switch (action) {
             case SettingsStore.SIDE_GESTURE_ACTION_BACK: return "返回";
-            case SettingsStore.SIDE_GESTURE_ACTION_HOME: return "主页";
-            case SettingsStore.SIDE_GESTURE_ACTION_RECENTS: return "后台多任务界面";
+            case SettingsStore.SIDE_GESTURE_ACTION_HOME: return "返回桌面";
+            case SettingsStore.SIDE_GESTURE_ACTION_RECENTS: return "最近任务";
             case SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT: return "全局负一屏";
             case SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE: return "多应用工作台";
             case SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER: return "任务切换器";

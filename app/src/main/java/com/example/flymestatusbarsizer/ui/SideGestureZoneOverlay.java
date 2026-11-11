@@ -36,20 +36,20 @@ public final class SideGestureZoneOverlay {
             SettingsStore.SIDE_GESTURE_ACTION_BACK,
             SettingsStore.SIDE_GESTURE_ACTION_HOME,
             SettingsStore.SIDE_GESTURE_ACTION_RECENTS,
+            SettingsStore.SIDE_GESTURE_ACTION_WINDOWMODE_PANEL,
+            SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER,
             SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT,
             SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE,
-            SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER,
             SettingsStore.SIDE_GESTURE_ACTION_QUICK_TOOLS,
             SettingsStore.SIDE_GESTURE_ACTION_APP_LAUNCHER,
-            SettingsStore.SIDE_GESTURE_ACTION_WINDOWMODE_PANEL,
             SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP,
             SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY,
             SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI,
             SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL
     };
     private static final String[] ACTION_LABELS = {
-            "无动作", "返回", "主页", "后台多任务界面", "全局负一屏", "多应用工作台", "任务切换器", "快捷工具", "应用启动器",
-            "小窗选择面板", "打开指定应用", "打开 Activity", "打开 Intent", "打开 Scheme URL"
+            "无动作", "返回", "返回桌面", "最近任务", "小窗选择面板", "任务切换器", "全局负一屏", "多应用工作台",
+            "快捷工具", "应用启动器", "打开指定应用", "打开 Activity", "打开 Intent URI", "打开 Scheme URL"
     };
     private static final int DRAG_NONE = 0;
     private static final int DRAG_SHORT = 1;
@@ -239,7 +239,7 @@ public final class SideGestureZoneOverlay {
         private float scale;
         private int dragging;
         private boolean sideControlTouchActive;
-        private RectF pressedCloseControl;
+        private RectF pressedButtonControl;
         private float dragOffsetX;
         private float dragOffsetY;
 
@@ -293,8 +293,10 @@ public final class SideGestureZoneOverlay {
             edge = leftSide ? 0f : width;
             direction = leftSide ? 1f : -1f;
             originX = edge;
-            scale = farEnabled ? Math.min(density,
-                    (width - dp(28)) / SettingsStore.MAX_ASSISTANT_GESTURE_FAR_DISTANCE_DP) : density;
+            int maxSideDistance = farEnabled ? SettingsStore.MAX_ASSISTANT_GESTURE_FAR_DISTANCE_DP
+                    : splitEnabled ? SettingsStore.MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP
+                    : SettingsStore.MAX_ASSISTANT_GESTURE_DISTANCE_DP;
+            scale = Math.min(density, (width - dp(28)) / maxSideDistance);
             if (cornerMode) {
                 centerY = bottom - dp(108);
                 int maxDistance = farEnabled ? 720 : splitEnabled ? 480 : 240;
@@ -696,28 +698,41 @@ public final class SideGestureZoneOverlay {
             drawControl(canvas, leftControl, cornerMode ? "左底角" : "左侧", leftSide);
             drawControl(canvas, rightControl, cornerMode ? "右底角" : "右侧", !leftSide);
 
-            if (cornerMode || farEnabled) {
-                float tierTop = controlTop + controlHeight + gap;
-                int count = farEnabled ? 3 : splitEnabled ? 2 : 1;
-                float tierWidth = (width - margin * 2f - gap * (count - 1)) / count;
-                for (int tier = 0; tier < count; tier++) {
-                    float left = margin + tier * (tierWidth + gap);
-                    tierControls[tier].set(left, tierTop, left + tierWidth, tierTop + controlHeight);
-                    drawControl(canvas, tierControls[tier],
-                            TIER_NAMES[tier], false);
+            float tierTop = controlTop + controlHeight + gap;
+            int count = farEnabled ? 3 : splitEnabled ? 2 : 1;
+            int[] distances = {shortDistanceDp, longDistanceDp, farDistanceDp};
+            float tierWidth = (width - margin * 2f - gap * (count - 1)) / count;
+            for (int tier = 0; tier < tierControls.length; tier++) {
+                RectF rect = tierControls[tier];
+                if (tier >= count) {
+                    rect.setEmpty();
+                    continue;
                 }
+                float left = margin + tier * (tierWidth + gap);
+                rect.set(left, tierTop, left + tierWidth, tierTop + dp(48));
+                controlPaint.setColor(0xcc20262f);
+                canvas.drawRoundRect(rect, dp(10), dp(10), controlPaint);
+                textPaint.setTextSize(14f * scaledDensity);
+                canvas.drawText(splitEnabled ? TIER_NAMES[tier] : "触发设置",
+                        rect.centerX(), rect.centerY() - dp(3), textPaint);
+                textPaint.setTextSize(11f * scaledDensity);
+                canvas.drawText(distances[tier] + " dp", rect.centerX(),
+                        rect.centerY() + dp(14), textPaint);
             }
             float buttonTop = height - navigationBarHeight() - dp(58);
             float buttonHeight = dp(44);
-            exitControl.set(margin, buttonTop, margin + dp(96), buttonTop + buttonHeight);
-            saveControl.set(width - margin - dp(96), buttonTop, width - margin,
+            float buttonWidth = (width - margin * 2f - gap) / 2f;
+            exitControl.set(margin, buttonTop, margin + buttonWidth, buttonTop + buttonHeight);
+            saveControl.set(width - margin - buttonWidth, buttonTop, width - margin,
                     buttonTop + buttonHeight);
             drawControl(canvas, exitControl, "退出", false);
             drawControl(canvas, saveControl, "保存", true);
             textPaint.setTextSize(11f * scaledDensity);
             textPaint.setColor(0xeeffffff);
-            canvas.drawText(cornerMode ? "点色块选动作；拖动圆点调整触发距离"
-                            : "点区域选动作；拖动圆点调整距离、角度和竖向范围", width / 2f,
+            canvas.drawText("点顶部按钮设置距离与动作，点击保存后生效", width / 2f,
+                    buttonTop - dp(26), textPaint);
+            canvas.drawText(cornerMode ? "拖动圆点调距离；点色块选动作"
+                            : "拖动圆点调距离、角度和竖向范围；点区域选动作", width / 2f,
                     buttonTop - dp(10), textPaint);
             textPaint.setColor(Color.WHITE);
         }
@@ -738,11 +753,11 @@ public final class SideGestureZoneOverlay {
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_DOWN) {
                 if (exitControl.contains(x, y)) {
-                    pressedCloseControl = exitControl;
+                    pressedButtonControl = exitControl;
                     return true;
                 }
                 if (saveControl.contains(x, y)) {
-                    pressedCloseControl = saveControl;
+                    pressedButtonControl = saveControl;
                     return true;
                 }
                 if (leftControl.contains(x, y)) {
@@ -757,10 +772,8 @@ public final class SideGestureZoneOverlay {
                     invalidate();
                     return true;
                 }
-                if (cornerMode || farEnabled) {
-                    for (int tier = 0; tier < tierControls.length; tier++) {
-                        if (tierControls[tier].contains(x, y)) return true;
-                    }
+                for (int tier = 0; tier < tierControls.length; tier++) {
+                    if (tierControls[tier].contains(x, y)) return true;
                 }
                 dragging = hitHandle(x, y);
                 if (cornerMode && dragging != DRAG_NONE) {
@@ -791,31 +804,14 @@ public final class SideGestureZoneOverlay {
                         if (cornerMode) {
                             float upward = Math.max(0f, centerY - (y - dragOffsetY));
                             distance = Math.round((float) Math.hypot(inward, upward) / scale);
-                            if (dragging == DRAG_FAR) {
-                                farDistanceDp = clamp(distance, longDistanceDp + 1, 720);
-                            } else if (dragging == DRAG_LONG) {
-                                longDistanceDp = clamp(distance, shortDistanceDp + 1,
-                                        farEnabled ? Math.min(farDistanceDp - 1, 480) : 480);
-                            } else {
-                                shortDistanceDp = clamp(distance, 0,
-                                        splitEnabled ? Math.min(longDistanceDp - 1, 240) : 240);
-                            }
-                        } else if (dragging == DRAG_FAR) {
-                            farDistanceDp = clamp(distance, longDistanceDp + 1,
-                                    SettingsStore.MAX_ASSISTANT_GESTURE_FAR_DISTANCE_DP);
-                        } else if (dragging == DRAG_LONG) {
-                            longDistanceDp = clamp(distance,
-                                    farEnabled ? shortDistanceDp + 1 : SettingsStore.MIN_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
-                                    farEnabled ? Math.min(farDistanceDp - 1,
-                                            SettingsStore.MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP)
-                                            : SettingsStore.MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP);
-                        } else {
-                            shortDistanceDp = clamp(distance,
-                                    SettingsStore.MIN_ASSISTANT_GESTURE_DISTANCE_DP,
-                                    farEnabled ? Math.min(longDistanceDp - 1,
-                                            SettingsStore.MAX_ASSISTANT_GESTURE_DISTANCE_DP)
-                                            : SettingsStore.MAX_ASSISTANT_GESTURE_DISTANCE_DP);
                         }
+                        int tier = dragging == DRAG_SHORT ? SIDE_GESTURE_SHORT
+                                : dragging == DRAG_LONG ? SIDE_GESTURE_LONG : SIDE_GESTURE_FAR;
+                        int[] bounds = distanceBounds(tier);
+                        distance = clamp(distance, bounds[0], bounds[1]);
+                        if (tier == SIDE_GESTURE_SHORT) shortDistanceDp = distance;
+                        else if (tier == SIDE_GESTURE_LONG) longDistanceDp = distance;
+                        else farDistanceDp = distance;
                     } else if (dragging == DRAG_UP_ANGLE || dragging == DRAG_DOWN_ANGLE) {
                         float inward = Math.max(1f, (x - originX) * direction);
                         float vertical = Math.abs(y - centerY);
@@ -834,9 +830,9 @@ public final class SideGestureZoneOverlay {
                     return true;
                 }
             } else if (action == MotionEvent.ACTION_UP) {
-                if (pressedCloseControl != null) {
-                    RectF control = pressedCloseControl;
-                    pressedCloseControl = null;
+                if (pressedButtonControl != null) {
+                    RectF control = pressedButtonControl;
+                    pressedButtonControl = null;
                     if (control.contains(x, y)) {
                         activity.performTapHaptic(this);
                         close(control == saveControl);
@@ -853,13 +849,11 @@ public final class SideGestureZoneOverlay {
                     activity.performTapHaptic(this);
                     return true;
                 }
-                if (cornerMode || farEnabled) {
-                    for (int tier = 0; tier < tierControls.length; tier++) {
-                        if (tierControls[tier].contains(x, y)) {
-                            activity.performTapHaptic(this);
-                            showTierActions(tier);
-                            return true;
-                        }
+                for (int tier = 0; tier < tierControls.length; tier++) {
+                    if (tierControls[tier].contains(x, y)) {
+                        activity.performTapHaptic(this);
+                        showTierSettings(tier);
+                        return true;
                     }
                 }
                 int actionLabel = hitActionLabel(x, y);
@@ -893,27 +887,61 @@ public final class SideGestureZoneOverlay {
                 }
                 return true;
             } else if (action == MotionEvent.ACTION_CANCEL) {
-                pressedCloseControl = null;
+                pressedButtonControl = null;
                 sideControlTouchActive = false;
                 dragging = DRAG_NONE;
             }
             return true;
         }
 
-        private void showTierActions(int tier) {
-            if (cornerMode) {
-                showActionPicker(0, tier);
-                return;
+        private int[] distanceBounds(int tier) {
+            if (tier == SIDE_GESTURE_SHORT) {
+                int max = SettingsStore.MAX_ASSISTANT_GESTURE_DISTANCE_DP;
+                if ((cornerMode && splitEnabled) || farEnabled) max = Math.min(max, longDistanceDp - 1);
+                return new int[]{SettingsStore.MIN_ASSISTANT_GESTURE_DISTANCE_DP, max};
             }
-            int offset = leftSide ? 0 : 3;
-            String[] items = new String[3];
-            for (int i = 0; i < 3; i++) {
-                items[i] = directionName(i) + " · " + actionLabel(offset + i, tier);
+            if (tier == SIDE_GESTURE_LONG) {
+                int min = cornerMode || farEnabled ? shortDistanceDp + 1
+                        : SettingsStore.MIN_ASSISTANT_GESTURE_LONG_DISTANCE_DP;
+                int max = SettingsStore.MAX_ASSISTANT_GESTURE_LONG_DISTANCE_DP;
+                if (farEnabled) max = Math.min(max, farDistanceDp - 1);
+                return new int[]{min, max};
+            }
+            return new int[]{longDistanceDp + 1, SettingsStore.MAX_ASSISTANT_GESTURE_FAR_DISTANCE_DP};
+        }
+
+        private void showDistanceInput(int tier) {
+            int[] distances = {shortDistanceDp, longDistanceDp, farDistanceDp};
+            int[] bounds = distanceBounds(tier);
+            activity.showIntInputDialog(tier == SIDE_GESTURE_SHORT ? "最短触发距离"
+                            : TIER_NAMES[tier] + "阈值", distances[tier],
+                    bounds[0], bounds[1], "dp", value -> {
+                        if (tier == SIDE_GESTURE_SHORT) shortDistanceDp = value;
+                        else if (tier == SIDE_GESTURE_LONG) longDistanceDp = value;
+                        else farDistanceDp = value;
+                        invalidate();
+                    });
+        }
+
+        private void showTierSettings(int tier) {
+            int[] distances = {shortDistanceDp, longDistanceDp, farDistanceDp};
+            int offset = cornerMode ? (leftSide ? 0 : 1) : (leftSide ? 0 : 3);
+            String[] items = new String[cornerMode ? 2 : 4];
+            items[0] = (tier == SIDE_GESTURE_SHORT ? "最短触发距离" : "分档切换阈值")
+                    + " · " + distances[tier] + " dp";
+            for (int i = 1; i < items.length; i++) {
+                items[i] = (cornerMode ? "滑动动作" : directionName(i - 1))
+                        + " · " + actionLabel(offset + i - 1, tier);
             }
             AlertDialog dialog = new AlertDialog.Builder(activity)
-                    .setTitle((leftSide ? "左侧" : "右侧") + " · " + TIER_NAMES[tier])
-                    .setItems(items, (d, which) -> showActionPicker(which, tier))
-                    .setNegativeButton("取消", null)
+                    .setTitle((cornerMode ? (leftSide ? "左底角" : "右底角")
+                                    : (leftSide ? "左侧" : "右侧"))
+                            + " · " + (splitEnabled ? TIER_NAMES[tier] : "触发设置"))
+                    .setItems(items, (d, which) -> {
+                        if (which == 0) showDistanceInput(tier);
+                        else showActionPicker(which - 1, tier);
+                    })
+                    .setNegativeButton("完成", null)
                     .show();
             activity.attachDialogButtonHaptics(dialog);
         }
@@ -1065,8 +1093,8 @@ public final class SideGestureZoneOverlay {
             }
             switch (action) {
                 case SettingsStore.SIDE_GESTURE_ACTION_BACK: return "返回";
-                case SettingsStore.SIDE_GESTURE_ACTION_HOME: return "主页";
-                case SettingsStore.SIDE_GESTURE_ACTION_RECENTS: return "多任务";
+                case SettingsStore.SIDE_GESTURE_ACTION_HOME: return "返回桌面";
+                case SettingsStore.SIDE_GESTURE_ACTION_RECENTS: return "最近任务";
                 case SettingsStore.SIDE_GESTURE_ACTION_GLOBAL_ASSISTANT: return "全局负一屏";
                 case SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE: return "多应用工作台";
                 case SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER: return "任务切换器";
@@ -1085,7 +1113,7 @@ public final class SideGestureZoneOverlay {
                         switch (target.type) {
                             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP: return "打开应用";
                             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY: return "打开 Activity";
-                            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI: return "打开 Intent";
+                            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI: return "打开 Intent URI";
                             case SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL:
                                 return "打开 Scheme URL";
                         }
