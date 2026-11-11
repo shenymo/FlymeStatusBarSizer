@@ -149,10 +149,10 @@ public final class AssistantGesturePreviewLayout extends LinearLayout {
         private void drawSide(Canvas canvas, boolean leftEdge, float top, float bottom,
                 float shortCenter, float longCenter) {
             drawDistance(canvas, leftEdge, top, bottom, shortCenter, distanceDp,
-                    (leftEdge ? "左侧短距 " : "右侧短距 ") + distanceDp + "dp", linePaint);
+                    (leftEdge ? "左侧近距离 " : "右侧近距离 ") + distanceDp + "dp", linePaint);
             if (distanceSplitEnabled) {
                 drawDistance(canvas, leftEdge, top, bottom, longCenter, longDistanceDp,
-                        (leftEdge ? "左侧长距 " : "右侧长距 ") + longDistanceDp + "dp", longLinePaint);
+                        (leftEdge ? "左侧中距离 " : "右侧中距离 ") + longDistanceDp + "dp", longLinePaint);
             }
         }
 

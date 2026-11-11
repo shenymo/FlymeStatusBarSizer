@@ -505,25 +505,25 @@ public final class SettingsCardFactory {
         LinearLayout triggerOptions = new LinearLayout(activity);
         triggerOptions.setOrientation(LinearLayout.VERTICAL);
         triggerOptions.setVisibility(splitEnabled ? View.GONE : View.VISIBLE);
-        activity.addChoiceRow(triggerOptions, "触发时机", "达到最短滑动距离后立即触发，或等手指松开后触发。",
+        activity.addChoiceRow(triggerOptions, "触发时机", "达到触发距离后，选择立即执行或松手时执行。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_TRIGGER_MODE,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_TRIGGER_MODE,
                 new int[]{SettingsStore.ASSISTANT_GESTURE_TRIGGER_AT_DISTANCE,
                         SettingsStore.ASSISTANT_GESTURE_TRIGGER_ON_RELEASE},
-                new String[]{"达到距离立即触发", "松手后触发"});
-        activity.addActionButtonRow(gestureOptions, "底角手势单设置",
-                "保留原来的底角斜滑入口，单独设置左右底角的触发功能和距离。",
-                "打开", () -> activity.openPage(MainActivity.Page.CORNER_GESTURE_SETTINGS));
+                new String[]{"达到距离时触发", "松手时触发"});
+        activity.addActionButtonRow(gestureOptions, "底角手势设置",
+                "独立设置左右底角斜滑的触发距离和对应动作。",
+                "编辑", () -> activity.openPage(MainActivity.Page.CORNER_GESTURE_SETTINGS));
         activity.addDivider(gestureOptions);
         LinearLayout farOptions = new LinearLayout(activity);
         farOptions.setOrientation(LinearLayout.VERTICAL);
         farOptions.setVisibility(splitEnabled ? View.VISIBLE : View.GONE);
         activity.addSwitchRow(farOptions, "启用远距离动作",
-                "在长距离之外加一档。未单独设置时，沿用同方向的长距离动作。",
+                "在中距离之外增加一档；未单独设置动作时，沿用同方向的中距离动作。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_FAR_ENABLED, false,
                 (buttonView, isChecked) -> updateActionVisibility.run());
-        activity.addSwitchRow(gestureOptions, "区分短距离和长距离动作",
-                "开启后等手指松开，再按最终滑动距离选择对应动作。",
+        activity.addSwitchRow(gestureOptions, "按距离区分动作",
+                "开启后区分近距离和中距离，按松手时的滑动距离执行对应动作。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_DISTANCE_SPLIT_ENABLED,
                 (buttonView, isChecked) -> {
@@ -532,21 +532,21 @@ public final class SettingsCardFactory {
                     updateActionVisibility.run();
                 });
         gestureOptions.addView(farOptions, PageViewUtils.matchWrap());
+        gestureOptions.addView(triggerOptions, activity.matchWrapWithTop(8));
         activity.addDivider(gestureOptions);
-        activity.addProfileSectionHeader(gestureOptions, "滑动距离",
-                "达到最短距离后才会触发；开启分段后，按松手时所在的距离档位选择动作。");
-        activity.addSwitchRow(gestureOptions, "显示当前功能提示",
-                "手势过程中显示当前对应的功能名称。",
+        activity.addProfileSectionHeader(gestureOptions, "辅助提示",
+                "控制滑动时显示的动作名称和触发区域。");
+        activity.addSwitchRow(gestureOptions, "显示动作名称",
+                "滑动时显示当前对应的动作名称。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_PREVIEW_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED);
         activity.addSwitchRow(gestureOptions, "显示触发区域",
-                "有效侧边手势开始时，在屏幕上标出各方向区域、触发距离和对应功能。",
+                "滑动时标出各方向的触发区域、距离和对应动作。",
                 SettingsStore.KEY_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED,
                 SettingsStore.DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED);
-        gestureOptions.addView(triggerOptions, activity.matchWrapWithTop(8));
         activity.addActionButtonRow(gestureOptions, "侧边手势设置",
-                "打开侧边触发区域设置，可切换左右侧、调整滑动距离和设置动作。",
-                "开始编辑", activity::openSideGestureZoneOverlay);
+                "分别设置左右侧的动作，拖动圆点调整共用的触发距离、角度及竖向范围。",
+                "编辑", activity::openSideGestureZoneOverlay);
         View gestureCard = activity.buildSectionCard("滑动距离与触发", null, gestureOptions, true);
         gestureCard.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
 

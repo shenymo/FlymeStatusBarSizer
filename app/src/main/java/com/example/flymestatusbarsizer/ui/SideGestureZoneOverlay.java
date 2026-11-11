@@ -20,8 +20,6 @@ import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.LinearLayout;
 import android.widget.ListView;
-import android.widget.SeekBar;
-import android.widget.TextView;
 
 import com.example.flymestatusbarsizer.MainActivity;
 import com.example.flymestatusbarsizer.config.SettingsStore;
@@ -32,7 +30,7 @@ import java.util.List;
 
 /** Interactive trigger-zone editor drawn above the settings screen. */
 public final class SideGestureZoneOverlay {
-    private static final String[] TIER_NAMES = {"短距离", "长距离", "远距离"};
+    private static final String[] TIER_NAMES = {"近距离", "中距离", "远距离"};
     private static final int[] ACTION_VALUES = {
             SettingsStore.SIDE_GESTURE_ACTION_NONE,
             SettingsStore.SIDE_GESTURE_ACTION_BACK,
@@ -58,6 +56,7 @@ public final class SideGestureZoneOverlay {
     private static final int DRAG_UP_ANGLE = 3;
     private static final int DRAG_DOWN_ANGLE = 4;
     private static final int DRAG_MIN_VERTICAL = 5;
+    private static final int DRAG_FAR = 6;
 
     private final MainActivity activity;
     private final SharedPreferences prefs;
@@ -194,6 +193,7 @@ public final class SideGestureZoneOverlay {
         private final Paint longRegionPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint handlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint longHandlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint farHandlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint controlPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint selectedControlPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint labelBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -213,6 +213,7 @@ public final class SideGestureZoneOverlay {
         private float scale;
         private int dragging;
         private boolean sideControlTouchActive;
+        private RectF pressedCloseControl;
         private float dragOffsetX;
 
         OverlayView(Context context) {
@@ -238,6 +239,8 @@ public final class SideGestureZoneOverlay {
             handlePaint.setColor(0xff69a9ff);
             longHandlePaint.setColor(0xffffb45f);
             longHandlePaint.setAlpha(220);
+            farHandlePaint.setColor(0xff6de1ad);
+            farHandlePaint.setAlpha(220);
             controlPaint.setColor(0xcc20262f);
             selectedControlPaint.setColor(accentColor);
             textPaint.setColor(Color.WHITE);
@@ -263,7 +266,8 @@ public final class SideGestureZoneOverlay {
             edge = leftSide ? 0f : width;
             direction = leftSide ? 1f : -1f;
             originX = edge;
-            scale = density;
+            scale = farEnabled ? Math.min(density,
+                    (width - dp(28)) / SettingsStore.MAX_ASSISTANT_GESTURE_FAR_DISTANCE_DP) : density;
 
             canvas.drawColor(0xb8000000);
             int save = canvas.save();
@@ -306,7 +310,7 @@ public final class SideGestureZoneOverlay {
                         longThresholdPaint, offset, SIDE_GESTURE_LONG);
             }
             if (farEnabled) {
-                canvas.drawCircle(originX, centerY, farDistanceDp * scale, farThresholdPaint);
+                drawThreshold(canvas, farDistanceDp, farThresholdPaint, farHandlePaint);
                 drawActionLabels(canvas, farDistanceDp, farThresholdPaint, offset, SIDE_GESTURE_FAR);
             }
             canvas.drawCircle(originX, centerY, dp(5), handlePaint);
@@ -616,7 +620,7 @@ public final class SideGestureZoneOverlay {
                     float left = margin + tier * (tierWidth + gap);
                     tierControls[tier].set(left, tierTop, left + tierWidth, tierTop + controlHeight);
                     drawControl(canvas, tierControls[tier],
-                            tier == SIDE_GESTURE_FAR ? "远 " + farDistanceDp + "dp" : TIER_NAMES[tier], false);
+                            TIER_NAMES[tier], false);
                 }
             }
             float buttonTop = height - navigationBarHeight() - dp(58);
@@ -628,8 +632,7 @@ public final class SideGestureZoneOverlay {
             drawControl(canvas, saveControl, "保存", true);
             textPaint.setTextSize(11f * scaledDensity);
             textPaint.setColor(0xeeffffff);
-            canvas.drawText(farEnabled ? "点上方档位选动作或调整远距离"
-                    : "点区域选动作；拖动圆点调整距离、角度和竖向范围", width / 2f,
+            canvas.drawText("点区域选动作；拖动圆点调整距离、角度和竖向范围", width / 2f,
                     buttonTop - dp(10), textPaint);
             textPaint.setColor(Color.WHITE);
         }
@@ -650,11 +653,11 @@ public final class SideGestureZoneOverlay {
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_DOWN) {
                 if (exitControl.contains(x, y)) {
-                    close(false);
+                    pressedCloseControl = exitControl;
                     return true;
                 }
                 if (saveControl.contains(x, y)) {
-                    close(true);
+                    pressedCloseControl = saveControl;
                     return true;
                 }
                 if (leftControl.contains(x, y)) {
@@ -683,13 +686,20 @@ public final class SideGestureZoneOverlay {
                     dragOffsetX = x - handleX(longDistanceDp);
                     return true;
                 }
+                if (dragging == DRAG_FAR) {
+                    dragOffsetX = x - handleX(farDistanceDp);
+                    return true;
+                }
             } else if (action == MotionEvent.ACTION_MOVE) {
                 if (dragging != DRAG_NONE) {
-                    if (dragging == DRAG_SHORT || dragging == DRAG_LONG) {
+                    if (dragging == DRAG_SHORT || dragging == DRAG_LONG || dragging == DRAG_FAR) {
                         float handleX = x - dragOffsetX;
                         float inward = Math.max(0f, (handleX - originX) * direction);
                         int distance = Math.round(inward / scale);
-                        if (dragging == DRAG_LONG) {
+                        if (dragging == DRAG_FAR) {
+                            farDistanceDp = clamp(distance, longDistanceDp + 1,
+                                    SettingsStore.MAX_ASSISTANT_GESTURE_FAR_DISTANCE_DP);
+                        } else if (dragging == DRAG_LONG) {
                             longDistanceDp = clamp(distance,
                                     farEnabled ? shortDistanceDp + 1 : SettingsStore.MIN_ASSISTANT_GESTURE_LONG_DISTANCE_DP,
                                     farEnabled ? Math.min(farDistanceDp - 1,
@@ -720,6 +730,15 @@ public final class SideGestureZoneOverlay {
                     return true;
                 }
             } else if (action == MotionEvent.ACTION_UP) {
+                if (pressedCloseControl != null) {
+                    RectF control = pressedCloseControl;
+                    pressedCloseControl = null;
+                    if (control.contains(x, y)) {
+                        activity.performTapHaptic(this);
+                        close(control == saveControl);
+                    }
+                    return true;
+                }
                 if (sideControlTouchActive) {
                     sideControlTouchActive = false;
                     activity.performTapHaptic(this);
@@ -760,6 +779,7 @@ public final class SideGestureZoneOverlay {
                 }
                 return true;
             } else if (action == MotionEvent.ACTION_CANCEL) {
+                pressedCloseControl = null;
                 sideControlTouchActive = false;
                 dragging = DRAG_NONE;
             }
@@ -768,50 +788,14 @@ public final class SideGestureZoneOverlay {
 
         private void showTierActions(int tier) {
             int offset = leftSide ? 0 : 3;
-            String[] items = new String[tier == SIDE_GESTURE_FAR ? 4 : 3];
+            String[] items = new String[3];
             for (int i = 0; i < 3; i++) {
                 items[i] = directionName(i) + " · " + actionLabel(offset + i, tier);
             }
-            if (tier == SIDE_GESTURE_FAR) items[3] = "调整远距离 · " + farDistanceDp + "dp";
             AlertDialog dialog = new AlertDialog.Builder(activity)
                     .setTitle((leftSide ? "左侧" : "右侧") + " · " + TIER_NAMES[tier])
-                    .setItems(items, (d, which) -> {
-                        if (which == 3) showFarDistanceSlider();
-                        else showActionPicker(which, tier);
-                    })
+                    .setItems(items, (d, which) -> showActionPicker(which, tier))
                     .setNegativeButton("取消", null)
-                    .show();
-            activity.attachDialogButtonHaptics(dialog);
-        }
-
-        private void showFarDistanceSlider() {
-            int min = longDistanceDp + 1;
-            LinearLayout content = new LinearLayout(activity);
-            content.setOrientation(LinearLayout.VERTICAL);
-            int padding = Math.round(dp(20));
-            content.setPadding(padding, padding, padding, 0);
-            TextView value = new TextView(activity);
-            value.setText(farDistanceDp + " dp");
-            content.addView(value);
-            SeekBar slider = new SeekBar(activity);
-            slider.setMax(SettingsStore.MAX_ASSISTANT_GESTURE_FAR_DISTANCE_DP - min);
-            slider.setProgress(farDistanceDp - min);
-            slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
-                    value.setText((min + progress) + " dp");
-                }
-                @Override public void onStartTrackingTouch(SeekBar bar) { }
-                @Override public void onStopTrackingTouch(SeekBar bar) { }
-            });
-            content.addView(slider);
-            AlertDialog dialog = new AlertDialog.Builder(activity)
-                    .setTitle("调整远距离")
-                    .setView(content)
-                    .setNegativeButton("取消", null)
-                    .setPositiveButton("确定", (d, which) -> {
-                        farDistanceDp = min + slider.getProgress();
-                        invalidate();
-                    })
                     .show();
             activity.attachDialogButtonHaptics(dialog);
         }
@@ -825,7 +809,7 @@ public final class SideGestureZoneOverlay {
                 values = java.util.Arrays.copyOf(values, values.length + 1);
                 labels = java.util.Arrays.copyOf(labels, labels.length + 1);
                 values[values.length - 1] = SIDE_GESTURE_INHERIT_LONG;
-                labels[labels.length - 1] = "沿用长距离动作";
+                labels[labels.length - 1] = "沿用中距离动作";
             }
             int selectedIndex = -1;
             for (int i = 0; i < values.length; i++) {
@@ -904,18 +888,20 @@ public final class SideGestureZoneOverlay {
             float maxY = centerY + minVerticalDp * scale;
             if (Math.hypot(x - verticalX, y - minY) <= hit
                     || Math.hypot(x - verticalX, y - maxY) <= hit) return DRAG_MIN_VERTICAL;
-            float shortX = handleX(shortDistanceDp);
-            float shortY = centerY;
-            float longX = handleX(longDistanceDp);
-            float longY = centerY;
-            boolean shortHit = Math.hypot(x - shortX, y - shortY) <= hit;
-            boolean longHit = splitEnabled && Math.hypot(x - longX, y - longY) <= hit;
-            if (!shortHit && !longHit) return DRAG_NONE;
-            if (shortHit && longHit) {
-                return Math.hypot(x - shortX, y - shortY)
-                        <= Math.hypot(x - longX, y - longY) ? DRAG_SHORT : DRAG_LONG;
+            float nearest = (float) Math.hypot(x - handleX(shortDistanceDp), y - centerY);
+            int target = nearest <= hit ? DRAG_SHORT : DRAG_NONE;
+            if (splitEnabled) {
+                float distance = (float) Math.hypot(x - handleX(longDistanceDp), y - centerY);
+                if (distance <= hit && distance < nearest) {
+                    nearest = distance;
+                    target = DRAG_LONG;
+                }
             }
-            return shortHit ? DRAG_SHORT : DRAG_LONG;
+            if (farEnabled) {
+                float distance = (float) Math.hypot(x - handleX(farDistanceDp), y - centerY);
+                if (distance <= hit && distance < nearest) target = DRAG_FAR;
+            }
+            return target;
         }
 
         private float handleX(int distanceDp) {

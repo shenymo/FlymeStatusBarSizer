@@ -199,12 +199,12 @@ final class AssistantGestureZoneOverlay {
             if (!splitEnabled || longDistance > shortDistance) {
                 drawMode(canvas, availableX, upperY, lowerY, direction, 0,
                         shortDistance, splitEnabled ? longDistance : 0f, shortFill, shortStroke,
-                        splitEnabled ? "短" : "");
+                        splitEnabled ? "近" : "");
             }
             if (splitEnabled) {
                 drawMode(canvas, availableX, upperY, lowerY, direction, 1,
                         Math.max(shortDistance, longDistance), farEnabled ? farDistance : 0f,
-                        longFill, longStroke, "长");
+                        longFill, longStroke, "中");
             }
             if (farEnabled) {
                 drawMode(canvas, availableX, upperY, lowerY, direction, 2,
@@ -340,13 +340,13 @@ final class AssistantGestureZoneOverlay {
         private void drawThresholds(Canvas canvas, int direction) {
             ringPaint.setColor(shortStroke.getColor());
             canvas.drawCircle(startX, startY, shortDistance, ringPaint);
-            drawDistanceLabel(canvas, direction, shortDistance, "短 " + distanceText(shortDistance),
+            drawDistanceLabel(canvas, direction, shortDistance, "近 " + distanceText(shortDistance),
                     shortStroke.getColor());
             if (Float.isFinite(longDistance)) {
                 ringPaint.setColor(longStroke.getColor());
                 canvas.drawCircle(startX, startY, longDistance, ringPaint);
                 drawDistanceLabel(canvas, direction, longDistance,
-                        "长 " + distanceText(longDistance), longStroke.getColor());
+                        "中 " + distanceText(longDistance), longStroke.getColor());
             }
             if (Float.isFinite(farDistance)) {
                 ringPaint.setColor(farStroke.getColor());

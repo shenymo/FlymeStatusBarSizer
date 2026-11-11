@@ -199,7 +199,7 @@ public class MainActivity extends Activity {
         TIME_NETWORK("时间与网速", "设置实时网速显示、时间格式、时钟交互和状态栏文字样式。", null, true),
         SYSTEM_APPEARANCE("系统外观", "调整摄像头挖孔、状态栏颜色、桌面整理和系统界面外观。", null, true),
         SYSTEM_INTERACTION("手势与系统交互", "调整侧边手势、单手模式、MBack、小窗、输入法和最近任务。", null, true),
-        CORNER_GESTURE_SETTINGS("底角手势单设置", "分别设置左右底角小窗手势的触发距离和动作。", null, false),
+        CORNER_GESTURE_SETTINGS("底角手势设置", "独立设置左右底角斜滑的触发距离和对应动作。", null, false),
         SIDE_GESTURE_SETTINGS("侧边手势增强", "分别设置左右边缘的滑动动作和触发方式。", null, false),
         ADVANCED_DEBUG("工具与调试", "管理配置、性能日志、布局微调和调试工具。", null, true),
         ABOUT("关于与支持", null, null, false),

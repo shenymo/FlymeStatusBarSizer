@@ -10,7 +10,7 @@ import com.example.flymestatusbarsizer.config.SideGestureTargetStore;
 import com.example.flymestatusbarsizer.feature.assistant.SideGestureActions;
 
 public final class CornerGestureSettingsPage {
-    private static final String[] TIER_NAMES = {"短距离", "长距离", "远距离"};
+    private static final String[] TIER_NAMES = {"近距离", "中距离", "远距离"};
     private static final int[] ACTIONS = {
             SettingsStore.SIDE_GESTURE_ACTION_NONE,
             SettingsStore.SIDE_GESTURE_ACTION_BACK,
@@ -44,13 +44,13 @@ public final class CornerGestureSettingsPage {
                 SettingsStore.KEY_CORNER_GESTURE_SPLIT_ENABLED, false);
         boolean far = split && SettingsStore.readBoolean(prefs,
                 SettingsStore.KEY_CORNER_GESTURE_FAR_ENABLED, false);
-        activity.addSwitchRow(options, "区分短距离和长距离动作",
+        activity.addSwitchRow(options, "按距离区分动作",
                 "仅影响底角手势，按松手时的滑动距离选择动作。",
                 SettingsStore.KEY_CORNER_GESTURE_SPLIT_ENABLED, false,
                 (button, checked) -> bind(activity, root));
         if (split) {
             activity.addSwitchRow(options, "启用远距离动作",
-                    "在长距离之外再加一档，滑远后收回可回到较短档位。",
+                    "在中距离之外增加一档，滑远后收回可回到较近档位。",
                     SettingsStore.KEY_CORNER_GESTURE_FAR_ENABLED, false,
                     (button, checked) -> bind(activity, root));
         }
@@ -88,7 +88,7 @@ public final class CornerGestureSettingsPage {
                 SettingsStore.KEY_CORNER_GESTURE_DISTANCE_DP,
                 SettingsStore.DEFAULT_CORNER_GESTURE_DISTANCE_DP, 0, 240, "dp");
         if (split) {
-            activity.addApplySliderRow(distances, "长距离阈值", "达到此距离后松手，执行长距离动作。",
+            activity.addApplySliderRow(distances, "中距离阈值", "达到此距离后松手，执行中距离动作。",
                     SettingsStore.KEY_CORNER_GESTURE_LONG_DISTANCE_DP,
                     SettingsStore.DEFAULT_CORNER_GESTURE_LONG_DISTANCE_DP, 1, 480, "dp");
         }
@@ -98,7 +98,7 @@ public final class CornerGestureSettingsPage {
                     SettingsStore.DEFAULT_CORNER_GESTURE_FAR_DISTANCE_DP, 2, 720, "dp");
         }
         root.addView(activity.buildSectionCard("滑动距离",
-                "距离供左右底角共用；长距离至少比最短距离多 1dp，远距离至少比长距离多 1dp。",
+                "距离供左右底角共用；中距离至少比最短距离多 1dp，远距离至少比中距离多 1dp。",
                 distances, true), PageViewUtils.matchWrapWithTop(activity, 8));
     }
 
