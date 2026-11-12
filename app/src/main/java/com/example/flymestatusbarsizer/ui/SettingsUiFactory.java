@@ -200,13 +200,8 @@ public final class SettingsUiFactory {
         if (message == null || message.trim().isEmpty()) {
             return;
         }
-        View titleArea = row instanceof LinearLayout && ((LinearLayout) row).getChildCount() > 0
-                ? ((LinearLayout) row).getChildAt(0) : row;
-        if (titleArea == null) {
-            return;
-        }
-        titleArea.setContentDescription(titleText + "，长按查看说明");
-        titleArea.setOnLongClickListener(v -> {
+        row.setContentDescription(titleText + "，长按查看说明");
+        row.setOnLongClickListener(v -> {
             activity.performTapHaptic(v);
             activity.showHelpDialog(titleText, message);
             return true;
