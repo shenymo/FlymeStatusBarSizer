@@ -2346,7 +2346,7 @@ public class MainActivity extends Activity {
         return SettingsStore.readInt(prefs, fallbackKey, fallbackDefaultValue);
     }
 
-    void putBooleanSetting(String key, boolean value) {
+    public void putBooleanSetting(String key, boolean value) {
         prefs.edit().putBoolean(key, value).apply();
         SettingsStore.notifyChanged(this);
         invalidatePreview();

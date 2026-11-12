@@ -4,11 +4,15 @@ import com.example.flymestatusbarsizer.MainActivity;
 import com.example.flymestatusbarsizer.R;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 
+import android.animation.ArgbEvaluator;
+import android.animation.ValueAnimator;
+import android.graphics.Color;
 import android.graphics.Typeface;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.Switch;
 import android.widget.TextView;
 
 import java.util.Set;
@@ -37,9 +41,8 @@ public final class HomePageController {
         root.addView(titleRow, PageViewUtils.matchWrapWithTop(activity, 4));
         LinearLayout content = activity.addFeatureSearch(root);
         content.addView(buildRestartCard(activity), PageViewUtils.matchWrapWithTop(activity, 12));
-        activity.addSwitchRow(content, "启用模块",
-                "控制模块的所有功能是否在目标应用中生效。",
-                SettingsStore.KEY_ENABLED, SettingsStore.DEFAULT_ENABLED);
+        content.addView(buildModuleToggleCard(activity),
+                PageViewUtils.matchWrapWithTop(activity, 8));
 
         LinearLayout personal = addGroup(activity, content, "功能设置");
         addEntry(activity, personal, "状态栏图标与电池", null,
@@ -65,6 +68,85 @@ public final class HomePageController {
         View card = activity.buildSectionCard("重启相关组件", null, content);
         card.setBackground(activity.roundRect(activity.primaryContainerColor(), 8));
         return card;
+    }
+
+    private static View buildModuleToggleCard(MainActivity activity) {
+        LinearLayout card = new LinearLayout(activity);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(activity.dp(16), activity.dp(14), activity.dp(16), activity.dp(14));
+        card.setMinimumHeight(activity.dp(76));
+        card.setClipToOutline(true);
+
+        boolean enabled = SettingsStore.readBoolean(activity.prefs(),
+                SettingsStore.KEY_ENABLED, SettingsStore.DEFAULT_ENABLED);
+        LinearLayout copy = new LinearLayout(activity);
+        copy.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        copyLp.leftMargin = activity.dp(12);
+
+        TextView title = text(activity, "启用模块", 16,
+                enabled ? activity.textColor() : activity.subtextColor());
+        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        copy.addView(title, PageViewUtils.matchWrap());
+
+        ImageView icon = new ImageView(activity);
+        icon.setImageResource(R.drawable.ic_module_power);
+        icon.setPadding(activity.dp(8), activity.dp(8), activity.dp(8), activity.dp(8));
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+
+        LinearLayout header = new LinearLayout(activity);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.addView(icon, new LinearLayout.LayoutParams(activity.dp(40), activity.dp(40)));
+        header.addView(copy, copyLp);
+
+        Switch toggle = new Switch(activity);
+        activity.styleSwitch(toggle);
+        toggle.setChecked(enabled);
+        toggle.setContentDescription("启用模块，总开关");
+        header.addView(toggle, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        card.addView(header, PageViewUtils.matchWrap());
+        applyModuleToggleVisuals(activity, card, icon, title, enabled, false);
+
+        toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (buttonView.isPressed()) {
+                activity.performTapHaptic(buttonView);
+            }
+            activity.putBooleanSetting(SettingsStore.KEY_ENABLED, isChecked);
+            applyModuleToggleVisuals(activity, card, icon, title, isChecked, true);
+        });
+        activity.setTapClickListener(card, v -> toggle.setChecked(!toggle.isChecked()));
+        return card;
+    }
+
+    private static void applyModuleToggleVisuals(MainActivity activity, LinearLayout card,
+            ImageView icon, TextView title, boolean enabled, boolean animate) {
+        int backgroundColor = moduleToggleBackground(activity, enabled);
+        int strokeColor = enabled ? Color.argb(0x52,
+                Color.red(activity.primaryColor()), Color.green(activity.primaryColor()),
+                Color.blue(activity.primaryColor())) : activity.strokeColor();
+        android.graphics.drawable.GradientDrawable cardBackground =
+                activity.outlinedRect(backgroundColor, strokeColor, 1, 16);
+        card.setBackground(cardBackground);
+        icon.setBackground(activity.roundRect(
+                enabled ? activity.primaryContainerColor() : activity.surfaceSoftColor(), 10));
+        icon.setColorFilter(enabled ? activity.primaryColor() : activity.subtextColor());
+        title.setTextColor(enabled ? activity.textColor() : activity.subtextColor());
+
+        if (animate) {
+            int previousColor = moduleToggleBackground(activity, !enabled);
+            ValueAnimator animator = ValueAnimator.ofObject(new ArgbEvaluator(),
+                    previousColor, backgroundColor);
+            animator.setDuration(200L);
+            animator.addUpdateListener(value -> cardBackground.setColor(
+                    (Integer) value.getAnimatedValue()));
+            animator.start();
+        }
+    }
+
+    private static int moduleToggleBackground(MainActivity activity, boolean enabled) {
+        return enabled ? activity.surfaceSoftColor() : activity.surfaceColor();
     }
 
     public static void renderRestartTargets(MainActivity activity, LinearLayout content,
