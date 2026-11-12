@@ -27,7 +27,8 @@ public final class SystemAppearancePageController {
                     0, new int[]{0, 1, 2}, new String[]{"跟随系统", "固定黑色", "固定白色"});
         }
         root.addView(activity.buildSectionCard("状态栏图标颜色",
-                "可分别设置桌面、最近任务、通知栏、控制中心和锁屏的图标颜色；未设置的界面跟随系统。", tint), PageViewUtils.matchWrap());
+                "可分别设置桌面、最近任务、通知栏、控制中心和锁屏的图标颜色；未设置的界面跟随系统。", tint),
+                PageViewUtils.matchWrapWithTop(activity, 8));
         LinearLayout organizer = new LinearLayout(activity);
         organizer.setOrientation(LinearLayout.VERTICAL);
         activity.addActionButtonRow(organizer, "AI 桌面整理",
@@ -36,7 +37,8 @@ public final class SystemAppearancePageController {
         activity.addActionButtonRow(organizer, "按使用情况排序",
                 "按最近使用频率整理所有文件夹内的应用，与 AI 桌面整理分开使用。",
                 "打开", () -> activity.openPage(MainActivity.Page.LAUNCHER_USAGE_SORT));
-        root.addView(activity.buildSectionCard("桌面整理", "", organizer), PageViewUtils.matchWrap());
+        root.addView(activity.buildSectionCard("桌面整理", "", organizer),
+                PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createSystemAppearanceSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
     }
 }
