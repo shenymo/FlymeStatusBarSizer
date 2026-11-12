@@ -23,7 +23,7 @@ public final class CircleBatteryAnimationConfig {
     public static final String LEGACY_RAINBOW = "camera_circle_animation_legacy_rainbow";
     public static final String[] INT_KEYS = {NORMAL, CHARGING, PALETTE, COLOR_START, COLOR_END, SPEED, STRENGTH, VERSION};
     public static final String[] BOOLEAN_KEYS = {ENABLED, CHARGING_ONLY, EVENTS, SMOOTH, LEGACY_RAINBOW};
-    boolean enabled = true, chargingOnly, events = true, smooth = true, legacyRainbow;
+    boolean enabled, chargingOnly, events, smooth, legacyRainbow;
     public int normal = FLOW, charging = COMET, palette = STATE_COLOR;
     int colorStart = 0xFF088BFF, colorEnd = 0xFF00DCC8, speed = 1, strength = 1;
 
@@ -41,7 +41,7 @@ public final class CircleBatteryAnimationConfig {
         }
     }
     public static boolean defaultBoolean(String key) {
-        return ENABLED.equals(key) || EVENTS.equals(key) || SMOOTH.equals(key);
+        return false;
     }
     public static boolean isKey(String key) { return key.startsWith("camera_circle_animation_"); }
 

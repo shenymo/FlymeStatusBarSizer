@@ -1011,11 +1011,11 @@ public final class SettingsCardFactory {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
         activity.addActionButtonRow(content, "导入配置",
-                "从 JSON 文件恢复模块配置，会覆盖当前设置。",
+                "从新的模块配置文件中选择功能并恢复，只覆盖选中的设置。",
                 "导入", activity::startImportConfig);
         activity.addDivider(content);
         activity.addActionButtonRow(content, "导出配置",
-                "将当前可备份设置导出为 JSON，用于备份或迁移到其他设备。",
+                "选择功能后导出模块设置，不包含图片、下载资源或系统状态。",
                 "导出", activity::startExportConfig);
         activity.addDivider(content);
         activity.addActionButtonRow(content, "恢复全部默认设置",

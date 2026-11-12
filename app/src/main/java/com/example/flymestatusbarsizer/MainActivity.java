@@ -3,7 +3,7 @@ package com.example.flymestatusbarsizer;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.config.SideGestureTargetStore;
 import com.example.flymestatusbarsizer.config.RemoteSettingsSync;
-import com.example.flymestatusbarsizer.feature.battery.CircleBatteryAnimationConfig;
+import com.example.flymestatusbarsizer.config.ConfigBackup;
 import com.example.flymestatusbarsizer.feature.clock.ClockDetailActionGridEditor;
 import com.example.flymestatusbarsizer.feature.clock.ClockExpressionEditor;
 import com.example.flymestatusbarsizer.feature.ime.ImeToolbarEditor;
@@ -96,8 +96,10 @@ import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.List;
 import java.util.Map;
@@ -195,6 +197,7 @@ public class MainActivity extends Activity {
     private Runnable sideGestureActionsChangedListener;
     private final Map<String, Integer> assistantGestureZoneDraft = new HashMap<>();
     private boolean keepAssistantGestureZoneDraft;
+    private final Set<String> pendingExportGroups = new LinkedHashSet<>();
 
     public enum Page {
         HOME(null, null, null, false),
@@ -2676,11 +2679,34 @@ public class MainActivity extends Activity {
     }
 
     public void startExportConfig() {
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("application/json");
-        intent.putExtra(Intent.EXTRA_TITLE, "flyme_status_bar_sizer_config.json");
-        startActivityForResult(intent, REQUEST_EXPORT_CONFIG);
+        boolean[] checked = new boolean[ConfigBackup.GROUP_IDS.length];
+        Arrays.fill(checked, true);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("选择要导出的功能")
+                .setMultiChoiceItems(ConfigBackup.GROUP_LABELS, checked,
+                        (d, which, isChecked) -> checked[which] = isChecked)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("选择文件", null)
+                .create();
+        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            pendingExportGroups.clear();
+            for (int i = 0; i < checked.length; i++) {
+                if (checked[i]) pendingExportGroups.add(ConfigBackup.GROUP_IDS[i]);
+            }
+            if (pendingExportGroups.isEmpty()) {
+                showToast("请至少选择一个功能");
+                return;
+            }
+            dialog.dismiss();
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("application/json");
+            intent.putExtra(Intent.EXTRA_TITLE, "flyme_status_bar_sizer_module_config.json");
+            startActivityForResult(intent, REQUEST_EXPORT_CONFIG);
+        }));
+        dialog.show();
+        styleDialog(dialog);
+        attachDialogButtonHaptics(dialog);
     }
 
     public void startImportConfig() {
@@ -2696,30 +2722,9 @@ public class MainActivity extends Activity {
                 showToast("\u65e0\u6cd5\u6253\u5f00\u5bfc\u51fa\u6587\u4ef6");
                 return;
             }
-            JSONObject root = new JSONObject();
-            JSONObject settings = new JSONObject();
-            root.put("schema", "flyme_status_bar_sizer");
-            root.put("version", 4);
-            for (String key : SettingsStore.BOOLEAN_KEYS) {
-                if (SettingsStore.includeInBackup(key)) {
-                    settings.put(key, SettingsStore.readBoolean(
-                            prefs, key, SettingsStore.defaultBoolean(key)));
-                }
-            }
-            for (String key : SettingsStore.INT_KEYS) {
-                if (SettingsStore.includeInBackup(key)) {
-                    settings.put(key, SettingsStore.readInt(
-                            prefs, key, SettingsStore.defaultInt(key)));
-                }
-            }
-            for (String key : SettingsStore.STRING_KEYS) {
-                if (SettingsStore.includeInBackup(key)) {
-                    settings.put(key, SettingsStore.readString(
-                            prefs, key, SettingsStore.defaultString(key)));
-                }
-            }
-            root.put("settings", settings);
+            JSONObject root = ConfigBackup.exportSettings(prefs, pendingExportGroups);
             output.write(root.toString(2).getBytes(StandardCharsets.UTF_8));
+            pendingExportGroups.clear();
             showToast("\u914d\u7f6e\u5df2\u5bfc\u51fa");
         } catch (Throwable t) {
             showToast("\u5bfc\u51fa\u5931\u8d25\uff1a" + t.getMessage());
@@ -2732,71 +2737,69 @@ public class MainActivity extends Activity {
                 showToast("\u65e0\u6cd5\u6253\u5f00\u5bfc\u5165\u6587\u4ef6");
                 return;
             }
-            JSONObject root = new JSONObject(readText(input));
-            JSONObject settings = root.optJSONObject("settings");
-            if (settings == null) {
-                showToast("\u5bfc\u5165\u5931\u8d25\uff1a\u914d\u7f6e\u6587\u4ef6\u683c\u5f0f\u4e0d\u6b63\u786e");
-                return;
-            }
-            int version = root.optInt("version", 0);
-            if (!"flyme_status_bar_sizer".equals(root.optString("schema"))
-                    || (version != 2 && version != 3 && version != 4)) {
-                showToast("\u5bfc\u5165\u5931\u8d25\uff1a\u53ea\u652f\u6301 v2 / v3 / v4 \u914d\u7f6e\u6587\u4ef6");
-                return;
-            }
-            SharedPreferences.Editor editor = prefs.edit().clear();
-            for (String key : SettingsStore.BOOLEAN_KEYS) {
-                if (!SettingsStore.includeInBackup(key)) {
-                    continue;
-                }
-                editor.putBoolean(key, settings.optBoolean(key, SettingsStore.defaultBoolean(key)));
-            }
-            for (String key : SettingsStore.INT_KEYS) {
-                if (!SettingsStore.includeInBackup(key)) {
-                    continue;
-                }
-                int value = settings.optInt(key, SettingsStore.defaultInt(key));
-                if ((version < 3 && SettingsStore.isPositionOffsetKey(key))
-                        || (version < 4 && SettingsStore.isCameraCircleBatteryOffsetKey(key))) {
-                    value = SettingsStore.normalizePositionOffsetTenthDp(key, value * 10);
-                }
-                editor.putInt(key, value);
-            }
-            for (String key : SettingsStore.STRING_KEYS) {
-                if (!SettingsStore.includeInBackup(key)) {
-                    continue;
-                }
-                editor.putString(key, settings.optString(key, SettingsStore.defaultString(key)));
-            }
-            // Old backups have no animation keys: preserve their static/rainbow behavior.
-            if (!settings.has(CircleBatteryAnimationConfig.VERSION)) {
-                boolean rainbow = settings.optBoolean(SettingsStore.KEY_CAMERA_CIRCLE_BATTERY_TINT_ENABLED, false);
-                for (String key : CircleBatteryAnimationConfig.INT_KEYS) {
-                    editor.putInt(key, CircleBatteryAnimationConfig.migratedInt(key, true, rainbow));
-                }
-                for (String key : CircleBatteryAnimationConfig.BOOLEAN_KEYS) {
-                    editor.putBoolean(key, CircleBatteryAnimationConfig.migratedBoolean(key, true, rainbow));
-                }
-            }
-            SettingsStore.markPositionOffsetStorageVersion(editor);
-            AlertDialog dialog = new AlertDialog.Builder(this)
-                    .setTitle("确认导入配置")
-                    .setMessage("所选配置将覆盖当前模块设置。建议确认这是要恢复的备份文件。")
-                    .setNegativeButton("取消", null)
-                    .setPositiveButton("覆盖并导入", (d, which) -> {
-                        editor.apply();
-                        SettingsStore.notifyChanged(this);
-                        invalidatePreview();
-                        showToast("配置已导入");
-                        recreate();
-                    })
-                    .create();
-            dialog.show();
-            styleDialog(dialog);
-            attachDialogButtonHaptics(dialog);
+            JSONObject root = ConfigBackup.readBackup(readText(input));
+            showImportGroupDialog(root);
         } catch (Throwable t) {
             showToast("\u5bfc\u5165\u5931\u8d25\uff1a" + t.getMessage());
         }
+    }
+
+    private void showImportGroupDialog(JSONObject root) {
+        String[] included = ConfigBackup.includedGroups(root);
+        boolean[] checked = new boolean[included.length];
+        Arrays.fill(checked, true);
+        String[] labels = new String[included.length];
+        for (int i = 0; i < included.length; i++) labels[i] = configGroupLabel(included[i]);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("选择要恢复的功能")
+                .setMultiChoiceItems(labels, checked,
+                        (d, which, isChecked) -> checked[which] = isChecked)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("下一步", null)
+                .create();
+        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            Set<String> selected = new LinkedHashSet<>();
+            for (int i = 0; i < checked.length; i++) if (checked[i]) selected.add(included[i]);
+            if (selected.isEmpty()) {
+                showToast("请至少选择一个功能");
+                return;
+            }
+            dialog.dismiss();
+            confirmImportConfig(root, selected);
+        }));
+        dialog.show();
+        styleDialog(dialog);
+        attachDialogButtonHaptics(dialog);
+    }
+
+    private String configGroupLabel(String groupId) {
+        for (int i = 0; i < ConfigBackup.GROUP_IDS.length; i++) {
+            if (ConfigBackup.GROUP_IDS[i].equals(groupId)) return ConfigBackup.GROUP_LABELS[i];
+        }
+        return groupId;
+    }
+
+    private void confirmImportConfig(JSONObject root, Set<String> selectedGroups) {
+        StringBuilder names = new StringBuilder();
+        for (String group : selectedGroups) {
+            if (names.length() > 0) names.append("、");
+            names.append(configGroupLabel(group));
+        }
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("确认导入配置")
+                .setMessage("将恢复：" + names + "。其他设置保持不变。是否继续？")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确认导入", (d, which) -> {
+                    ConfigBackup.importSettings(prefs, root, selectedGroups);
+                    SettingsStore.notifyChanged(this);
+                    invalidatePreview();
+                    showToast("配置已导入");
+                    recreate();
+                })
+                .create();
+        dialog.show();
+        styleDialog(dialog);
+        attachDialogButtonHaptics(dialog);
     }
 
     String readText(InputStream input) throws java.io.IOException {

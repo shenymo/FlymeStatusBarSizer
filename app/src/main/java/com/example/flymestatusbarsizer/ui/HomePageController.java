@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer.ui;
 
 import com.example.flymestatusbarsizer.MainActivity;
 import com.example.flymestatusbarsizer.R;
+import com.example.flymestatusbarsizer.config.SettingsStore;
 
 import android.graphics.Typeface;
 import android.view.Gravity;
@@ -36,6 +37,9 @@ public final class HomePageController {
         root.addView(titleRow, PageViewUtils.matchWrapWithTop(activity, 4));
         LinearLayout content = activity.addFeatureSearch(root);
         content.addView(buildRestartCard(activity), PageViewUtils.matchWrapWithTop(activity, 12));
+        activity.addSwitchRow(content, "启用模块",
+                "控制模块的所有功能是否在目标应用中生效。",
+                SettingsStore.KEY_ENABLED, SettingsStore.DEFAULT_ENABLED);
 
         LinearLayout personal = addGroup(activity, content, "功能设置");
         addEntry(activity, personal, "状态栏图标与电池", null,

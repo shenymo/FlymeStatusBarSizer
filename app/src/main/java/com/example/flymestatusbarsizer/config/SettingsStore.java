@@ -31,7 +31,7 @@ public final class SettingsStore {
     public static final int CAMERA_CIRCLE_BATTERY_OFFSET_MAX_TENTH_DP = 3000;
 
     public static final String KEY_COLOR_PICKER_PALETTE = "color_picker_palette";
-    static final String KEY_ENABLED = "enabled";
+    public static final String KEY_ENABLED = "enabled";
     public static final String KEY_STATUS_BAR_TINT_ENABLED = "status_bar_tint_enabled";
     public static final String KEY_HIDE_IDLE_CAMERA_CUTOUT = "hide_idle_camera_cutout";
     public static final String KEY_BATTERY_CODE_DRAW_ENABLED = "battery_code_draw_enabled";
@@ -226,10 +226,10 @@ public final class SettingsStore {
     public static final int ONE_HANDED_MODE_ACTION_SYSTEM = 0;
     public static final int ONE_HANDED_MODE_ACTION_TASK_SCALE = 1;
     public static final int DEFAULT_ONE_HANDED_MODE_ACTION = ONE_HANDED_MODE_ACTION_SYSTEM;
-    // Keep the original gesture keys so upgrades and old backups retain their settings.
+    // Keep persisted gesture keys stable across app upgrades.
     public static final String KEY_ASSISTANT_GESTURE_ENABLED = "assistant_gesture_enabled";
     public static final String KEY_LAUNCHER_SIDE_GESTURE_ENABLED = "launcher_side_gesture_enabled";
-    public static final boolean DEFAULT_LAUNCHER_SIDE_GESTURE_ENABLED = true;
+    public static final boolean DEFAULT_LAUNCHER_SIDE_GESTURE_ENABLED = false;
     public static final String KEY_SIDE_BACK_ANIMATION_STYLE = "side_back_animation_style";
     public static final String KEY_SIDE_BACK_ARROW_LENGTH_DP = "side_back_arrow_length_dp";
     public static final String KEY_SIDE_BACK_ARROW_STROKE_DP = "side_back_arrow_stroke_dp";
@@ -337,7 +337,7 @@ public final class SettingsStore {
     public static final String KEY_WORKSPACE_FLOW_LOGGING_ENABLED =
             "workspace_flow_logging_enabled";
     public static final boolean DEFAULT_ASSISTANT_GESTURE_ENABLED = false;
-    public static final boolean DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED = true;
+    public static final boolean DEFAULT_ASSISTANT_GESTURE_PREVIEW_ENABLED = false;
     public static final boolean DEFAULT_ASSISTANT_GESTURE_ICON_PREVIEW_ENABLED = false;
     public static final boolean DEFAULT_ASSISTANT_GESTURE_ZONE_OVERLAY_ENABLED = false;
     public static final int DEFAULT_ASSISTANT_GESTURE_DISTANCE_DP = 140;
@@ -627,10 +627,10 @@ public final class SettingsStore {
     public static final String KEY_TELEPHONY_DEBUG_SLOT1_SIGNAL_LEVEL = "telephony_debug_slot1_signal_level";
     public static final String KEY_TELEPHONY_DEBUG_SLOT2_NETWORK_PROFILE = "telephony_debug_slot2_network_profile";
     public static final String KEY_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL = "telephony_debug_slot2_signal_level";
-    static final boolean DEFAULT_ENABLED = true;
-    public static final boolean DEFAULT_STATUS_BAR_TINT_ENABLED = true;
+    public static final boolean DEFAULT_ENABLED = false;
+    public static final boolean DEFAULT_STATUS_BAR_TINT_ENABLED = false;
     public static final boolean DEFAULT_HIDE_IDLE_CAMERA_CUTOUT = false;
-    public static final boolean DEFAULT_BATTERY_CODE_DRAW_ENABLED = true;
+    public static final boolean DEFAULT_BATTERY_CODE_DRAW_ENABLED = false;
     public static final boolean DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED = false;
     public static final boolean DEFAULT_CAMERA_CIRCLE_BATTERY_HIDE_ICON_ENABLED = false;
     static final boolean DEFAULT_CAMERA_CIRCLE_BATTERY_TINT_ENABLED = false;
@@ -644,12 +644,12 @@ public final class SettingsStore {
     public static final int DEFAULT_CAMERA_CIRCLE_BATTERY_STROKE_PERCENT = 100;
     public static final int DEFAULT_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP = 0;
     public static final int DEFAULT_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP = 0;
-    public static final boolean DEFAULT_SIGNAL_CODE_DRAW_ENABLED = true;
-    public static final boolean DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED = true;
+    public static final boolean DEFAULT_SIGNAL_CODE_DRAW_ENABLED = false;
+    public static final boolean DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_ENABLED = false;
     public static final String DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_5G_TEXT = "5G";
     public static final String DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_5GA_TEXT = "5GA";
     public static final String DEFAULT_SIGNAL_MOBILE_TYPE_BADGE_NON_5G_TEXT = "";
-    public static final boolean DEFAULT_WIFI_CODE_DRAW_ENABLED = true;
+    public static final boolean DEFAULT_WIFI_CODE_DRAW_ENABLED = false;
     public static final int DEFAULT_WIFI_BAND_CORNER_PERCENT = 25;
     public static final int DEFAULT_WIFI_TIP_CORNER_PERCENT = 18;
     public static final int DEFAULT_WIFI_BAND_GAP_PERCENT = 80;
@@ -666,7 +666,7 @@ public final class SettingsStore {
     public static final int BATTERY_TEXT_FONT_SANS_SERIF_CONDENSED = 5;
     public static final int BATTERY_TEXT_FONT_MI_SANS_LATIN_VF_NUMBER = 6;
     public static final int DEFAULT_BATTERY_ICON_STYLE = BATTERY_STYLE_IOS;
-    public static final boolean DEFAULT_BATTERY_LEVEL_TEXT_ENABLED = true;
+    public static final boolean DEFAULT_BATTERY_LEVEL_TEXT_ENABLED = false;
     public static final boolean DEFAULT_BATTERY_HOLLOW_ENABLED = false;
     public static final boolean DEFAULT_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL = false;
     public static final int DEFAULT_BATTERY_TEXT_FONT = BATTERY_TEXT_FONT_SYSTEM_DEFAULT;
@@ -699,11 +699,11 @@ public final class SettingsStore {
     public static final int DEFAULT_CONNECTION_RATE_HIDE_SAMPLE_COUNT = 3;
     public static final String DEFAULT_CLOCK_CUSTOM_FORMAT = "";
     public static final String DEFAULT_CLOCK_EXPRESSION_TOKEN_ORDER = "";
-    public static final boolean DEFAULT_CLOCK_BOLD_ENABLED = true;
+    public static final boolean DEFAULT_CLOCK_BOLD_ENABLED = false;
     public static final int DEFAULT_CLOCK_FONT_WEIGHT = 900;
     public static final int DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = 100;
     public static final boolean DEFAULT_CLOCK_DETAIL_POPUP_ENABLED = false;
-    public static final boolean DEFAULT_CLOCK_DETAIL_LUNAR_DATE_ENABLED = true;
+    public static final boolean DEFAULT_CLOCK_DETAIL_LUNAR_DATE_ENABLED = false;
     public static final boolean DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED = false;
     public static final String DEFAULT_CLOCK_DETAIL_ACTION_GRID_ITEMS_JSON =
             ClockDetailActionCodec.DEFAULT_PRESET_JSON;
@@ -755,9 +755,9 @@ public final class SettingsStore {
     public static final boolean DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED = false;
     public static final int DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_DP = 24;
     public static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_ENABLED = false;
-    public static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED = true;
-    public static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_SHADOW_ENABLED = true;
-    public static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED = true;
+    public static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_BLUR_ENABLED = false;
+    public static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_SHADOW_ENABLED = false;
+    public static final boolean DEFAULT_LAUNCHER_IOS_STACK_RECENTS_CLEAR_ALL_BUTTON_ENABLED = false;
     public static final boolean DEFAULT_LAUNCHER_STACK_CURRENT_APP_CENTERED = false;
     public static final int DEFAULT_LAUNCHER_STACK_RIGHT_VISIBLE_PERCENT = 80;
     public static final int DEFAULT_LAUNCHER_STACK_LEFT_MOVE_PERCENT = 45;
@@ -2468,7 +2468,4 @@ public final class SettingsStore {
         }
     }
 
-    public static boolean includeInBackup(String key) {
-        return key != null && !KEY_POSITION_OFFSET_STORAGE_VERSION.equals(key);
-    }
 }
