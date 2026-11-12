@@ -41,6 +41,7 @@ import com.example.flymestatusbarsizer.feature.assistant.AssistantPanelBlur;
 import com.example.flymestatusbarsizer.feature.assistant.SideGestureActions;
 import com.example.flymestatusbarsizer.feature.onehanded.OneStepTaskAccess;
 import com.example.flymestatusbarsizer.feature.tasks.RecentTaskCard;
+import com.example.flymestatusbarsizer.feature.tasks.TaskProcessStopper;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -161,6 +162,7 @@ public final class RecentTaskSwitcher {
         private boolean closingAll;
         private boolean loading = true;
         private boolean secondaryLoading;
+        private int taskLoadId;
         private long rowAnimationStartUptime;
         private long nextRowAnimationStartUptime;
         private int nextRowAnimationIndex;
@@ -359,6 +361,7 @@ public final class RecentTaskSwitcher {
         }
 
         private void loadTasksAsync() {
+            int loadId = ++taskLoadId;
             loading = true;
             secondaryLoading = false;
             rowAnimationStartUptime = 0L;
@@ -370,7 +373,7 @@ public final class RecentTaskSwitcher {
                 List<RecentTaskCard> cards = new ArrayList<>();
                 try { cards.addAll(getTaskAccess(context).currentUserRecentTasks()); }
                 catch (Exception ignored) { }
-                MAIN.post(() -> showFirstBatch(cards));
+                MAIN.post(() -> showFirstBatch(cards, loadId));
             });
         }
 
@@ -720,127 +723,77 @@ public final class RecentTaskSwitcher {
                         Toast.makeText(context, "关闭任务失败", Toast.LENGTH_SHORT).show();
                         return;
                     }
-                    entries.removeIf(entry -> entry.card.sameTask(card));
-                    int index = rows.indexOfChild(row);
-                    if (index >= 0) {
-                        rows.removeViewAt(index);
-                        if (index > 0) {
-                            rows.removeViewAt(index - 1);
-                        } else if (rows.getChildCount() > 0) {
-                            rows.removeViewAt(0);
-                        }
-                    }
-                    if (entries.isEmpty()) renderRows();
+                    loadTasksAsync();
                 });
             });
         }
 
         private void closeAllTasks() {
             if (closingAll) return;
-            List<RecentTaskCard> removing = new ArrayList<>();
-            for (TaskEntry entry : entries) {
-                if (!isLocked(entry.card)) removing.add(entry.card);
-            }
-            if (removing.isEmpty()) return;
             closingAll = true;
             closeAllButton.setEnabled(false);
-            for (int i = 0; i < entries.size(); i++) {
-                if (!isLocked(entries.get(i).card)) {
-                    rows.getChildAt(i * 2).animate().alpha(0f).setDuration(140L).start();
-                }
-            }
             WORKER.execute(() -> {
-                List<RecentTaskCard> failedCards = new ArrayList<>();
-                OneStepTaskAccess tasks = null;
-                try { tasks = getTaskAccess(context); }
-                catch (Exception ignored) { }
-                for (RecentTaskCard card : removing) {
-                    if (tasks == null) {
-                        failedCards.add(card);
-                        continue;
-                    }
-                    try {
-                        tasks.remove(card);
-                    } catch (Exception error) {
-                        Log.w(TAG, "Cannot close task=" + card.taskId + " package=" + card.lockPackageName, error);
-                        failedCards.add(card);
-                    }
+                boolean failed;
+                try {
+                    TaskProcessStopper.clearAll(context);
+                    failed = false;
+                } catch (Exception error) {
+                    Log.w(TAG, "Cannot clear tasks through Launcher", error);
+                    failed = true;
                 }
-                List<RecentTaskCard> remaining = failedCards;
+                boolean cleanupFailed = failed;
                 MAIN.post(() -> {
                     if (!isCurrent()) return;
                     closingAll = false;
                     closeAllButton.setEnabled(true);
-                    for (int i = entries.size() - 1; i >= 0; i--) {
-                        TaskEntry entry = entries.get(i);
-                        if (isLocked(entry.card)) continue;
-                        View row = rows.getChildAt(i * 2);
-                        boolean failed = false;
-                        for (RecentTaskCard card : remaining) {
-                            if (entry.card.sameTask(card)) {
-                                failed = true;
-                                break;
-                            }
-                        }
-                        if (failed) {
-                            row.animate().alpha(1f).setDuration(120L).start();
-                        } else {
-                            entries.remove(i);
-                            int rowIndex = rows.indexOfChild(row);
-                            rows.removeViewAt(rowIndex);
-                            if (rowIndex > 0) rows.removeViewAt(rowIndex - 1);
-                            else if (rows.getChildCount() > 0) rows.removeViewAt(0);
-                        }
-                    }
-                    if (entries.isEmpty()) renderRows();
-                    if (!remaining.isEmpty()) {
-                        Toast.makeText(context, remaining.size() == removing.size()
-                                ? "全部任务关闭失败" : "部分任务关闭失败", Toast.LENGTH_SHORT).show();
+                    loadTasksAsync();
+                    if (cleanupFailed) {
+                        Toast.makeText(context, "全部任务关闭失败", Toast.LENGTH_SHORT).show();
                     }
                 });
             });
         }
 
-        private void showFirstBatch(List<RecentTaskCard> loaded) {
-            if (!isCurrent()) return;
+        private void showFirstBatch(List<RecentTaskCard> loaded, int loadId) {
+            if (!isCurrent() || loadId != taskLoadId) return;
             if (loaded.isEmpty()) {
                 loading = false;
                 renderRows();
-                loadSecondaryTasks();
+                loadSecondaryTasks(loadId);
                 return;
             }
             int initialCount = Math.min(INITIAL_TASK_COUNT, loaded.size());
             if (initialCount == 0) {
-                loadRemainingTaskBatches(loaded, 0, this::loadSecondaryTasks);
+                loadRemainingTaskBatches(loaded, 0, loadId, () -> loadSecondaryTasks(loadId));
                 return;
             }
-            loadTaskBatch(loaded, 0, initialCount, () -> {
+            loadTaskBatch(loaded, 0, initialCount, loadId, () -> {
                 if (initialCount >= loaded.size()) {
-                    loadSecondaryTasks();
+                    loadSecondaryTasks(loadId);
                     return;
                 }
                 MAIN.postDelayed(() -> loadRemainingTaskBatches(
-                        loaded, initialCount, this::loadSecondaryTasks),
+                        loaded, initialCount, loadId, () -> loadSecondaryTasks(loadId)),
                         DEFERRED_TASK_BATCH_DELAY_MS);
             });
         }
 
-        private void loadRemainingTaskBatches(List<RecentTaskCard> loaded, int start,
+        private void loadRemainingTaskBatches(List<RecentTaskCard> loaded, int start, int loadId,
                 Runnable after) {
-            if (!isCurrent()) return;
+            if (!isCurrent() || loadId != taskLoadId) return;
             int end = Math.min(loaded.size(), start + APPEND_TASK_BATCH_SIZE);
-            loadTaskBatch(loaded, start, end, () -> {
+            loadTaskBatch(loaded, start, end, loadId, () -> {
                 if (end >= loaded.size()) {
                     if (after != null) after.run();
                     return;
                 }
-                MAIN.postDelayed(() -> loadRemainingTaskBatches(loaded, end, after),
+                MAIN.postDelayed(() -> loadRemainingTaskBatches(loaded, end, loadId, after),
                         APPEND_TASK_BATCH_DELAY_MS);
             });
         }
 
-        private void loadSecondaryTasks() {
-            if (secondaryLoading || !isCurrent()) return;
+        private void loadSecondaryTasks(int loadId) {
+            if (secondaryLoading || !isCurrent() || loadId != taskLoadId) return;
             secondaryLoading = true;
             List<RecentTaskCard> existing = new ArrayList<>();
             for (TaskEntry entry : entries) existing.add(entry.card);
@@ -850,18 +803,18 @@ public final class RecentTaskSwitcher {
                     loaded.addAll(getTaskAccess(context).secondaryTasks(existing));
                 } catch (Exception ignored) { }
                 MAIN.post(() -> {
-                    if (!isCurrent()) return;
+                    if (!isCurrent() || loadId != taskLoadId) return;
                     secondaryLoading = false;
                     if (loaded.isEmpty()) {
                         loadVisibleMetadata();
                         return;
                     }
-                    loadRemainingTaskBatches(loaded, 0, this::loadVisibleMetadata);
+                    loadRemainingTaskBatches(loaded, 0, loadId, this::loadVisibleMetadata);
                 });
             });
         }
 
-        private void loadTaskBatch(List<RecentTaskCard> loaded, int start, int end,
+        private void loadTaskBatch(List<RecentTaskCard> loaded, int start, int end, int loadId,
                 Runnable after) {
             boolean firstBatch = entries.isEmpty();
             WORKER.execute(() -> {
@@ -872,7 +825,7 @@ public final class RecentTaskSwitcher {
                     metadata.add(appMetadata(context, loaded.get(i)));
                 }
                 MAIN.post(() -> {
-                    if (!isCurrent()) return;
+                    if (!isCurrent() || loadId != taskLoadId) return;
                     List<TaskEntry> addedEntries = new ArrayList<>(end - start);
                     for (int i = start; i < end; i++) {
                         TaskEntry entry = new TaskEntry(loaded.get(i));

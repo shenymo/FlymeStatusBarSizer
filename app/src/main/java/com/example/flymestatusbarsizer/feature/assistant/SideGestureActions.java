@@ -79,18 +79,19 @@ public final class SideGestureActions {
                                 List<ActivityManager.RunningTaskInfo> tasks = manager.getRunningTasks(1);
                                 if (tasks.isEmpty()) return;
                                 ActivityManager.RunningTaskInfo task = tasks.get(0);
-                                if (task.taskId < 0 || task.topActivity == null
+                                android.content.ComponentName base = task.baseIntent.getComponent();
+                                if (task.taskId < 0 || base == null
                                         || ReflectUtils.getIntField(task, "displayId", -1) != 0
                                         || ReflectUtils.invokeNoArgInt(task, "getActivityType", -1) != 1
                                         || "com.android.systemui".equals(
-                                                task.topActivity.getPackageName())) return;
+                                                base.getPackageName())) return;
                                 int userId = ReflectUtils.getIntField(task, "userId", -1);
                                 if (userId < 0) return;
                                 Handler main = new Handler(Looper.getMainLooper());
                                 TASK_WORKER.execute(() -> {
                                     try {
                                         TaskProcessStopper.remove(context, task.taskId,
-                                                task.topActivity.getPackageName(), userId);
+                                                base.getPackageName(), userId);
                                         if (onSuccess != null) main.post(onSuccess);
                                     } catch (Exception error) {
                                         AssistantHooks.warn("Cannot end current task", error);
