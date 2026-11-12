@@ -17,6 +17,7 @@ import java.util.List;
 /** Combines recent tasks with live application tasks from ActivityTaskManager. */
 public final class OneStepRecentTasks {
     public static final int CLONE_USER_ID = 999;
+    private static final int RECENT_WITH_INVISIBLE = 4;
     private final Object wrapper;
     private final Object taskManager;
     private final Method currentUser;
@@ -64,7 +65,8 @@ public final class OneStepRecentTasks {
             throws ReflectiveOperationException {
         Object result;
         try {
-            result = recentTasks.invoke(taskManager, 32, ActivityManager.RECENT_IGNORE_UNAVAILABLE, userId);
+            result = recentTasks.invoke(taskManager, 32,
+                    ActivityManager.RECENT_IGNORE_UNAVAILABLE | RECENT_WITH_INVISIBLE, userId);
         } catch (ReflectiveOperationException error) {
             if (optional) return;
             throw error;
@@ -92,7 +94,8 @@ public final class OneStepRecentTasks {
     }
 
     public Object taskInfo(RecentTaskCard requested) throws ReflectiveOperationException {
-        Object result = recentTasks.invoke(taskManager, 32, ActivityManager.RECENT_IGNORE_UNAVAILABLE, requested.userId);
+        Object result = recentTasks.invoke(taskManager, 32,
+                ActivityManager.RECENT_IGNORE_UNAVAILABLE | RECENT_WITH_INVISIBLE, requested.userId);
         if (result instanceof List) for (Object info : (List<?>) result) {
             RecentTaskCard card = candidate(info, requested.userId, false);
             if (requested.sameTask(card)) return info;
