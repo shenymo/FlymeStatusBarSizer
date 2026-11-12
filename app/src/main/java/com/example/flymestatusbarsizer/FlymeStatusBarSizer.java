@@ -7434,13 +7434,14 @@ public class FlymeStatusBarSizer extends XposedModule {
                     ? SettingsStore.DEFAULT_MBACK_LONG_TOUCH_ACTION
                     : config.mbackLongTouchAction;
             mbackLongTouchIntentUri = config == null ? "" : config.mbackLongTouchIntentUri;
-            mbackNavBarTransparent = config != null && config.mbackNavBarTransparent;
-            mbackHidePill = config != null && config.mbackHidePill;
-            mbackInsetSize = config == null ? -1 : config.mbackInsetSize;
-            mbackNavBarHeight = config == null ? -1 : config.mbackNavBarHeight;
-            mbackPillLength = config == null ? -1 : config.mbackPillLength;
-            mbackPillThickness = config == null ? -1 : config.mbackPillThickness;
-            mbackPillInteractionSyncEnabled = config != null
+            boolean navigationEnabled = config != null && config.mbackNavigationEnabled;
+            mbackNavBarTransparent = navigationEnabled && config.mbackNavBarTransparent;
+            mbackHidePill = navigationEnabled && config.mbackHidePill;
+            mbackInsetSize = navigationEnabled && config != null ? config.mbackInsetSize : -1;
+            mbackNavBarHeight = navigationEnabled && config != null ? config.mbackNavBarHeight : -1;
+            mbackPillLength = navigationEnabled && config != null ? config.mbackPillLength : -1;
+            mbackPillThickness = navigationEnabled && config != null ? config.mbackPillThickness : -1;
+            mbackPillInteractionSyncEnabled = navigationEnabled
                     && config.mbackPillInteractionSyncEnabled;
         }
     }
@@ -7466,13 +7467,16 @@ public class FlymeStatusBarSizer extends XposedModule {
             sideGestureEnabled = enabled && config.assistantGestureEnabled
                     && config.windowModeSideGestureEnabled;
             sideGesturePrewarmEnabled = config != null
+                    && config.windowModeCustomizationEnabled
                     && config.windowModeSideGesturePrewarmEnabled;
             hoverFullscreenEnabled = config != null
+                    && config.windowModeCustomizationEnabled
                     && config.windowModeHoverFullscreenEnabled;
             hoverFullscreenTimeoutMs = config == null
                     ? SettingsStore.DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS
                     : config.windowModeHoverFullscreenTimeoutMs;
             twoRingLauncherEnabled = config != null
+                    && config.windowModeCustomizationEnabled
                     && config.windowModeTwoRingLauncherEnabled;
             twoRingOuterAppCount = config == null
                     ? SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_OUTER_APP_COUNT
@@ -7487,6 +7491,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                     ? SettingsStore.DEFAULT_WINDOWMODE_TWO_RING_INNER_RADIUS_PERCENT
                     : config.windowModeTwoRingInnerRadiusPercent;
             recentInnerRingEnabled = config != null
+                    && config.windowModeCustomizationEnabled
                     && config.windowModeRecentInnerRingEnabled;
             recentInnerRingAppCount = config == null
                     ? SettingsStore.DEFAULT_WINDOWMODE_RECENT_INNER_RING_APP_COUNT

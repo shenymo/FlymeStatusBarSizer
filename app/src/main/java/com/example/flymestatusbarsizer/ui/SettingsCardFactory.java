@@ -363,14 +363,18 @@ public final class SettingsCardFactory {
         return activity.buildSectionCard(
                 "MBack 长按动作",
                 "只接管 MBack 长按操作，保留单击和其他系统操作。",
-                buildMBackActionPage());
+                buildMBackActionPage(), false,
+                SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,
+                SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED);
     }
 
     public View createWindowModeSideGestureSettingsCard() {
         return activity.buildSectionCard(
                 "小窗选择面板",
-                "调整 Flyme 原生小窗选择面板。",
-                buildWindowModeSideGesturePage());
+                "调整 Flyme 原生小窗选择面板；总开关只控制面板增强，不影响触发入口。",
+                buildWindowModeSideGesturePage(), false,
+                SettingsStore.KEY_WINDOWMODE_CUSTOMIZATION_ENABLED,
+                SettingsStore.readWindowModeCustomizationEnabled(activity.prefs()));
     }
 
     public View createSideGestureSettingsCard() {
@@ -684,8 +688,6 @@ public final class SettingsCardFactory {
     public View createOneHandedModeSettingsCard() {
         LinearLayout options = new LinearLayout(activity);
         options.setOrientation(LinearLayout.VERTICAL);
-        activity.addSwitchRow(options, "启用底部下滑手势", "关闭后不接管系统单手手势，系统原生单手缩放继续工作。",
-                SettingsStore.KEY_ONE_HANDED_MODE_ENABLED, SettingsStore.DEFAULT_ONE_HANDED_MODE_ENABLED);
         activity.addChoiceRow(options, "触发动作", "选择从屏幕底部下滑触发的功能，不影响侧边手势。",
                 SettingsStore.KEY_ONE_HANDED_MODE_ACTION, SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION,
                 new int[]{SettingsStore.ONE_HANDED_MODE_ACTION_SYSTEM,
@@ -697,7 +699,9 @@ public final class SettingsCardFactory {
                         SettingsStore.KEY_ONE_HANDED_MODE_ACTION,
                         SettingsStore.DEFAULT_ONE_HANDED_MODE_ACTION)));
         return activity.buildSectionCard("底部下滑模式",
-                "从屏幕底部下滑触发所选功能；此处设置与侧边手势分别保存。", options, false);
+                "从屏幕底部下滑触发所选功能；此处设置与侧边手势分别保存。", options, false,
+                SettingsStore.KEY_ONE_HANDED_MODE_ENABLED,
+                SettingsStore.DEFAULT_ONE_HANDED_MODE_ENABLED);
     }
 
     private void updateOneHandedWorkbenchVisibility(LinearLayout options, int action) {
@@ -751,7 +755,9 @@ public final class SettingsCardFactory {
                         + "首次使用请在 LSPosed 中启用系统分享范围并重启分享进程或手机。",
                 "管理", () -> new ShareTargetsEditor(activity).show());
         return activity.buildSectionCard("分享面板",
-                "默认跟随系统顺序，可按内容类型隐藏和排序，保存后应用到分享面板。", content);
+                "默认跟随系统顺序，可按内容类型隐藏和排序，保存后应用到分享面板。", content,
+                false, SettingsStore.KEY_SHARE_TARGETS_ENABLED,
+                SettingsStore.DEFAULT_SHARE_TARGETS_ENABLED);
     }
 
     public View createCarLinkSettingsCard() {
@@ -813,7 +819,8 @@ public final class SettingsCardFactory {
         return activity.buildSectionCard(
                 "导航栏背景与抬高",
                 "调整导航栏透明背景、白条和 MBack 背景位置。“抬高”也会影响应用对底部区域的判断。",
-                content);
+                content, false, SettingsStore.KEY_MBACK_NAVIGATION_ENABLED,
+                SettingsStore.readMBackNavigationEnabled(activity.prefs()));
     }
 
     public View createImeToolbarSettingsCard() {
@@ -1488,11 +1495,6 @@ public final class SettingsCardFactory {
 
         activity.addProfileSectionHeader(page, "长按动作",
                 "只接管 MBack 长按操作，保留单击和其他系统操作。 ");
-        activity.addSwitchRow(page, "接管 MBack 长按",
-                "接管 Flyme SystemUI 中原本唤醒 Aicy 的 MBack/Home 长按入口，改为执行下方设置的动作。",
-                SettingsStore.KEY_MBACK_LONG_TOUCH_URL_ENABLED,
-                SettingsStore.DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED);
-        activity.addDivider(page);
         activity.addChoiceRow(page, "长触动作",
                 "可选发送 URL / Intent、底部时间弹窗，或者后台应用星图。",
                 SettingsStore.KEY_MBACK_LONG_TOUCH_ACTION,

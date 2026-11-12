@@ -234,6 +234,8 @@ public final class ModuleConfig {
     public int cornerGestureLongDistanceDp = SettingsStore.DEFAULT_CORNER_GESTURE_LONG_DISTANCE_DP;
     public int cornerGestureFarDistanceDp = SettingsStore.DEFAULT_CORNER_GESTURE_FAR_DISTANCE_DP;
     public boolean windowModeSideGestureEnabled = SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED;
+    public boolean windowModeCustomizationEnabled =
+            SettingsStore.DEFAULT_WINDOWMODE_CUSTOMIZATION_ENABLED;
     public boolean windowModeSideGesturePrewarmEnabled =
             SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED;
     public boolean windowModeHoverFullscreenEnabled =
@@ -270,6 +272,7 @@ public final class ModuleConfig {
     public boolean carLinkTaskListenerCleanupEnabled =
             SettingsStore.DEFAULT_CARLINK_TASK_LISTENER_CLEANUP_ENABLED;
     public boolean mbackNavBarTransparent = SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
+    public boolean mbackNavigationEnabled = SettingsStore.DEFAULT_MBACK_NAVIGATION_ENABLED;
     public boolean notificationAppIconEnabled = SettingsStore.DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
     public boolean anipIconEnabled = SettingsStore.DEFAULT_ANIP_ICON_ENABLED;
     public String anipIconMode = SettingsStore.DEFAULT_ANIP_ICON_MODE;
@@ -1007,6 +1010,7 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
                     SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED);
+            config.windowModeCustomizationEnabled = SettingsStore.readWindowModeCustomizationEnabled(prefs);
             config.cornerGestureActions = SettingsStore.readCornerGestureActions(prefs, true);
             config.cornerGestureSplitEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_CORNER_GESTURE_SPLIT_ENABLED, false);
@@ -1115,6 +1119,7 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_MBACK_NAV_BAR_TRANSPARENT,
                     SettingsStore.DEFAULT_MBACK_NAV_BAR_TRANSPARENT);
+            config.mbackNavigationEnabled = SettingsStore.readMBackNavigationEnabled(prefs);
             config.notificationAppIconEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_NOTIFICATION_APP_ICON_ENABLED,

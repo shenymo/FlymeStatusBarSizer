@@ -79,7 +79,6 @@ public final class ShareTargetsEditor {
     private boolean showHidden;
     private Dialog sheet;
     private AlertDialog exitPrompt;
-    private Switch enabled;
     private EditText search;
     private ShareTargetsDraft draft;
     private volatile boolean closed;
@@ -146,20 +145,7 @@ public final class ShareTargetsEditor {
         titleRow.addView(save);
         root.addView(titleRow, activity.matchWrap());
 
-        enabled = new Switch(activity);
-        enabled.setText("启用自定义分享列表");
-        enabled.setTextColor(activity.textColor());
-        enabled.setTextSize(15);
-        enabled.setMinHeight(dp(52));
-        enabled.setPadding(dp(14), 0, dp(14), 0);
-        enabled.setBackground(activity.roundRect(activity.surfaceSoftColor(), 18));
-        enabled.setChecked(SettingsStore.readBoolean(activity.prefs(),
-                SettingsStore.KEY_SHARE_TARGETS_ENABLED, SettingsStore.DEFAULT_SHARE_TARGETS_ENABLED));
         initialState = state();
-        enabled.setOnCheckedChangeListener((view, checked) -> updateSaveState());
-        activity.styleSwitch(enabled);
-        root.addView(enabled, activity.matchWrapWithTop(8));
-
         HorizontalScrollView types = new HorizontalScrollView(activity);
         types.setHorizontalScrollBarEnabled(false);
         LinearLayout tabs = row();
@@ -410,12 +396,11 @@ public final class ShareTargetsEditor {
         stash();
         ShareTargetRules rules = defaults;
         activity.prefs().edit()
-                .putBoolean(SettingsStore.KEY_SHARE_TARGETS_ENABLED, enabled.isChecked())
                 .putString(SettingsStore.KEY_SHARE_TARGET_PROFILES, profiles.encode())
                 .putString(SettingsStore.KEY_SHARE_TARGET_ORDER, rules.encodeOrder())
                 .putString(SettingsStore.KEY_SHARE_HIDDEN_TARGETS, rules.encodeHidden()).apply();
         SettingsStore.notifyChanged(activity);
-        activity.showToast(enabled.isChecked() ? "已保存，重新打开分享面板生效" : "已保存，自定义分享列表已关闭");
+        activity.showToast("已保存，重新打开分享面板生效");
         dialog.dismiss();
     }
 
@@ -479,7 +464,7 @@ public final class ShareTargetsEditor {
     private String state() {
         // Capture every profile, including the draft of the currently selected type.
         stash();
-        StringBuilder result = new StringBuilder().append(enabled.isChecked());
+        StringBuilder result = new StringBuilder();
         appendState(result, defaults);
         for (ShareContentType type : ShareContentType.values()) {
             if (profiles.hasOverride(type)) {
@@ -711,7 +696,6 @@ public final class ShareTargetsEditor {
     private boolean move(String component, int destination) {
         if (!canReorder() || !draft.move(component, destination)) return false;
         dismissUndo();
-        enabled.setChecked(true);
         render();
         list.setSelection(Math.max(0, visible.indexOf(component)));
         return true;

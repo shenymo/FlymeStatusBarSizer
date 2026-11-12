@@ -3709,7 +3709,7 @@ public class MainActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(16), dp(8), dp(12), dp(8));
+        header.setPadding(dp(16), dp(8), dp(16), dp(8));
         header.setMinimumHeight(dp(52));
 
         TextView title = new TextView(this);
@@ -3734,7 +3734,7 @@ public class MainActivity extends Activity {
             contentLp.rightMargin = dp(16);
             contentLp.bottomMargin = dp(10);
             card.addView(content, contentLp);
-            header.setPadding(dp(16), dp(8), dp(12), expanded ? 0 : dp(8));
+            header.setPadding(dp(16), dp(8), dp(16), expanded ? 0 : dp(8));
             header.setMinimumHeight(dp(52));
             header.setContentDescription(titleText + (expanded
                     ? "，已展开，点击收起" : "，已收起，点击展开"));
@@ -3747,7 +3747,7 @@ public class MainActivity extends Activity {
                             .hideSoftInputFromWindow(content.getWindowToken(), 0);
                 }
                 content.setVisibility(expand ? View.VISIBLE : View.GONE);
-                header.setPadding(dp(16), dp(8), dp(12), expand ? 0 : dp(8));
+                header.setPadding(dp(16), dp(8), dp(16), expand ? 0 : dp(8));
                 header.setMinimumHeight(dp(52));
                 arrow.setRotation(expand ? 0f : -90f);
                 header.setContentDescription(titleText + (expand
@@ -3781,7 +3781,7 @@ public class MainActivity extends Activity {
         });
         setEnabledRecursively(content, toggle.isChecked());
         content.setAlpha(toggle.isChecked() ? 1f : 0.45f);
-        header.addView(toggle, 1, new LinearLayout.LayoutParams(
+        header.addView(toggle, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         return card;

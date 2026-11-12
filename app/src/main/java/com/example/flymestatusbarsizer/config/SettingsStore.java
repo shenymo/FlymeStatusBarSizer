@@ -383,6 +383,8 @@ public final class SettingsStore {
     public static final String KEY_MBACK_LONG_TOUCH_ACTION = "mback_long_touch_action";
     public static final String KEY_MBACK_LONG_TOUCH_INTENT_URI = "mback_long_touch_intent_uri";
     public static final String KEY_WINDOWMODE_SIDE_GESTURE_ENABLED = "windowmode_side_gesture_enabled";
+    public static final String KEY_WINDOWMODE_CUSTOMIZATION_ENABLED =
+            "windowmode_customization_enabled";
     public static final String KEY_WINDOWMODE_SIDE_GESTURE_ACTION = "windowmode_side_gesture_action";
     public static final String KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI = "windowmode_side_gesture_intent_uri";
     public static final String KEY_CORNER_GESTURE_LEFT_ACTION = "corner_gesture_left_action";
@@ -444,6 +446,7 @@ public final class SettingsStore {
     public static final String KEY_CARLINK_TASK_LISTENER_CLEANUP_ENABLED =
             "carlink_task_listener_cleanup_enabled";
     public static final String KEY_MBACK_NAV_BAR_TRANSPARENT = "mback_nav_bar_transparent";
+    public static final String KEY_MBACK_NAVIGATION_ENABLED = "mback_navigation_enabled";
     public static final String KEY_NOTIFICATION_APP_ICON_ENABLED = "notification_app_icon_enabled";
     public static final String KEY_ANIP_ICON_ENABLED = "anip_icon_enabled";
     public static final String KEY_ANIP_ICON_MODE = "anip_icon_mode";
@@ -715,6 +718,7 @@ public final class SettingsStore {
     public static final int DEFAULT_MBACK_LONG_TOUCH_ACTION = MBACK_LONG_TOUCH_ACTION_STAR_APPS;
     public static final String DEFAULT_MBACK_LONG_TOUCH_INTENT_URI = "";
     public static final boolean DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED = false;
+    public static final boolean DEFAULT_WINDOWMODE_CUSTOMIZATION_ENABLED = false;
     public static final boolean DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED = false;
     public static final boolean DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED = false;
     public static final int DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_TIMEOUT_MS = 1000;
@@ -735,6 +739,7 @@ public final class SettingsStore {
     public static final boolean DEFAULT_CARLINK_TOUCH_LOG_FILTER_ENABLED = false;
     public static final boolean DEFAULT_CARLINK_TASK_LISTENER_CLEANUP_ENABLED = false;
     public static final boolean DEFAULT_MBACK_NAV_BAR_TRANSPARENT = false;
+    public static final boolean DEFAULT_MBACK_NAVIGATION_ENABLED = false;
     public static final boolean DEFAULT_NOTIFICATION_APP_ICON_ENABLED = false;
     /**
      * Off by default: enabling it replaces the desktop-icon fallback with ANIP artwork for covered
@@ -1116,6 +1121,7 @@ public final class SettingsStore {
             KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED,
             KEY_MBACK_LONG_TOUCH_URL_ENABLED,
             KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
+            KEY_WINDOWMODE_CUSTOMIZATION_ENABLED,
             KEY_CORNER_GESTURE_SPLIT_ENABLED,
             KEY_CORNER_GESTURE_FAR_ENABLED,
             KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
@@ -1129,6 +1135,7 @@ public final class SettingsStore {
             KEY_CARLINK_TOUCH_LOG_FILTER_ENABLED,
             KEY_CARLINK_TASK_LISTENER_CLEANUP_ENABLED,
             KEY_MBACK_NAV_BAR_TRANSPARENT,
+            KEY_MBACK_NAVIGATION_ENABLED,
             KEY_NOTIFICATION_APP_ICON_ENABLED,
             KEY_ANIP_ICON_ENABLED,
             KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED,
@@ -1275,6 +1282,41 @@ public final class SettingsStore {
         return appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
+    public static boolean readWindowModeCustomizationEnabled(SharedPreferences prefs) {
+        if (prefs != null && prefs.contains(KEY_WINDOWMODE_CUSTOMIZATION_ENABLED)) {
+            return readBoolean(prefs, KEY_WINDOWMODE_CUSTOMIZATION_ENABLED,
+                    DEFAULT_WINDOWMODE_CUSTOMIZATION_ENABLED);
+        }
+        return readBoolean(prefs, KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED,
+                DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED)
+                || readBoolean(prefs, KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED,
+                DEFAULT_WINDOWMODE_HOVER_FULLSCREEN_ENABLED)
+                || readBoolean(prefs, KEY_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED,
+                DEFAULT_WINDOWMODE_TWO_RING_LAUNCHER_ENABLED)
+                || readBoolean(prefs, KEY_WINDOWMODE_RECENT_INNER_RING_ENABLED,
+                DEFAULT_WINDOWMODE_RECENT_INNER_RING_ENABLED);
+    }
+
+    public static boolean readMBackNavigationEnabled(SharedPreferences prefs) {
+        if (prefs != null && prefs.contains(KEY_MBACK_NAVIGATION_ENABLED)) {
+            return readBoolean(prefs, KEY_MBACK_NAVIGATION_ENABLED,
+                    DEFAULT_MBACK_NAVIGATION_ENABLED);
+        }
+        return readBoolean(prefs, KEY_MBACK_NAV_BAR_TRANSPARENT,
+                DEFAULT_MBACK_NAV_BAR_TRANSPARENT)
+                || readBoolean(prefs, KEY_MBACK_HIDE_PILL, DEFAULT_MBACK_HIDE_PILL)
+                || readInt(prefs, KEY_MBACK_INSET_SIZE, DEFAULT_MBACK_INSET_SIZE)
+                != DEFAULT_MBACK_INSET_SIZE
+                || readInt(prefs, KEY_MBACK_NAV_BAR_HEIGHT, DEFAULT_MBACK_NAV_BAR_HEIGHT)
+                != DEFAULT_MBACK_NAV_BAR_HEIGHT
+                || readInt(prefs, KEY_MBACK_PILL_LENGTH, DEFAULT_MBACK_PILL_LENGTH)
+                != DEFAULT_MBACK_PILL_LENGTH
+                || readInt(prefs, KEY_MBACK_PILL_THICKNESS, DEFAULT_MBACK_PILL_THICKNESS)
+                != DEFAULT_MBACK_PILL_THICKNESS
+                || readBoolean(prefs, KEY_MBACK_PILL_INTERACTION_SYNC_ENABLED,
+                DEFAULT_MBACK_PILL_INTERACTION_SYNC_ENABLED);
+    }
+
     public static void prepareRemoteSync(Context context) {
         SharedPreferences prefs = prefs(context);
         if (!prefs.getBoolean(KEY_IME_VERIFICATION_CODE_SLOT_MIGRATED, false)) {
@@ -1294,6 +1336,21 @@ public final class SettingsStore {
                 || prefs.contains(KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI)) {
             prefs.edit().remove(KEY_WINDOWMODE_SIDE_GESTURE_ACTION)
                     .remove(KEY_WINDOWMODE_SIDE_GESTURE_INTENT_URI).apply();
+        }
+        SharedPreferences.Editor featureEditor = prefs.edit();
+        boolean featureChanged = false;
+        if (!prefs.contains(KEY_WINDOWMODE_CUSTOMIZATION_ENABLED)) {
+            featureEditor.putBoolean(KEY_WINDOWMODE_CUSTOMIZATION_ENABLED,
+                    readWindowModeCustomizationEnabled(prefs));
+            featureChanged = true;
+        }
+        if (!prefs.contains(KEY_MBACK_NAVIGATION_ENABLED)) {
+            featureEditor.putBoolean(KEY_MBACK_NAVIGATION_ENABLED,
+                    readMBackNavigationEnabled(prefs));
+            featureChanged = true;
+        }
+        if (featureChanged) {
+            featureEditor.apply();
         }
         CircleBatteryAnimationConfig.migrate(prefs);
         migratePositionOffsetStorageIfNeeded(context);
@@ -1778,6 +1835,8 @@ public final class SettingsStore {
                 return DEFAULT_MBACK_LONG_TOUCH_URL_ENABLED;
             case KEY_WINDOWMODE_SIDE_GESTURE_ENABLED:
                 return DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED;
+            case KEY_WINDOWMODE_CUSTOMIZATION_ENABLED:
+                return DEFAULT_WINDOWMODE_CUSTOMIZATION_ENABLED;
             case KEY_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED:
                 return DEFAULT_WINDOWMODE_SIDE_GESTURE_PREWARM_ENABLED;
             case KEY_WINDOWMODE_HOVER_FULLSCREEN_ENABLED:
@@ -1802,6 +1861,8 @@ public final class SettingsStore {
                 return DEFAULT_CARLINK_TASK_LISTENER_CLEANUP_ENABLED;
             case KEY_MBACK_NAV_BAR_TRANSPARENT:
                 return DEFAULT_MBACK_NAV_BAR_TRANSPARENT;
+            case KEY_MBACK_NAVIGATION_ENABLED:
+                return DEFAULT_MBACK_NAVIGATION_ENABLED;
             case KEY_NOTIFICATION_APP_ICON_ENABLED:
                 return DEFAULT_NOTIFICATION_APP_ICON_ENABLED;
             case KEY_ANIP_ICON_ENABLED:
