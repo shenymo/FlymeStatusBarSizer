@@ -200,16 +200,17 @@ public final class SettingsUiFactory {
         if (message == null || message.trim().isEmpty()) {
             return;
         }
-        ImageView help = new ImageView(activity);
-        help.setImageResource(com.example.flymestatusbarsizer.R.drawable.ic_settings_info);
-        help.setColorFilter(activity.primaryColor());
-        help.setPadding(dp(6), dp(6), dp(6), dp(6));
-        help.setBackground(roundRect(Color.TRANSPARENT, 18));
-        help.setContentDescription("查看" + titleText + "说明");
-        activity.setTapClickListener(help, v -> activity.showHelpDialog(titleText, message));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(36), dp(36));
-        lp.leftMargin = dp(4);
-        row.addView(help, lp);
+        View titleArea = row instanceof LinearLayout && ((LinearLayout) row).getChildCount() > 0
+                ? ((LinearLayout) row).getChildAt(0) : row;
+        if (titleArea == null) {
+            return;
+        }
+        titleArea.setContentDescription(titleText + "，长按查看说明");
+        titleArea.setOnLongClickListener(v -> {
+            activity.performTapHaptic(v);
+            activity.showHelpDialog(titleText, message);
+            return true;
+        });
     }
 
     private View buildDividerView() {

@@ -109,6 +109,8 @@ import java.util.function.IntConsumer;
 import java.util.regex.Pattern;
 
 public class MainActivity extends Activity {
+    private static final String PREF_LONG_PRESS_HELP_HINT_SHOWN =
+            "ui_long_press_help_hint_shown";
     private static final Pattern SEARCH_TEXT_PATTERN = Pattern.compile("[^\\p{L}\\p{N}]");
     private static final int REQUEST_EXPORT_CONFIG = 1001;
     private static final int REQUEST_IMPORT_CONFIG = 1002;
@@ -697,7 +699,19 @@ public class MainActivity extends Activity {
             refreshRestartScope();
         }
         updateTopBar(page);
+        showLongPressHelpHintIfNeeded(page);
         updateSystemBackCallbackRegistration();
+    }
+
+    private void showLongPressHelpHintIfNeeded(Page page) {
+        if (page == null || page == Page.HOME || !page.showMore || getPreferences(MODE_PRIVATE)
+                .getBoolean(PREF_LONG_PRESS_HELP_HINT_SHOWN, false)) {
+            return;
+        }
+        getPreferences(MODE_PRIVATE).edit()
+                .putBoolean(PREF_LONG_PRESS_HELP_HINT_SHOWN, true)
+                .apply();
+        showToast("长按设置项名称可查看说明");
     }
 
     private void updateTopBar(Page page) {
@@ -728,14 +742,8 @@ public class MainActivity extends Activity {
             topBarTitleView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         }
         if (topBarSubtitleView != null) {
-            if (TextUtils.isEmpty(page.subtitle)) {
-                topBarSubtitleView.setText(null);
-                topBarSubtitleView.setVisibility(View.GONE);
-            } else {
-                topBarSubtitleView.setText(page.subtitle);
-                topBarSubtitleView.setTextColor(colorSubtext);
-                topBarSubtitleView.setVisibility(View.VISIBLE);
-            }
+            topBarSubtitleView.setText(null);
+            topBarSubtitleView.setVisibility(View.GONE);
         }
     }
 
