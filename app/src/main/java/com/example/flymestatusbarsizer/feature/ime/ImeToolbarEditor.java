@@ -65,7 +65,7 @@ public final class ImeToolbarEditor {
                 SettingsStore.DEFAULT_IME_VERIFICATION_CODE_AUTO_COPY_ENABLED);
         activity.addDivider(details);
         Switch expansionSwitch = activity.addSwitchRow(details, "拓展栏",
-                "在主控制栏上方显示文字栏。",
+                "在主工具栏上方显示文字栏。",
                 SettingsStore.KEY_IME_CONTROL_BAR_EXPANSION_ENABLED,
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_EXPANSION_ENABLED,
                 (buttonView, isChecked) -> {
@@ -93,12 +93,12 @@ public final class ImeToolbarEditor {
                 60, 180, "%");
         activity.addDivider(appearanceContent);
         activity.addApplySliderRow(appearanceContent, "图标透明度",
-                "调整控制栏图标透明度。",
+                "调整工具栏图标透明度。",
                 SettingsStore.KEY_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_ICON_ALPHA_PERCENT,
                 10, 100, "%");
         activity.addDivider(appearanceContent);
-        activity.addApplyPositionOffsetSliderRow(appearanceContent, "控制栏上下位置",
+        activity.addApplyPositionOffsetSliderRow(appearanceContent, "工具栏上下位置",
                 "正数上移，负数下移。",
                 SettingsStore.KEY_IME_CONTROL_BAR_Y_OFFSET_DP,
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_Y_OFFSET_DP * 10);
@@ -110,7 +110,7 @@ public final class ImeToolbarEditor {
         appearanceHeader.setMinimumHeight(activity.dp(52));
         appearanceHeader.setPadding(activity.dp(4), activity.dp(8), activity.dp(4), activity.dp(8));
         TextView appearanceTitle = new TextView(activity);
-        appearanceTitle.setText("控制栏外观");
+        appearanceTitle.setText("工具栏外观");
         appearanceTitle.setTextColor(activity.textColor());
         appearanceTitle.setTextSize(16);
         appearanceTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -122,12 +122,12 @@ public final class ImeToolbarEditor {
         appearanceArrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         appearanceHeader.addView(appearanceArrow, new LinearLayout.LayoutParams(
                 activity.dp(24), activity.dp(24)));
-        appearanceHeader.setContentDescription("控制栏外观，已收起，点击展开");
+        appearanceHeader.setContentDescription("工具栏外观，已收起，点击展开");
         activity.setTapClickListener(appearanceHeader, v -> {
             boolean expand = appearanceContent.getVisibility() != View.VISIBLE;
             appearanceContent.setVisibility(expand ? View.VISIBLE : View.GONE);
             appearanceArrow.setRotation(expand ? 0f : -90f);
-            appearanceHeader.setContentDescription("控制栏外观，"
+            appearanceHeader.setContentDescription("工具栏外观，"
                     + (expand ? "已展开，点击收起" : "已收起，点击展开"));
         });
         details.addView(appearanceHeader, activity.matchWrap());
@@ -262,7 +262,7 @@ public final class ImeToolbarEditor {
         buttonContainer.addView(textSlotSection, activity.matchWrapWithTop(8));
 
         TextView buttonSlotTitle = new TextView(activity);
-        buttonSlotTitle.setText("主控制栏槽位");
+        buttonSlotTitle.setText("主工具栏槽位");
         buttonSlotTitle.setTextColor(activity.subtextColor());
         buttonSlotTitle.setTextSize(13);
         buttonSlotTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -353,7 +353,7 @@ public final class ImeToolbarEditor {
     private TextView buildPoolItem(String button) {
         TextView item = new TextView(activity);
         item.setText(ImeToolbarSpec.getButtonLabel(button));
-        activity.addSearchItem(item, ImeToolbarSpec.getButtonLabel(button), "输入法控制栏按钮");
+        activity.addSearchItem(item, ImeToolbarSpec.getButtonLabel(button), "输入法工具栏按钮");
         item.setTextColor(activity.textColor());
         item.setTextSize(14);
         item.setGravity(Gravity.CENTER);
@@ -419,7 +419,7 @@ public final class ImeToolbarEditor {
         slot.setOnDragListener((target, event) -> handleSlotDrag(target, event, textRow));
         if (!TextUtils.isEmpty(button) && !covered) {
             activity.addSearchItem(slot, ImeToolbarSpec.getButtonLabel(button),
-                    textRow ? "输入法控制栏文字内容" : "输入法控制栏按钮");
+                    textRow ? "输入法工具栏文字内容" : "输入法工具栏按钮");
             slot.setOnLongClickListener(v -> startDrag(v, button, slotIndex, textRow));
         }
 

@@ -590,6 +590,7 @@ public final class SettingsStore {
     public static final String KEY_MBACK_PILL_THICKNESS = "mback_pill_thickness";
     public static final String KEY_MBACK_PILL_INTERACTION_SYNC_ENABLED =
             "mback_pill_interaction_sync_enabled";
+    public static final String KEY_IME_TOOLBAR_ENABLED = "ime_toolbar_enabled";
     public static final String KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR = "ime_force_stock_control_bar";
     public static final String KEY_IME_CONTROL_BAR_EXPANSION_ENABLED = "ime_control_bar_expansion_enabled";
     public static final String KEY_IME_VERIFICATION_CODE_AUTO_COPY_ENABLED =
@@ -819,6 +820,7 @@ public final class SettingsStore {
     public static final int DEFAULT_MBACK_PILL_LENGTH = -1;
     public static final int DEFAULT_MBACK_PILL_THICKNESS = -1;
     public static final boolean DEFAULT_MBACK_PILL_INTERACTION_SYNC_ENABLED = false;
+    public static final boolean DEFAULT_IME_TOOLBAR_ENABLED = false;
     public static final boolean DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR = false;
     public static final boolean DEFAULT_IME_CONTROL_BAR_EXPANSION_ENABLED = false;
     public static final boolean DEFAULT_IME_VERIFICATION_CODE_AUTO_COPY_ENABLED = false;
@@ -1142,6 +1144,7 @@ public final class SettingsStore {
             KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED,
             KEY_MBACK_HIDE_PILL,
             KEY_MBACK_PILL_INTERACTION_SYNC_ENABLED,
+            KEY_IME_TOOLBAR_ENABLED,
             KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR,
             KEY_IME_CONTROL_BAR_EXPANSION_ENABLED,
             KEY_IME_VERIFICATION_CODE_AUTO_COPY_ENABLED,
@@ -1827,6 +1830,8 @@ public final class SettingsStore {
                 return DEFAULT_MBACK_HIDE_PILL;
             case KEY_MBACK_PILL_INTERACTION_SYNC_ENABLED:
                 return DEFAULT_MBACK_PILL_INTERACTION_SYNC_ENABLED;
+            case KEY_IME_TOOLBAR_ENABLED:
+                return DEFAULT_IME_TOOLBAR_ENABLED;
             case KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR:
                 return DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR;
             case KEY_IME_CONTROL_BAR_EXPANSION_ENABLED:

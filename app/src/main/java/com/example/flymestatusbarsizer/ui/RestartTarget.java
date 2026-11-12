@@ -23,13 +23,13 @@ public enum RestartTarget {
     CARLINK("com.upuphone.carlink", "CarLink",
             "修改应用流转和车机设置后，需重启 CarLink 才能生效。"),
     AOSP_IME("com.android.inputmethod.latin", "AOSP 输入法",
-            "修改输入法控制栏后，需重启输入法才能生效。"),
+            "修改输入法工具栏后，需重启输入法才能生效。"),
     GBOARD("com.google.android.inputmethod.latin", "Gboard",
-            "修改输入法控制栏后，需重启输入法才能生效。"),
+            "修改输入法工具栏后，需重启输入法才能生效。"),
     WECHAT_IME("com.tencent.wetype", "微信输入法",
-            "修改输入法控制栏后，需重启输入法才能生效。"),
+            "修改输入法工具栏后，需重启输入法才能生效。"),
     FLYME_IME("flyme.inputmethod", "Flyme 输入法",
-            "修改输入法控制栏后，需重启输入法才能生效。"),
+            "修改输入法工具栏后，需重启输入法才能生效。"),
     FRAMEWORK("android", "系统框架",
             "系统框架相关功能需重启手机才能生效。操作前请保存未完成的内容，并确认设备已授权 Root。");
 

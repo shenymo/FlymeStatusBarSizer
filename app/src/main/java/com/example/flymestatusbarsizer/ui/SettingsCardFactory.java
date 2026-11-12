@@ -818,9 +818,12 @@ public final class SettingsCardFactory {
 
     public View createImeToolbarSettingsCard() {
         return activity.buildSectionCard(
-                "输入法控制栏",
-                "接管输入法控制栏，可调整图标大小、透明度、位置和按钮布局。",
-                activity.imeToolbarEditor().buildSettingsContent());
+                "输入法工具栏",
+                "接管输入法工具栏，可调整图标大小、透明度、位置和按钮布局。",
+                activity.imeToolbarEditor().buildSettingsContent(),
+                false,
+                SettingsStore.KEY_IME_TOOLBAR_ENABLED,
+                SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED);
     }
 
     public View createLauncherRecentsSettingsCard() {
@@ -984,7 +987,7 @@ public final class SettingsCardFactory {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
         activity.addActionButtonRow(content, "状态栏位置微调",
-                "进入独立页面，微调时钟、电池、移动网络、Wi-Fi 和输入法控制栏的位置。",
+                "进入独立页面，微调时钟、电池、移动网络、Wi-Fi 和输入法工具栏的位置。",
                 "打开", activity::showPositionTuningPage);
         activity.addDivider(content);
         activity.addActionButtonRow(content, "环形电池位置",

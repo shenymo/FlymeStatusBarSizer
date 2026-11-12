@@ -7502,6 +7502,7 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     public static final class ImeConfigSnapshot {
         public final boolean enabled;
+        public final boolean imeToolbarEnabled;
         public final boolean imeReplaceOriginalControlBar;
         public final boolean imeControlBarExpansionEnabled;
         public final boolean imeVerificationCodeAutoCopyEnabled;
@@ -7513,6 +7514,7 @@ public class FlymeStatusBarSizer extends XposedModule {
 
         private ImeConfigSnapshot(ModuleConfig config) {
             enabled = config != null && config.enabled;
+            imeToolbarEnabled = config != null && config.imeToolbarEnabled;
             imeReplaceOriginalControlBar = config != null && config.imeReplaceOriginalControlBar;
             imeControlBarExpansionEnabled = config != null
                     && config.imeControlBarExpansionEnabled;

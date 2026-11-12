@@ -210,7 +210,7 @@ public class MainActivity extends Activity {
         ABOUT("关于与支持", null, null, false),
         ABOUT_DETAILS("版本与适用范围", null, null, false),
         DONATION("捐赠", null, null, false),
-        POSITION_TUNING("状态栏位置微调", "微调时钟、电池、移动网络、Wi-Fi 和输入法控制栏的位置。", null, true),
+        POSITION_TUNING("状态栏位置微调", "微调时钟、电池、移动网络、Wi-Fi 和输入法工具栏的位置。", null, true),
         CAMERA_CIRCLE_POSITION("环形电池位置", "调整环形电池相对摄像头挖孔中心的位置。", null, true),
         LAUNCHER_STACK_PARAMS("最近任务布局参数", "调整最近任务卡片的布局、动画、手势、视觉和性能。", null, true),
         LAUNCHER_ORGANIZER("AI 桌面整理", "生成应用分类并预览，确认后应用到 Flyme 桌面。", null, true),

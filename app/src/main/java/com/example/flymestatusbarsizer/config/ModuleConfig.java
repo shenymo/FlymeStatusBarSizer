@@ -402,6 +402,7 @@ public final class ModuleConfig {
     public int mbackPillThickness = SettingsStore.DEFAULT_MBACK_PILL_THICKNESS;
     public boolean mbackPillInteractionSyncEnabled =
             SettingsStore.DEFAULT_MBACK_PILL_INTERACTION_SYNC_ENABLED;
+    public boolean imeToolbarEnabled = SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED;
     public boolean imeReplaceOriginalControlBar = SettingsStore.DEFAULT_IME_REPLACE_ORIGINAL_CONTROL_BAR;
     public boolean imeControlBarExpansionEnabled = SettingsStore.DEFAULT_IME_CONTROL_BAR_EXPANSION_ENABLED;
     public boolean imeVerificationCodeAutoCopyEnabled =
@@ -1327,6 +1328,10 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_MBACK_PILL_INTERACTION_SYNC_ENABLED,
                     SettingsStore.DEFAULT_MBACK_PILL_INTERACTION_SYNC_ENABLED);
+            config.imeToolbarEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_IME_TOOLBAR_ENABLED,
+                    SettingsStore.DEFAULT_IME_TOOLBAR_ENABLED);
             config.imeReplaceOriginalControlBar = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_IME_REPLACE_ORIGINAL_CONTROL_BAR,

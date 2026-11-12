@@ -120,7 +120,7 @@ public final class ImeHooks {
     private static void refreshImeToolbar(Object service, View inputView) {
         FlymeStatusBarSizer.ImeConfigSnapshot config =
                 FlymeStatusBarSizer.loadImeConfig(inputView.getContext());
-        if (config == null || !config.enabled) {
+        if (config == null || !config.enabled || !config.imeToolbarEnabled) {
             detachOverlay(service);
             return;
         }
