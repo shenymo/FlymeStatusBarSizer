@@ -33,6 +33,9 @@ public final class SettingsStore {
     public static final String KEY_COLOR_PICKER_PALETTE = "color_picker_palette";
     public static final String KEY_ENABLED = "enabled";
     public static final String KEY_STATUS_BAR_TINT_ENABLED = "status_bar_tint_enabled";
+    public static final String KEY_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED =
+            "status_bar_ringer_vector_icons_enabled";
+    public static final boolean DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED = false;
     public static final String KEY_HIDE_IDLE_CAMERA_CUTOUT = "hide_idle_camera_cutout";
     public static final String KEY_BATTERY_CODE_DRAW_ENABLED = "battery_code_draw_enabled";
     public static final String KEY_CAMERA_CIRCLE_BATTERY_ENABLED = "camera_circle_battery_enabled";
@@ -1101,6 +1104,7 @@ public final class SettingsStore {
 
             KEY_ENABLED,
             KEY_STATUS_BAR_TINT_ENABLED,
+            KEY_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED,
             KEY_HIDE_IDLE_CAMERA_CUTOUT,
             KEY_BATTERY_CODE_DRAW_ENABLED,
             KEY_CAMERA_CIRCLE_BATTERY_ENABLED,
@@ -1795,6 +1799,8 @@ public final class SettingsStore {
                 return DEFAULT_ENABLED;
             case KEY_STATUS_BAR_TINT_ENABLED:
                 return DEFAULT_STATUS_BAR_TINT_ENABLED;
+            case KEY_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED:
+                return DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED;
             case KEY_HIDE_IDLE_CAMERA_CUTOUT:
                 return DEFAULT_HIDE_IDLE_CAMERA_CUTOUT;
             case KEY_BATTERY_CODE_DRAW_ENABLED:

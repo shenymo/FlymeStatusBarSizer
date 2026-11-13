@@ -327,6 +327,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private void installStatusBarHooks(ClassLoader loader) {
         ConnectionRateHooks.install(this, loader);
         StatusBarIconVisibilityHooks.install(this, loader);
+        com.example.flymestatusbarsizer.feature.statusbar.RingerIconVectorHooks.install(this, loader);
         hookStatusIconContainerTranslations(loader);
         hookStatusBarIconConstructors(loader);
     }
@@ -6594,6 +6595,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         com.example.flymestatusbarsizer.feature.onehanded.OneHandedTaskHooks.refresh();
         StatusBarTintHooks.refresh();
         StatusBarIconVisibilityHooks.refresh();
+        com.example.flymestatusbarsizer.feature.statusbar.RingerIconVectorHooks.refresh();
         CameraCutoutHooks.refresh();
         clearBatteryTintSourceCache();
         clearSignalSubSlotIndexCache();

@@ -12,9 +12,23 @@ public final class IconsBatteryPageController {
     public static void bind(MainActivity activity, LinearLayout root) {
         root.addView(activity.createIconSizingCard(), PageViewUtils.matchWrap());
         addIconVisibilityCard(activity, root);
+        addRingerIconCard(activity, root);
         root.addView(activity.createBatterySettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createNotificationSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createSignalSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
+    }
+
+    private static void addRingerIconCard(MainActivity activity, LinearLayout root) {
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        activity.addSwitchRow(content, "使用矢量图标",
+                "将状态栏静音和震动图标改为矢量资源，放大时保持清晰。",
+                com.example.flymestatusbarsizer.config.SettingsStore
+                        .KEY_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED,
+                com.example.flymestatusbarsizer.config.SettingsStore
+                        .DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED);
+        root.addView(activity.buildSectionCard("静音与震动", null, content),
+                PageViewUtils.matchWrapWithTop(activity, 8));
     }
 
     private static void addIconVisibilityCard(MainActivity activity, LinearLayout root) {

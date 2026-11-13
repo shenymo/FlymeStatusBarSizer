@@ -39,6 +39,8 @@ public final class ModuleConfig {
     public ShareTargetProfiles shareTargetProfiles = new ShareTargetProfiles();
     public ShareTargetRules shareTargetRules = ShareTargetRules.EMPTY;
     public boolean statusBarTintEnabled = SettingsStore.DEFAULT_STATUS_BAR_TINT_ENABLED;
+    public boolean statusBarRingerVectorIconsEnabled =
+            SettingsStore.DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED;
     public boolean hideIdleCameraCutout = SettingsStore.DEFAULT_HIDE_IDLE_CAMERA_CUTOUT;
     public final int[] statusBarTintModes = new int[SettingsStore.STATUS_BAR_TINT_KEYS.length];
     public boolean batteryCodeDrawEnabled = SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED;
@@ -539,6 +541,9 @@ public final class ModuleConfig {
                     key -> SettingsStore.readBoolean(prefs, key, false));
             config.statusBarTintEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_STATUS_BAR_TINT_ENABLED, SettingsStore.DEFAULT_STATUS_BAR_TINT_ENABLED);
+            config.statusBarRingerVectorIconsEnabled = SettingsStore.readBoolean(prefs,
+                    SettingsStore.KEY_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED,
+                    SettingsStore.DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED);
             config.hideIdleCameraCutout = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_HIDE_IDLE_CAMERA_CUTOUT, SettingsStore.DEFAULT_HIDE_IDLE_CAMERA_CUTOUT);
             for (int i = 0; i < config.statusBarTintModes.length; i++) {
