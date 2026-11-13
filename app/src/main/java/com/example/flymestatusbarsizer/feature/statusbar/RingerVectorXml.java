@@ -12,6 +12,7 @@ import android.graphics.PathMeasure;
 import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.util.LruCache;
 import android.util.Xml;
@@ -203,7 +204,10 @@ public final class RingerVectorXml {
         return Color.parseColor(value);
     }
 
-    private interface Node { void draw(Canvas canvas, Paint paint, float alpha); }
+    private interface Node {
+        void draw(Canvas canvas, Paint paint, float alpha);
+        Path outline();
+    }
     private record Group(Matrix matrix, List<Node> children) implements Node {
         Group(Matrix matrix) { this(matrix, new ArrayList<>()); }
         public void draw(Canvas canvas, Paint paint, float alpha) {
@@ -212,9 +216,26 @@ public final class RingerVectorXml {
             for (Node node : children) node.draw(canvas, paint, alpha);
             canvas.restoreToCount(save);
         }
+        public Path outline() {
+            Path result = new Path();
+            Path clip = null;
+            for (Node node : children) {
+                Path path = node.outline();
+                if (node instanceof Clip) {
+                    if (clip == null) clip = path;
+                    else clip.op(path, Path.Op.INTERSECT);
+                } else {
+                    if (clip != null) path.op(clip, Path.Op.INTERSECT);
+                    result.op(path, Path.Op.UNION);
+                }
+            }
+            result.transform(matrix);
+            return result;
+        }
     }
     private record Clip(Path path) implements Node {
         public void draw(Canvas canvas, Paint paint, float alpha) { canvas.clipPath(path); }
+        public Path outline() { return new Path(path); }
     }
     private record Shape(Path path, float fill, float stroke, float strokeWidth,
                          Paint.Cap cap, Paint.Join join, float miter) implements Node {
@@ -234,11 +255,37 @@ public final class RingerVectorXml {
                 canvas.drawPath(path, paint);
             }
         }
+        public Path outline() {
+            Path result = fill > 0 ? new Path(path) : new Path();
+            if (stroke > 0 && strokeWidth > 0) {
+                Paint paint = new Paint();
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(strokeWidth);
+                paint.setStrokeCap(cap);
+                paint.setStrokeJoin(join);
+                paint.setStrokeMiter(miter);
+                Path border = new Path();
+                paint.getFillPath(path, border);
+                result.op(border, Path.Op.UNION);
+            }
+            return result;
+        }
     }
 
     public float getViewportWidth() { return width; }
 
     public float getViewportHeight() { return height; }
+
+    public void unionDrawingBounds(RectF bounds) {
+        if (alpha == 0) return;
+        Path outline = root.outline();
+        Path viewport = new Path();
+        viewport.addRect(0, 0, width, height, Path.Direction.CW);
+        outline.op(viewport, Path.Op.INTERSECT);
+        RectF content = new RectF();
+        outline.computeBounds(content, true);
+        bounds.union(content);
+    }
 
     public void drawRaw(Canvas canvas, Paint paint, int color) {
         paint.setColorFilter(null);

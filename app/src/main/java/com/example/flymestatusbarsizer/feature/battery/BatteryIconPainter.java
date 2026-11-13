@@ -7,7 +7,6 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.graphics.RectF;
-import android.graphics.Typeface;
 import com.example.flymestatusbarsizer.feature.statusbar.IconMetrics;
 import com.example.flymestatusbarsizer.feature.statusbar.RingerVectorXml;
 
@@ -19,19 +18,20 @@ public final class BatteryIconPainter {
 
     private BatteryIconPainter() { }
 
-    public static int measureWidth(BatteryIconPack pack, int boxHeight) {
+    public static int measureWidth(BatteryIconPack pack, int boxHeight, boolean showBolt) {
         return Math.max(1, (int) Math.ceil(IconMetrics.resolveVisualBandHeight(boxHeight)
-                * pack.visualBounds.width() / pack.visualBounds.height()));
+                * pack.layoutBounds(showBolt).width() / pack.visualBounds.height()));
     }
 
     public static void draw(BatteryIconPack pack, Canvas canvas, Rect bounds, int level,
             boolean pluggedIn, boolean charging, boolean quickCharging, int tint, int textColor,
-            boolean showText, float textScale, Typeface typeface, float bodyOffset,
+            boolean showText, float textScale, float bodyOffset,
             float boltOffset, boolean hollow, boolean fillFollowsLevel) {
         if (bounds.isEmpty()) return;
+        RectF layout = pack.layoutBounds(charging || pluggedIn);
         float visualHeight = IconMetrics.resolveVisualBandHeight(bounds.height());
         float scale = Math.min(visualHeight / pack.visualBounds.height(),
-                bounds.width() / pack.visualBounds.width());
+                bounds.width() / layout.width());
         float progress = Math.max(0, Math.min(100, level)) / 100f;
         if (hollow && !fillFollowsLevel) progress = 1;
         int fillColor = charging ? Color.rgb(0, 205, 85)
@@ -40,7 +40,7 @@ public final class BatteryIconPainter {
         int saved = canvas.save();
         canvas.translate(bounds.left, bounds.top + (bounds.height() - pack.visualBounds.height() * scale) / 2f - bodyOffset);
         canvas.scale(scale, scale);
-        canvas.translate(-pack.visualBounds.left, -pack.visualBounds.top);
+        canvas.translate(-layout.left, -pack.visualBounds.top);
         int layer = hollow && showText ? canvas.saveLayer(null, null) : -1;
         drawRange(pack, pack.background, canvas, tint, progress, 1);
         drawRange(pack, pack.fill, canvas, fillColor, 0, progress);
@@ -54,7 +54,6 @@ public final class BatteryIconPainter {
         }
         if (showText) {
             String label = Integer.toString(Math.max(0, Math.min(100, level)));
-            TEXT.setTypeface(typeface);
             TEXT.setFakeBoldText(true);
             TEXT.setTextAlign(Paint.Align.CENTER);
             TEXT.setTextSize(pack.textSize * textScale);

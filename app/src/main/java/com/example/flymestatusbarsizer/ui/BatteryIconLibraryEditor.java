@@ -34,7 +34,6 @@ import com.example.flymestatusbarsizer.feature.battery.BatteryIconLibrary;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconLibrary.Entry;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconPack;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconPainter;
-import com.example.flymestatusbarsizer.feature.battery.BatteryTextFontHelper;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -450,10 +449,10 @@ public final class BatteryIconLibraryEditor {
             float density = getResources().getDisplayMetrics().density;
             for (int i = 0; i < (enlarged ? 2 : 1); i++) {
                 int box = Math.round((i == 0 ? 22 : 66) * density);
-                int width = BatteryIconPainter.measureWidth(pack, box);
+                int width = BatteryIconPainter.measureWidth(pack, box, state > 0);
                 if (width > getWidth() - 8 * density) {
                     box = Math.max(1, (int) (box * (getWidth() - 8 * density) / width));
-                    width = BatteryIconPainter.measureWidth(pack, box);
+                    width = BatteryIconPainter.measureWidth(pack, box, state > 0);
                 }
                 int top = enlarged ? Math.round((i == 0 ? 8 : 48) * density) : (getHeight() - box) / 2;
                 int left = (getWidth() - width) / 2;
@@ -461,7 +460,6 @@ public final class BatteryIconLibraryEditor {
                 BatteryIconPainter.draw(pack, canvas, bounds, level, state > 0, state > 1, state == 3,
                         tint, textColor, config.batteryLevelTextEnabled,
                         config.batteryInnerTextScalePercent / 100f,
-                        BatteryTextFontHelper.resolveTypeface(getContext(), config.batteryTextFont),
                         SettingsStore.positionOffsetTenthDpToPx(getContext(), config.batteryIconYOffsetTenthDp),
                         SettingsStore.positionOffsetTenthDpToPx(getContext(), config.batteryBoltYOffsetTenthDp),
                         config.batteryHollowEnabled, config.batteryHollowFillFollowsLevel);

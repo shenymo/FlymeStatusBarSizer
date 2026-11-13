@@ -11,7 +11,7 @@ public final class BatteryIconPack {
 
     public final String name, json;
     public final float width, height, textSize, textOutline, textAlpha;
-    public final RectF visualBounds, fillBounds, textBounds;
+    public final RectF visualBounds, bodyBounds, fillBounds, textBounds;
     public final Direction direction;
     public final RingerVectorXml shell, fill, background, charging, quickCharging;
 
@@ -47,7 +47,19 @@ public final class BatteryIconPack {
         charging = vector(object, "chargingXml", false);
         RingerVectorXml quick = vector(object, "quickChargingXml", false);
         quickCharging = quick == null ? charging : quick;
+        RectF content = new RectF();
+        fill.unionDrawingBounds(content);
+        if (background != null) background.unionDrawingBounds(content);
+        if (!content.intersect(fillBounds)) content.setEmpty();
+        content.union(textBounds);
+        shell.unionDrawingBounds(content);
+        bodyBounds = new RectF(Math.max(visualBounds.left, content.left), visualBounds.top,
+                Math.min(visualBounds.right, content.right), visualBounds.bottom);
         json = object.toString();
+    }
+
+    public RectF layoutBounds(boolean showBolt) {
+        return showBolt && (charging != null || quickCharging != null) ? visualBounds : bodyBounds;
     }
 
     public static BatteryIconPack parse(String raw) {

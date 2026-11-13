@@ -2,7 +2,6 @@ package com.example.flymestatusbarsizer.feature.statusbar;
 
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.config.SettingsStore;
-import com.example.flymestatusbarsizer.feature.battery.BatteryTextFontHelper;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconPack;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconLibrary;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconPainter;
@@ -16,7 +15,6 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
-import android.graphics.Typeface;
 import android.util.AttributeSet;
 import android.view.View;
 
@@ -45,7 +43,6 @@ public final class RightIconGroupPreviewView extends View {
     private boolean batteryLevelTextEnabled = true;
     private boolean batteryHollowEnabled = SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED;
     private boolean batteryHollowFillFollowsLevel = SettingsStore.DEFAULT_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL;
-    private int batteryTextFont = SettingsStore.DEFAULT_BATTERY_TEXT_FONT;
     private int iconScalePercent = SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
     private int batteryInnerTextScalePercent = SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
     private int batteryIconYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP * 10;
@@ -113,15 +110,6 @@ public final class RightIconGroupPreviewView extends View {
             return;
         }
         batteryHollowFillFollowsLevel = enabled;
-        invalidate();
-    }
-
-    public void setBatteryTextFont(int font) {
-        int normalized = SettingsStore.normalizeBatteryTextFont(font);
-        if (batteryTextFont == normalized) {
-            return;
-        }
-        batteryTextFont = normalized;
         invalidate();
     }
 
@@ -308,7 +296,7 @@ public final class RightIconGroupPreviewView extends View {
     }
 
     private int resolveBatteryWidth(int iconSize) {
-        return BatteryIconPainter.measureWidth(batteryPack, iconSize);
+        return BatteryIconPainter.measureWidth(batteryPack, iconSize, false);
     }
 
     private void drawPreviewNotes(Canvas canvas) {
@@ -328,9 +316,8 @@ public final class RightIconGroupPreviewView extends View {
 
     private void drawBattery(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
             int fillColor, int textColor, boolean showLevelText) {
-        Typeface typeface = BatteryTextFontHelper.resolveTypeface(getContext(), batteryTextFont);
         BatteryIconPainter.draw(batteryPack, canvas, bounds, level, pluggedIn, charging, false,
-                fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
+                fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f,
                 offsetPx(batteryIconYOffsetTenthDp),
                 offsetPx(batteryBoltYOffsetTenthDp), batteryHollowEnabled, batteryHollowFillFollowsLevel);
     }

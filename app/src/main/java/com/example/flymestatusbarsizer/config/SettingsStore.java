@@ -89,7 +89,6 @@ public final class SettingsStore {
     public static final String KEY_BATTERY_LEVEL_TEXT_ENABLED = "battery_level_text_enabled";
     public static final String KEY_BATTERY_HOLLOW_ENABLED = "battery_hollow_enabled";
     public static final String KEY_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL = "battery_hollow_fill_follows_level";
-    public static final String KEY_BATTERY_TEXT_FONT = "battery_text_font";
     public static final String KEY_STATUS_BAR_ICON_SCALE_PERCENT = "status_bar_icon_scale_percent";
     public static final String KEY_BATTERY_INNER_TEXT_SCALE_PERCENT = "battery_inner_text_scale_percent";
     public static final String KEY_BATTERY_ICON_Y_OFFSET_DP = "battery_icon_y_offset_dp";
@@ -661,17 +660,9 @@ public final class SettingsStore {
     public static final int DEFAULT_WIFI_BAND_GAP_PERCENT = 80;
     static final int DEFAULT_WIFI_ICON_STYLE = WifiIconStyles.DEFAULT;
     public static final boolean DEFAULT_SIGNAL_WIFI_SWAP_ENABLED = false;
-    public static final int BATTERY_TEXT_FONT_SYSTEM_DEFAULT = 0;
-    public static final int BATTERY_TEXT_FONT_SERIF = 1;
-    public static final int BATTERY_TEXT_FONT_MONOSPACE = 2;
-    public static final int BATTERY_TEXT_FONT_SANS_SERIF = 3;
-    public static final int BATTERY_TEXT_FONT_SANS_SERIF_MEDIUM = 4;
-    public static final int BATTERY_TEXT_FONT_SANS_SERIF_CONDENSED = 5;
-    public static final int BATTERY_TEXT_FONT_MI_SANS_LATIN_VF_NUMBER = 6;
     public static final boolean DEFAULT_BATTERY_LEVEL_TEXT_ENABLED = false;
     public static final boolean DEFAULT_BATTERY_HOLLOW_ENABLED = false;
     public static final boolean DEFAULT_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL = false;
-    public static final int DEFAULT_BATTERY_TEXT_FONT = BATTERY_TEXT_FONT_SYSTEM_DEFAULT;
     public static final int DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT = 100;
     public static final int DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT = 100;
     public static final int DEFAULT_BATTERY_ICON_Y_OFFSET_DP = 0;
@@ -938,7 +929,6 @@ public final class SettingsStore {
             KEY_WIFI_BAND_CORNER_PERCENT,
             KEY_WIFI_TIP_CORNER_PERCENT,
             KEY_WIFI_BAND_GAP_PERCENT,
-            KEY_BATTERY_TEXT_FONT,
             KEY_CAMERA_CIRCLE_BATTERY_TRANSPARENCY_TENTH_PERCENT,
             KEY_CAMERA_CIRCLE_BATTERY_NORMAL_LIGHT_COLOR,
             KEY_CAMERA_CIRCLE_BATTERY_NORMAL_DARK_COLOR,
@@ -1556,8 +1546,6 @@ public final class SettingsStore {
             case KEY_WIFI_BAND_GAP_PERCENT: return DEFAULT_WIFI_BAND_GAP_PERCENT;
             case KEY_WIFI_ICON_STYLE:
                 return DEFAULT_WIFI_ICON_STYLE;
-            case KEY_BATTERY_TEXT_FONT:
-                return DEFAULT_BATTERY_TEXT_FONT;
             case KEY_CAMERA_CIRCLE_BATTERY_TRANSPARENCY_TENTH_PERCENT:
                 return DEFAULT_CAMERA_CIRCLE_BATTERY_TRANSPARENCY_TENTH_PERCENT;
             case KEY_CAMERA_CIRCLE_BATTERY_NORMAL_LIGHT_COLOR:
@@ -2144,20 +2132,6 @@ public final class SettingsStore {
 
     static int normalizeWindowModeRecentInnerRingRadiusPercent(int value) {
         return Math.max(10, Math.min(100, value));
-    }
-
-    public static int normalizeBatteryTextFont(int value) {
-        switch (value) {
-            case BATTERY_TEXT_FONT_SERIF:
-            case BATTERY_TEXT_FONT_MONOSPACE:
-            case BATTERY_TEXT_FONT_SANS_SERIF:
-            case BATTERY_TEXT_FONT_SANS_SERIF_MEDIUM:
-            case BATTERY_TEXT_FONT_SANS_SERIF_CONDENSED:
-            case BATTERY_TEXT_FONT_MI_SANS_LATIN_VF_NUMBER:
-                return value;
-            default:
-                return BATTERY_TEXT_FONT_SYSTEM_DEFAULT;
-        }
     }
 
     public static int normalizeScalePercent(int value) {

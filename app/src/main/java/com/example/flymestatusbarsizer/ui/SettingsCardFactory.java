@@ -4,7 +4,6 @@ import com.example.flymestatusbarsizer.MainActivity;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.feature.share.ShareTargetsEditor;
 import com.example.flymestatusbarsizer.feature.assistant.AssistantBackgroundSettings;
-import com.example.flymestatusbarsizer.feature.battery.BatteryTextFontHelper;
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryAnimationEditor;
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryAppearanceEditor;
 import com.example.flymestatusbarsizer.feature.launcher.LauncherStackScaleCurveView;
@@ -126,14 +125,6 @@ public final class SettingsCardFactory {
         LinearLayout.LayoutParams hollowSectionLp = activity.matchWrapWithTop(10);
         hollowSectionLp.leftMargin = activity.dp(12);
         batteryIconOptions.addView(hollowSection, hollowSectionLp);
-        activity.addDivider(batteryIconOptions);
-        int[] batteryTextFontOptions = BatteryTextFontHelper.getAvailableFontOptions(activity);
-        activity.addChoiceRow(batteryIconOptions, "电量数字字体",
-                "可选择系统字体，也可以使用模块内置的 MiSansLatinVFNumber。",
-                SettingsStore.KEY_BATTERY_TEXT_FONT,
-                SettingsStore.DEFAULT_BATTERY_TEXT_FONT,
-                batteryTextFontOptions,
-                BatteryTextFontHelper.getFontLabels(batteryTextFontOptions));
         content.addView(batteryIconOptions, PageViewUtils.matchWrap());
         updateBatteryOptionsVisibility();
         return activity.buildSectionCard(

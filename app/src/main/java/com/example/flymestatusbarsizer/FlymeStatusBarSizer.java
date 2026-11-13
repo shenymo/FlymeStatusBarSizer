@@ -5,7 +5,6 @@ import com.example.flymestatusbarsizer.feature.share.GalleryShareTargetsHooks;
 
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.config.SettingsStore;
-import com.example.flymestatusbarsizer.feature.battery.BatteryTextFontHelper;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconPack;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconLibrary;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconPainter;
@@ -64,7 +63,6 @@ import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyDisplayInfo;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
-import android.graphics.Typeface;
 import android.view.Gravity;
 import android.view.Display;
 import android.view.DisplayCutout;
@@ -2178,9 +2176,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             boolean pluggedIn, boolean charging, boolean quickCharging,
             int fillColor, int textColor, boolean showLevelText) {
         float textScale = resolveBatteryInnerTextScale(config);
-        Typeface typeface = BatteryTextFontHelper.resolveTypeface(ModuleConfig.getSystemUiContext(), config == null
-                ? SettingsStore.DEFAULT_BATTERY_TEXT_FONT
-                : resolveBatteryTextFontOption(config));
         boolean hollow = config != null && config.batteryHollowEnabled;
         boolean hollowFillFollowsLevel = config != null && config.batteryHollowFillFollowsLevel;
         Context densityContext = ModuleConfig.getSystemUiContext();
@@ -2191,7 +2186,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 ? SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP * 10
                 : config.batteryBoltYOffsetTenthDp);
         BatteryIconPainter.draw(resolveBatteryPack(config), canvas, bounds, level, pluggedIn, charging,
-                quickCharging, fillColor, textColor, showLevelText, textScale, typeface,
+                quickCharging, fillColor, textColor, showLevelText, textScale,
                 bodyYOffsetPx, boltYOffsetPx, hollow, hollowFillFollowsLevel);
     }
 
@@ -3448,6 +3443,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         long signature = 17L;
         signature = signature * 31L + (isBatteryCodeDrawEnabled(config) ? 1L : 0L);
         signature = signature * 31L + resolveBatteryPack(config).json.hashCode();
+        signature = signature * 31L + (showBolt ? 1L : 0L);
         signature = signature * 31L + SettingsStore.normalizeScalePercent(config == null
                 ? SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT
                 : config.statusBarIconScalePercent);
@@ -3474,7 +3470,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         signature = signature * 31L + (config != null && config.batteryLevelTextEnabled ? 1L : 0L);
         signature = signature * 31L + (config != null && config.batteryHollowEnabled ? 1L : 0L);
         signature = signature * 31L + (config != null && config.batteryHollowFillFollowsLevel ? 1L : 0L);
-        signature = signature * 31L + resolveBatteryTextFontOption(config);
         signature = signature * 31L + (config == null ? 0 : config.batteryIconYOffsetTenthDp);
         signature = signature * 31L + (config == null ? 0 : config.batteryBoltYOffsetTenthDp);
         return signature;
@@ -3512,17 +3507,11 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static int resolveBatteryRenderWidth(int size, ModuleConfig config, boolean showBolt) {
-        return BatteryIconPainter.measureWidth(resolveBatteryPack(config), size);
+        return BatteryIconPainter.measureWidth(resolveBatteryPack(config), size, showBolt);
     }
 
     private static BatteryIconPack resolveBatteryPack(ModuleConfig config) {
         return config == null ? BatteryIconLibrary.defaultPack() : config.batteryIconPack;
-    }
-
-    private static int resolveBatteryTextFontOption(ModuleConfig config) {
-        return config == null
-                ? SettingsStore.DEFAULT_BATTERY_TEXT_FONT
-                : SettingsStore.normalizeBatteryTextFont(config.batteryTextFont);
     }
 
     private static boolean shouldShowBatteryBolt(Object target) {
