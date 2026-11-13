@@ -1,7 +1,10 @@
 package com.example.flymestatusbarsizer.feature.statusbar;
 
 import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.DrawableWrapper;
 import android.util.Log;
 import android.view.View;
 
@@ -31,18 +34,10 @@ public final class RingerIconVectorHooks {
                     "com.android.systemui.statusbar.StatusBarIconView", false, loader);
             Class<?> statusBarIconType = Class.forName(
                     "com.android.internal.statusbar.StatusBarIcon", false, loader);
-            Method loadDrawable = type.getDeclaredMethod("loadDrawable", Context.class,
+            Method getIcon = type.getDeclaredMethod("getIcon", Context.class, Context.class,
                     statusBarIconType);
-            module.intercept(loadDrawable, chain -> {
-                Object receiver = chain.getThisObject();
-                if (receiver instanceof View) {
-                    ICON_VIEWS.put((View) receiver, Boolean.TRUE);
-                }
-                if (!(receiver instanceof View) || !(chain.getArg(0) instanceof Context)) {
-                    return chain.proceed();
-                }
-
-                View iconView = (View) receiver;
+            module.intercept(getIcon, chain -> {
+                View iconView = (View) chain.getThisObject();
                 if (ReflectUtils.getField(iconView, "mNotification") != null) {
                     return chain.proceed();
                 }
@@ -55,6 +50,7 @@ public final class RingerIconVectorHooks {
                 } else {
                     return chain.proceed();
                 }
+                ICON_VIEWS.put(iconView, Boolean.TRUE);
 
                 ModuleConfig config = ModuleConfig.load(iconView.getContext());
                 if (!config.enabled || !config.statusBarRingerVectorIconsEnabled) {
@@ -76,7 +72,11 @@ public final class RingerIconVectorHooks {
                     }
                     drawableId = vibrateDrawableId;
                 }
-                return drawableId == 0 ? chain.proceed() : context.getDrawable(drawableId);
+                if (drawableId == 0) {
+                    return chain.proceed();
+                }
+                return new RingerVectorDrawable(context.getDrawable(drawableId), context,
+                        "mute".equals(slot));
             });
         } catch (Throwable error) {
             Log.w(TAG, "Ringer vector icons unavailable", error);
@@ -99,5 +99,48 @@ public final class RingerIconVectorHooks {
                 }
             }
         });
+    }
+
+    private static final class RingerVectorDrawable extends DrawableWrapper {
+        private final int intrinsicSize;
+        private final RectF pathBounds;
+        private final IconMetrics.VisualCanvas visualCanvas = new IconMetrics.VisualCanvas();
+
+        RingerVectorDrawable(Drawable source, Context context, boolean silent) {
+            super(source.mutate());
+            // The view applies the configured icon scale; keep the intrinsic box unscaled.
+            intrinsicSize = IconMetrics.resolveSignalBoxHeight(context, 1f);
+            // Visible path extents in the two SystemUI vectors' 24 x 24 viewports.
+            pathBounds = silent ? new RectF(1.4f, 2.8f, 21.2f, 22.6f)
+                    : new RectF(1f, 4f, 23f, 20f);
+        }
+
+        @Override
+        public void draw(Canvas canvas) {
+            IconMetrics.resolveCenteredVisualCanvas(getBounds(),
+                    pathBounds.width() / pathBounds.height(), visualCanvas);
+            if (visualCanvas.isEmpty()) {
+                return;
+            }
+            float scale = visualCanvas.rect.height() / pathBounds.height();
+            int saveCount = canvas.save();
+            canvas.translate(visualCanvas.rect.left, visualCanvas.rect.top);
+            canvas.scale(scale, scale);
+            canvas.translate(-pathBounds.left, -pathBounds.top);
+            getDrawable().setBounds(0, 0, 24, 24);
+            super.draw(canvas);
+            canvas.restoreToCount(saveCount);
+        }
+
+        @Override
+        public int getIntrinsicWidth() {
+            return intrinsicSize;
+        }
+
+        @Override
+        public int getIntrinsicHeight() {
+            return intrinsicSize;
+        }
+
     }
 }
