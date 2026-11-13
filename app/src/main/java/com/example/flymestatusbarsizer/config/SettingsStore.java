@@ -93,7 +93,6 @@ public final class SettingsStore {
     public static final String KEY_STATUS_BAR_ICON_SCALE_PERCENT = "status_bar_icon_scale_percent";
     public static final String KEY_BATTERY_INNER_TEXT_SCALE_PERCENT = "battery_inner_text_scale_percent";
     public static final String KEY_BATTERY_ICON_Y_OFFSET_DP = "battery_icon_y_offset_dp";
-    public static final String KEY_BATTERY_TEXT_Y_OFFSET_DP = "battery_text_y_offset_dp";
     public static final String KEY_BATTERY_BOLT_Y_OFFSET_DP = "battery_bolt_y_offset_dp";
     public static final String KEY_SIGNAL_SINGLE_Y_OFFSET_DP = "signal_single_y_offset_dp";
     public static final String KEY_SIGNAL_BADGE_Y_OFFSET_DP = "signal_badge_y_offset_dp";
@@ -676,7 +675,6 @@ public final class SettingsStore {
     public static final int DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT = 100;
     public static final int DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT = 100;
     public static final int DEFAULT_BATTERY_ICON_Y_OFFSET_DP = 0;
-    public static final int DEFAULT_BATTERY_TEXT_Y_OFFSET_DP = 0;
     public static final int DEFAULT_BATTERY_BOLT_Y_OFFSET_DP = 0;
     public static final int DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP = 0;
     public static final int DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP = 0;
@@ -954,7 +952,6 @@ public final class SettingsStore {
             KEY_STATUS_BAR_ICON_SCALE_PERCENT,
             KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
             KEY_BATTERY_ICON_Y_OFFSET_DP,
-            KEY_BATTERY_TEXT_Y_OFFSET_DP,
             KEY_BATTERY_BOLT_Y_OFFSET_DP,
             KEY_SIGNAL_SINGLE_Y_OFFSET_DP,
             KEY_SIGNAL_BADGE_Y_OFFSET_DP,
@@ -1247,7 +1244,6 @@ public final class SettingsStore {
             KEY_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP,
             KEY_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP,
             KEY_BATTERY_ICON_Y_OFFSET_DP,
-            KEY_BATTERY_TEXT_Y_OFFSET_DP,
             KEY_BATTERY_BOLT_Y_OFFSET_DP,
             KEY_SIGNAL_SINGLE_Y_OFFSET_DP,
             KEY_SIGNAL_BADGE_Y_OFFSET_DP,
@@ -1588,8 +1584,6 @@ public final class SettingsStore {
                 return DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
             case KEY_BATTERY_ICON_Y_OFFSET_DP:
                 return DEFAULT_BATTERY_ICON_Y_OFFSET_DP;
-            case KEY_BATTERY_TEXT_Y_OFFSET_DP:
-                return DEFAULT_BATTERY_TEXT_Y_OFFSET_DP;
             case KEY_BATTERY_BOLT_Y_OFFSET_DP:
                 return DEFAULT_BATTERY_BOLT_Y_OFFSET_DP;
             case KEY_SIGNAL_SINGLE_Y_OFFSET_DP:

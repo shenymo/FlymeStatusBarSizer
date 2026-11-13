@@ -99,7 +99,6 @@ public final class ModuleConfig {
     public int statusBarIconScalePercent = SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
     public int batteryInnerTextScalePercent = SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
     public int batteryIconYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP * 10;
-    public int batteryTextYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP * 10;
     public int batteryBoltYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP * 10;
     public int signalSingleYOffsetTenthDp = SettingsStore.DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP * 10;
     public int signalBadgeYOffsetTenthDp = SettingsStore.DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP * 10;
@@ -682,10 +681,6 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_BATTERY_ICON_Y_OFFSET_DP,
                     SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP * 10);
-            config.batteryTextYOffsetTenthDp = SettingsStore.readPositionOffsetTenthDp(
-                    prefs,
-                    SettingsStore.KEY_BATTERY_TEXT_Y_OFFSET_DP,
-                    SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP * 10);
             config.batteryBoltYOffsetTenthDp = SettingsStore.readPositionOffsetTenthDp(
                     prefs,
                     SettingsStore.KEY_BATTERY_BOLT_Y_OFFSET_DP,

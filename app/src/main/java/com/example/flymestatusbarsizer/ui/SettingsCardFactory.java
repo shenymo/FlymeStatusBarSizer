@@ -1214,16 +1214,11 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_CLOCK_RIGHT_PADDING_OFFSET_DP,
                 SettingsStore.DEFAULT_CLOCK_RIGHT_PADDING_OFFSET_DP * 10);
 
-        content = addSection(root, "电池", "下面 3 项只在模块接管电池绘制后生效。");
+        content = addSection(root, "电池", "仅在模块接管电池绘制后生效。");
         activity.addPositionOffsetSliderRow(content, "电池图标",
                 "整体电池轮廓的 Y 轴位置。默认 0dp。",
                 SettingsStore.KEY_BATTERY_ICON_Y_OFFSET_DP,
                 SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP * 10);
-        activity.addDivider(content);
-        activity.addPositionOffsetSliderRow(content, "电池内电量数字",
-                "只改电池内部数字的基线高度。默认 0dp。",
-                SettingsStore.KEY_BATTERY_TEXT_Y_OFFSET_DP,
-                SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP * 10);
         activity.addDivider(content);
         activity.addPositionOffsetSliderRow(content, "闪电图标",
                 "只改充电 / 快充闪电图标的 Y 轴位置。默认 0dp。",
@@ -1774,7 +1769,7 @@ public final class SettingsCardFactory {
         title.setTextSize(13);
         card.addView(title, activity.matchWrap());
         activity.addDivider(card);
-        activity.addSwitchRow(card, "电池内填充色随容量变化",
+        activity.addSwitchRow(card, "填充随电量变化",
                 "关闭时内部始终填满；开启后内部填充会按剩余电量缩短，未填充部分保留灰色底色。",
                 SettingsStore.KEY_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL,
                 SettingsStore.DEFAULT_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL);

@@ -49,7 +49,6 @@ public final class RightIconGroupPreviewView extends View {
     private int iconScalePercent = SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
     private int batteryInnerTextScalePercent = SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
     private int batteryIconYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP * 10;
-    private int batteryTextYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP * 10;
     private int batteryBoltYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP * 10;
     private int signalSingleYOffsetTenthDp = SettingsStore.DEFAULT_SIGNAL_SINGLE_Y_OFFSET_DP * 10;
     private int signalBadgeYOffsetTenthDp = SettingsStore.DEFAULT_SIGNAL_BADGE_Y_OFFSET_DP * 10;
@@ -150,15 +149,6 @@ public final class RightIconGroupPreviewView extends View {
             return;
         }
         batteryIconYOffsetTenthDp = normalized;
-        invalidate();
-    }
-
-    public void setBatteryTextYOffsetTenthDp(int offsetTenthDp) {
-        int normalized = SettingsStore.normalizeIconYOffsetTenthDp(offsetTenthDp);
-        if (batteryTextYOffsetTenthDp == normalized) {
-            return;
-        }
-        batteryTextYOffsetTenthDp = normalized;
         invalidate();
     }
 
@@ -341,7 +331,7 @@ public final class RightIconGroupPreviewView extends View {
         Typeface typeface = BatteryTextFontHelper.resolveTypeface(getContext(), batteryTextFont);
         BatteryIconPainter.draw(batteryPack, canvas, bounds, level, pluggedIn, charging, false,
                 fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
-                offsetPx(batteryIconYOffsetTenthDp), offsetPx(batteryTextYOffsetTenthDp),
+                offsetPx(batteryIconYOffsetTenthDp),
                 offsetPx(batteryBoltYOffsetTenthDp), batteryHollowEnabled, batteryHollowFillFollowsLevel);
     }
 

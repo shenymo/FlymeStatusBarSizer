@@ -463,7 +463,6 @@ public final class BatteryIconLibraryEditor {
                         config.batteryInnerTextScalePercent / 100f,
                         BatteryTextFontHelper.resolveTypeface(getContext(), config.batteryTextFont),
                         SettingsStore.positionOffsetTenthDpToPx(getContext(), config.batteryIconYOffsetTenthDp),
-                        SettingsStore.positionOffsetTenthDpToPx(getContext(), config.batteryTextYOffsetTenthDp),
                         SettingsStore.positionOffsetTenthDpToPx(getContext(), config.batteryBoltYOffsetTenthDp),
                         config.batteryHollowEnabled, config.batteryHollowFillFollowsLevel);
             }

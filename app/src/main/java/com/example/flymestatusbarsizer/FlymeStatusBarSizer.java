@@ -2187,15 +2187,12 @@ public class FlymeStatusBarSizer extends XposedModule {
         float bodyYOffsetPx = resolveIconOffsetPx(densityContext, config == null
                 ? SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP * 10
                 : config.batteryIconYOffsetTenthDp);
-        float textYOffsetPx = resolveIconOffsetPx(densityContext, config == null
-                ? SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP * 10
-                : config.batteryTextYOffsetTenthDp);
         float boltYOffsetPx = resolveIconOffsetPx(densityContext, config == null
                 ? SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP * 10
                 : config.batteryBoltYOffsetTenthDp);
         BatteryIconPainter.draw(resolveBatteryPack(config), canvas, bounds, level, pluggedIn, charging,
                 quickCharging, fillColor, textColor, showLevelText, textScale, typeface,
-                bodyYOffsetPx, textYOffsetPx, boltYOffsetPx, hollow, hollowFillFollowsLevel);
+                bodyYOffsetPx, boltYOffsetPx, hollow, hollowFillFollowsLevel);
     }
 
     private static float resolveIconOffsetPx(Context context, int offsetTenthDp) {
@@ -3479,7 +3476,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         signature = signature * 31L + (config != null && config.batteryHollowFillFollowsLevel ? 1L : 0L);
         signature = signature * 31L + resolveBatteryTextFontOption(config);
         signature = signature * 31L + (config == null ? 0 : config.batteryIconYOffsetTenthDp);
-        signature = signature * 31L + (config == null ? 0 : config.batteryTextYOffsetTenthDp);
         signature = signature * 31L + (config == null ? 0 : config.batteryBoltYOffsetTenthDp);
         return signature;
     }

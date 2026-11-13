@@ -27,7 +27,7 @@ public final class BatteryIconPainter {
     public static void draw(BatteryIconPack pack, Canvas canvas, Rect bounds, int level,
             boolean pluggedIn, boolean charging, boolean quickCharging, int tint, int textColor,
             boolean showText, float textScale, Typeface typeface, float bodyOffset,
-            float textOffset, float boltOffset, boolean hollow, boolean fillFollowsLevel) {
+            float boltOffset, boolean hollow, boolean fillFollowsLevel) {
         if (bounds.isEmpty()) return;
         float visualHeight = IconMetrics.resolveVisualBandHeight(bounds.height());
         float scale = Math.min(visualHeight / pack.visualBounds.height(),
@@ -59,7 +59,7 @@ public final class BatteryIconPainter {
             TEXT.setTextAlign(Paint.Align.CENTER);
             TEXT.setTextSize(pack.textSize * textScale);
             float x = pack.textBounds.centerX();
-            float y = pack.textBounds.centerY() - (TEXT.ascent() + TEXT.descent()) / 2f - textOffset / scale;
+            float y = pack.textBounds.centerY() - (TEXT.ascent() + TEXT.descent()) / 2f;
             TEXT.setXfermode(null);
             if (pack.textOutline > 0) {
                 TEXT.setStyle(Paint.Style.STROKE);

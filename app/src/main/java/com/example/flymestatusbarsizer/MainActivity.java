@@ -140,7 +140,6 @@ public class MainActivity extends Activity {
     private static final String[] POSITION_TUNING_KEYS = {
             SettingsStore.KEY_CLOCK_RIGHT_PADDING_OFFSET_DP,
             SettingsStore.KEY_BATTERY_ICON_Y_OFFSET_DP,
-            SettingsStore.KEY_BATTERY_TEXT_Y_OFFSET_DP,
             SettingsStore.KEY_BATTERY_BOLT_Y_OFFSET_DP,
             SettingsStore.KEY_SIGNAL_SINGLE_Y_OFFSET_DP,
             SettingsStore.KEY_SIGNAL_BADGE_Y_OFFSET_DP,
@@ -1629,7 +1628,7 @@ public class MainActivity extends Activity {
         title.setTextSize(13);
         card.addView(title, matchWrap());
         addDivider(card);
-        addSwitchRow(card, "电池内填充色随容量变化",
+        addSwitchRow(card, "填充随电量变化",
                 "关闭时内部始终填满；开启后内部填充会按剩余电量缩短，未填充部分保留灰色底色。",
                 SettingsStore.KEY_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL,
                 SettingsStore.DEFAULT_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL);
