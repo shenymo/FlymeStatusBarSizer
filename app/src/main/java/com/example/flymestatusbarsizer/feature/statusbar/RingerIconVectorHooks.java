@@ -9,6 +9,7 @@ import android.util.Log;
 import android.view.View;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
+import com.example.flymestatusbarsizer.R;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
@@ -58,6 +59,8 @@ public final class RingerIconVectorHooks {
                 }
 
                 Context context = (Context) chain.getArg(0);
+                RingerVectorXml custom = "mute".equals(slot) ? config.silentIconVector : config.vibrateIconVector;
+                if (custom != null) return custom.newDrawable(context);
                 int drawableId;
                 if ("mute".equals(slot)) {
                     if (silentDrawableId == 0) {
@@ -99,6 +102,11 @@ public final class RingerIconVectorHooks {
                 }
             }
         });
+    }
+
+    public static Drawable builtInPreview(Context context, boolean silent) {
+        return new RingerVectorDrawable(context.getDrawable(silent ? R.drawable.ringer_builtin_silent
+                : R.drawable.ringer_builtin_vibrate), context, silent);
     }
 
     private static final class RingerVectorDrawable extends DrawableWrapper {

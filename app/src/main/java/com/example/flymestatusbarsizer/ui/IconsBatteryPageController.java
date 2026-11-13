@@ -4,6 +4,8 @@ import com.example.flymestatusbarsizer.MainActivity;
 import com.example.flymestatusbarsizer.feature.statusbar.StatusBarIconVisibility;
 
 import android.widget.LinearLayout;
+import android.view.View;
+import com.example.flymestatusbarsizer.config.SettingsStore;
 
 public final class IconsBatteryPageController {
     private IconsBatteryPageController() {
@@ -21,12 +23,17 @@ public final class IconsBatteryPageController {
     private static void addRingerIconCard(MainActivity activity, LinearLayout root) {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
-        activity.addSwitchRow(content, "使用矢量图标",
-                "将状态栏静音和震动图标改为矢量资源，放大时保持清晰。",
-                com.example.flymestatusbarsizer.config.SettingsStore
-                        .KEY_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED,
-                com.example.flymestatusbarsizer.config.SettingsStore
-                        .DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED);
+        LinearLayout libraries = new LinearLayout(activity);
+        libraries.setOrientation(LinearLayout.VERTICAL);
+        RingerIconLibraryEditor.addSettingsRows(activity, libraries);
+        libraries.setVisibility(SettingsStore.readBoolean(activity.prefs(),
+                SettingsStore.KEY_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED,
+                SettingsStore.DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED) ? View.VISIBLE : View.GONE);
+        activity.addSwitchRow(content, "使用矢量图标", null,
+                SettingsStore.KEY_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED,
+                SettingsStore.DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED,
+                (button, enabled) -> libraries.setVisibility(enabled ? View.VISIBLE : View.GONE));
+        content.addView(libraries);
         root.addView(activity.buildSectionCard("静音与震动", null, content),
                 PageViewUtils.matchWrapWithTop(activity, 8));
     }

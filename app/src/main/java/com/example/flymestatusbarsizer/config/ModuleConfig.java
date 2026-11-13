@@ -5,6 +5,8 @@ import com.example.flymestatusbarsizer.feature.share.ShareTargetProfiles;
 
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryAnimationConfig;
 import com.example.flymestatusbarsizer.feature.statusbar.StatusBarIconVisibility;
+import com.example.flymestatusbarsizer.feature.statusbar.RingerIconLibrary;
+import com.example.flymestatusbarsizer.feature.statusbar.RingerVectorXml;
 import com.example.flymestatusbarsizer.feature.wifi.WifiIconStyles;
 
 import android.content.Context;
@@ -41,6 +43,8 @@ public final class ModuleConfig {
     public boolean statusBarTintEnabled = SettingsStore.DEFAULT_STATUS_BAR_TINT_ENABLED;
     public boolean statusBarRingerVectorIconsEnabled =
             SettingsStore.DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED;
+    public RingerVectorXml silentIconVector;
+    public RingerVectorXml vibrateIconVector;
     public boolean hideIdleCameraCutout = SettingsStore.DEFAULT_HIDE_IDLE_CAMERA_CUTOUT;
     public final int[] statusBarTintModes = new int[SettingsStore.STATUS_BAR_TINT_KEYS.length];
     public boolean batteryCodeDrawEnabled = SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED;
@@ -544,6 +548,10 @@ public final class ModuleConfig {
             config.statusBarRingerVectorIconsEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED,
                     SettingsStore.DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED);
+            RingerIconLibrary.Entry silentIcon = RingerIconLibrary.load(prefs, true).selectedEntry();
+            RingerIconLibrary.Entry vibrateIcon = RingerIconLibrary.load(prefs, false).selectedEntry();
+            config.silentIconVector = silentIcon == null ? null : silentIcon.vector();
+            config.vibrateIconVector = vibrateIcon == null ? null : vibrateIcon.vector();
             config.hideIdleCameraCutout = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_HIDE_IDLE_CAMERA_CUTOUT, SettingsStore.DEFAULT_HIDE_IDLE_CAMERA_CUTOUT);
             for (int i = 0; i < config.statusBarTintModes.length; i++) {

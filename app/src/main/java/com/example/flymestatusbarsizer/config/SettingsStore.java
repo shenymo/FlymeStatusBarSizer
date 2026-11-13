@@ -36,6 +36,8 @@ public final class SettingsStore {
     public static final String KEY_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED =
             "status_bar_ringer_vector_icons_enabled";
     public static final boolean DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED = false;
+    public static final String KEY_STATUS_BAR_SILENT_ICON_LIBRARY = "status_bar_silent_icon_library";
+    public static final String KEY_STATUS_BAR_VIBRATE_ICON_LIBRARY = "status_bar_vibrate_icon_library";
     public static final String KEY_HIDE_IDLE_CAMERA_CUTOUT = "hide_idle_camera_cutout";
     public static final String KEY_BATTERY_CODE_DRAW_ENABLED = "battery_code_draw_enabled";
     public static final String KEY_CAMERA_CIRCLE_BATTERY_ENABLED = "camera_circle_battery_enabled";
@@ -1167,6 +1169,8 @@ public final class SettingsStore {
     });
 
     public static final String[] STRING_KEYS = {
+            KEY_STATUS_BAR_SILENT_ICON_LIBRARY,
+            KEY_STATUS_BAR_VIBRATE_ICON_LIBRARY,
             KEY_ASSISTANT_BACKGROUND_IMAGE,
             KEY_ANIP_BUNDLE_TARGET,
             KEY_SHARE_TARGET_PROFILES,
