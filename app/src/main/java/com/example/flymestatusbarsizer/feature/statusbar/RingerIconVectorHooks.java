@@ -1,12 +1,14 @@
 package com.example.flymestatusbarsizer.feature.statusbar;
 
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.DrawableWrapper;
 import android.util.Log;
 import android.view.View;
+import android.widget.ImageView;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import com.example.flymestatusbarsizer.R;
@@ -22,7 +24,7 @@ import java.util.WeakHashMap;
 /** Loads SystemUI's vector alternatives for the native silent and vibrate status icons. */
 public final class RingerIconVectorHooks {
     private static final String TAG = "RingerIconVector";
-    private static final Map<View, Boolean> ICON_VIEWS =
+    private static final Map<View, Integer> ICON_VIEWS =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static int silentDrawableId;
     private static int vibrateDrawableId;
@@ -51,7 +53,7 @@ public final class RingerIconVectorHooks {
                 } else {
                     return chain.proceed();
                 }
-                ICON_VIEWS.put(iconView, Boolean.TRUE);
+                ICON_VIEWS.putIfAbsent(iconView, null);
 
                 ModuleConfig config = ModuleConfig.load(iconView.getContext());
                 if (!config.enabled || !config.statusBarRingerVectorIconsEnabled) {
@@ -81,8 +83,51 @@ public final class RingerIconVectorHooks {
                 return new RingerVectorDrawable(context.getDrawable(drawableId), context,
                         "mute".equals(slot));
             });
+            module.intercept(type.getDeclaredMethod("setStaticDrawableColor", int.class), chain -> {
+                Object result = chain.proceed();
+                ImageView view = (ImageView) chain.getThisObject();
+                if (ICON_VIEWS.containsKey(view)) applyTint(view, (Integer) chain.getArg(0));
+                return result;
+            });
+            module.intercept(type.getDeclaredMethod("onDarkChanged", ArrayList.class,
+                    float.class, int.class), chain -> {
+                Object result = chain.proceed();
+                ImageView view = (ImageView) chain.getThisObject();
+                if (!ICON_VIEWS.containsKey(view)) return result;
+                ColorStateList tint = view.getImageTintList();
+                applyTint(view, tint.getColorForState(view.getDrawableState(), tint.getDefaultColor()));
+                return result;
+            });
+            module.intercept(type.getDeclaredMethod("updateDrawable", boolean.class), chain -> {
+                Object result = chain.proceed();
+                ImageView view = (ImageView) chain.getThisObject();
+                Integer tint = ICON_VIEWS.get(view);
+                if (tint != null) applyTint(view, tint);
+                return result;
+            });
+            // Panel callers can inline the interface's one-color forwarding method.
+            module.deoptimize(Class.forName("com.android.systemui.statusbar.StatusIconDisplayable",
+                    false, loader).getDeclaredMethod("setStaticDrawableColor", int.class, int.class));
+            Class<?> manager = Class.forName(
+                    "com.android.systemui.statusbar.phone.ui.TintedIconManager", false, loader);
+            for (Method method : manager.getDeclaredMethods()) {
+                if ("setTint".equals(method.getName()) || "onIconAdded".equals(method.getName())) {
+                    module.deoptimize(method);
+                }
+            }
+            module.deoptimize(type.getDeclaredMethod("updateDrawable"));
         } catch (Throwable error) {
             Log.w(TAG, "Ringer vector icons unavailable", error);
+        }
+    }
+
+    private static void applyTint(ImageView view, int color) {
+        ICON_VIEWS.put(view, color);
+        Drawable drawable = view.getDrawable();
+        if (drawable instanceof RingerVectorXml.VectorIcon) {
+            // A previous native color filter would take precedence over the new tint.
+            drawable.clearColorFilter();
+            drawable.setTintList(ColorStateList.valueOf(color));
         }
     }
 

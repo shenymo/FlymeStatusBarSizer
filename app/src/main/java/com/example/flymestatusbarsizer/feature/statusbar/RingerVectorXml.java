@@ -300,7 +300,7 @@ public final class RingerVectorXml {
         return new VectorIcon(IconMetrics.resolveSignalBoxHeight(context, 1f));
     }
 
-    private final class VectorIcon extends Drawable {
+    final class VectorIcon extends Drawable {
         private final int size;
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final IconMetrics.VisualCanvas visual = new IconMetrics.VisualCanvas();
