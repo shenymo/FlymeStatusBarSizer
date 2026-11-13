@@ -222,6 +222,24 @@ public final class RingerIconLibraryEditor {
             name.setText(copyName);
             mode.setOnCheckedChangeListener((group, checked) -> name.setText(checked == replace.getId() ? original.name() : copyName));
         }
+        LinearLayout xmlHeader = new LinearLayout(activity);
+        xmlHeader.setGravity(Gravity.CENTER_VERTICAL);
+        TextView xmlLabel = text("XML 代码", 14);
+        xmlHeader.addView(xmlLabel, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView promptButton = button("AI 提示词", this::copyAiPrompt);
+        promptButton.setPadding(activity.dp(12), activity.dp(8), activity.dp(12), activity.dp(8));
+        promptButton.setBackground(activity.outlinedRect(activity.primaryContainerColor(),
+                activity.primaryColor(), 1, 8));
+        Drawable copyIcon = activity.getDrawable(R.drawable.ic_content_copy_24px).mutate();
+        copyIcon.setTint(activity.primaryColor());
+        copyIcon.setBounds(0, 0, activity.dp(20), activity.dp(20));
+        promptButton.setCompoundDrawablesRelative(copyIcon, null, null, null);
+        promptButton.setCompoundDrawablePadding(activity.dp(8));
+        promptButton.setContentDescription("AI 提示词，点击复制");
+        xmlHeader.addView(promptButton, new LinearLayout.LayoutParams(-2, activity.dp(48)));
+        LinearLayout.LayoutParams headerParams = new LinearLayout.LayoutParams(-1, -2);
+        headerParams.setMargins(0, activity.dp(8), 0, activity.dp(8));
+        content.addView(xmlHeader, headerParams);
         EditText xml = input("粘贴 Android Vector XML", true);
         xml.setTypeface(Typeface.MONOSPACE);
         xml.setTextSize(12);
@@ -232,31 +250,6 @@ public final class RingerIconLibraryEditor {
         TextView rule = text("支持静态 Android Vector XML，不支持外部资源引用。", 12);
         rule.setTextColor(activity.subtextColor());
         content.addView(rule);
-        LinearLayout promptRow = new LinearLayout(activity);
-        promptRow.setOrientation(LinearLayout.HORIZONTAL);
-        promptRow.setGravity(Gravity.CENTER_VERTICAL);
-        promptRow.setPadding(activity.dp(12), activity.dp(8), activity.dp(12), activity.dp(8));
-        promptRow.setMinimumHeight(activity.dp(60));
-        promptRow.setBackground(activity.roundRect(activity.primaryContainerColor(), 8));
-        ImageView promptIcon = new ImageView(activity);
-        promptIcon.setImageResource(R.drawable.ic_content_copy_24px);
-        promptIcon.setImageTintList(ColorStateList.valueOf(activity.primaryColor()));
-        promptIcon.setContentDescription("复制 AI 提示词");
-        promptRow.addView(promptIcon, new LinearLayout.LayoutParams(activity.dp(24), activity.dp(24)));
-        LinearLayout promptText = column();
-        promptText.setPadding(activity.dp(12), 0, 0, 0);
-        TextView promptTitle = text("AI 提示词", 14);
-        promptTitle.setTextColor(activity.primaryColor());
-        promptText.addView(promptTitle);
-        TextView promptSubtitle = text("复制提示词发给 AI，快速生成符合格式的代码", 12);
-        promptSubtitle.setTextColor(activity.subtextColor());
-        promptText.addView(promptSubtitle);
-        promptRow.addView(promptText, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView copyLabel = text("点击复制", 12);
-        copyLabel.setTextColor(activity.primaryColor());
-        promptRow.addView(copyLabel);
-        activity.setTapClickListener(promptRow, v -> copyAiPrompt());
-        content.addView(promptRow);
         xml.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
@@ -287,7 +280,7 @@ public final class RingerIconLibraryEditor {
                 Entry entry = new Entry(id, title, xml.getText().toString(), vector, null);
                 ArrayList<Entry> entries = new ArrayList<>(library.entries);
                 if (replacing) entries.set(entries.indexOf(original), entry);
-                else entries.add(0, entry);
+                else entries.add(1, entry);
                 persist(new RingerIconLibrary(entries, use ? id : library.selected));
                 dialog.dismiss();
                 activity.showToast(use ? "已保存并选用" : "已保存到图标库");
@@ -301,19 +294,19 @@ public final class RingerIconLibraryEditor {
     }
 
     private void copyAiPrompt() {
-        String prompt = "请为我生成一个 Android Vector XML 图标代码。\n"
+        String prompt = "请基于下面的 Android Vector XML 模板，修改出一个图标。\n"
                 + "图标图案描述：【在此输入图案描述，例如："
                 + (silent ? "静音喇叭" : "震动的手机") + "】\n\n"
-                + "严格遵循以下解析规则：\n"
-                + "1. 只输出纯 XML 代码，不要 Markdown、代码块标记、前缀、后缀或解释文字。\n"
-                + "2. 根标签必须为 <vector xmlns:android=\"http://schemas.android.com/apk/res/android\">。\n"
-                + "3. 画布使用 android:width=\"24dp\"、android:height=\"24dp\"、"
-                + "android:viewportWidth=\"24\"、android:viewportHeight=\"24\"。\n"
-                + "4. 至少包含一个 <path>，并提供有效的 android:pathData。\n"
-                + "5. 颜色使用十六进制字面值，例如 android:fillColor=\"#FFFFFFFF\"；"
-                + "不要引用 @color/、?attr/ 等外部资源。\n"
-                + "6. 仅使用静态 vector、path、group、clip-path；不要使用 SVG、动画或渐变。\n"
-                + "7. 图标用于状态栏单色显示，主体居中并在 24×24 画布边缘留出安全空间。";
+                + "请优先只修改 pathData；如果图案由多个部分组成，可以增加 path，"
+                + "但保留 vector 根标签、尺寸和视口设置。\n"
+                + "只输出最终的纯 XML 代码，不要 Markdown、代码块标记、前缀、后缀或解释文字。\n"
+                + "图形用于状态栏单色显示，不要额外预留安全留白。保持宽高比等比放大并居中，"
+                + "让图形较长方向铺满 24×24 视口，外沿到达坐标 0 和 24，不要缩成 18×18 或强行拉伸变形。"
+                + "若有描边，以描边外沿为边界，不得超出视口。\n"
+                + "下方三角形路径仅为 XML 结构示例，不要沿用其留白；请根据目标图案重新调整路径坐标，充分利用整个视口。\n"
+                + "不要使用 SVG、动画、渐变、@color/、?attr/ 或其他外部资源引用。\n\n"
+                + "模板：\n"
+                + RingerIconLibrary.TRIANGLE_XML;
         ClipboardManager clipboard = (ClipboardManager) activity.getSystemService(
                 android.content.Context.CLIPBOARD_SERVICE);
         if (clipboard != null) {

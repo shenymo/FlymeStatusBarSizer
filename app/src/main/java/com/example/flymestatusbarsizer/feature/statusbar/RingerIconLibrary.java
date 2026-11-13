@@ -15,9 +15,17 @@ import java.util.List;
 public final class RingerIconLibrary {
     private static final LruCache<String, RingerIconLibrary> CACHE = new LruCache<>(4);
     private static final String TRIANGLE_ID = "builtin:triangle";
-    private static final String TRIANGLE_XML = "<vector xmlns:android=\"http://schemas.android.com/apk/res/android\" "
-            + "android:width=\"24dp\" android:height=\"24dp\" android:viewportWidth=\"24\" android:viewportHeight=\"24\">"
-            + "<path android:fillColor=\"#FFFFFFFF\" android:pathData=\"M12,2 L22,20 L2,20 Z\" /></vector>";
+    public static final String TRIANGLE_XML = """
+            <vector xmlns:android="http://schemas.android.com/apk/res/android"
+                android:width="24dp"
+                android:height="24dp"
+                android:viewportWidth="24"
+                android:viewportHeight="24">
+                <path
+                    android:fillColor="#FFFFFFFF"
+                    android:pathData="M12,2 L22,20 L2,20 Z" />
+            </vector>
+            """;
     public record Entry(String id, String name, String xml, RingerVectorXml vector, String error) { }
     public final List<Entry> entries;
     public final String selected;
@@ -37,8 +45,6 @@ public final class RingerIconLibrary {
         RingerIconLibrary cached = CACHE.get(raw);
         if (cached != null) return cached;
         ArrayList<Entry> entries = new ArrayList<>();
-        entries.add(new Entry(TRIANGLE_ID, "示例：三角形", TRIANGLE_XML,
-                RingerVectorXml.parse(TRIANGLE_XML), null));
         String selected = "";
         if (!raw.isEmpty()) {
             try {
@@ -47,7 +53,8 @@ public final class RingerIconLibrary {
                 for (int i = 0; i < items.length(); i++) {
                     JSONObject item = items.getJSONObject(i);
                     String id = item.getString("id"), name = item.getString("name"), xml = item.getString("xml");
-                    if (id.isBlank() || name.isBlank() || entries.stream().anyMatch(entry -> entry.id.equals(id))) continue;
+                    if (id.isBlank() || id.startsWith("builtin:") || name.isBlank()
+                            || entries.stream().anyMatch(entry -> entry.id.equals(id))) continue;
                     RingerVectorXml vector = null;
                     String error = null;
                     try {
@@ -62,6 +69,8 @@ public final class RingerIconLibrary {
                 entries.clear();
             }
         }
+        entries.add(0, new Entry(TRIANGLE_ID, "示例：三角形", TRIANGLE_XML,
+                RingerVectorXml.parse(TRIANGLE_XML), null));
         String selectedId = selected;
         if (entries.stream().noneMatch(entry -> entry.id.equals(selectedId) && entry.vector != null)) selected = "";
         RingerIconLibrary library = new RingerIconLibrary(entries, selected);
