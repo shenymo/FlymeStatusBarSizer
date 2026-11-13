@@ -2,16 +2,19 @@ package com.example.flymestatusbarsizer.ui;
 
 import android.app.AlertDialog;
 import android.app.Dialog;
-import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.text.InputType;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
@@ -24,6 +27,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.Spinner;
+import android.widget.Switch;
 import android.widget.TextView;
 
 import com.example.flymestatusbarsizer.MainActivity;
@@ -34,6 +38,7 @@ import com.example.flymestatusbarsizer.feature.battery.BatteryIconLibrary;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconLibrary.Entry;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconPack;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconPainter;
+import com.example.flymestatusbarsizer.feature.statusbar.RingerVectorXml;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -130,15 +135,14 @@ public final class BatteryIconLibraryEditor {
     }
 
     private void menu(Entry entry) {
-        String[] items = entry.builtIn() ? new String[]{"复制并编辑", "复制图标包"}
-                : new String[]{"修改", "复制并编辑", "重命名", "复制图标包", "删除"};
+        String[] items = entry.builtIn() ? new String[]{"复制并编辑"}
+                : new String[]{"修改", "复制并编辑", "重命名", "删除"};
         AlertDialog dialog = new AlertDialog.Builder(activity).setTitle(entry.pack().name)
                 .setItems(items, (d, index) -> {
                     switch (items[index]) {
                         case "修改" -> edit(entry, false);
                         case "复制并编辑" -> edit(entry, true);
                         case "重命名" -> rename(entry);
-                        case "复制图标包" -> copy(entry.pack());
                         case "删除" -> {
                             Runnable remove = () -> {
                                 ArrayList<Entry> entries = new ArrayList<>(library.entries);
@@ -211,25 +215,34 @@ public final class BatteryIconLibraryEditor {
         String id = original == null || duplicate ? UUID.randomUUID().toString() : original.id();
         Dialog dialog = new Dialog(activity);
         LinearLayout root = page(dialog, original == null || duplicate ? "新增电池图标包" : "修改电池图标包");
+        LinearLayout header = (LinearLayout) root.getChildAt(0);
+        TextView heading = (TextView) header.getChildAt(1);
+        heading.setSingleLine(true);
+        heading.setEllipsize(TextUtils.TruncateAt.END);
+        heading.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1));
         ScrollView scroll = new ScrollView(activity);
         LinearLayout content = column();
         content.setPadding(activity.dp(16), activity.dp(16), activity.dp(16), activity.dp(12));
         LinearLayout previewPanel = column();
         previewPanel.setPadding(activity.dp(16), 0, activity.dp(16), 0);
         LinearLayout previewTools = new LinearLayout(activity);
+        previewTools.setOrientation(LinearLayout.VERTICAL);
         previewTools.setGravity(Gravity.CENTER_VERTICAL);
-        previewPanel.addView(previewTools);
+        LinearLayout previewRow = new LinearLayout(activity);
+        previewRow.setGravity(Gravity.CENTER_VERTICAL);
+        previewPanel.addView(previewRow);
         LinearLayout previews = new LinearLayout(activity);
         PreviewView light = new PreviewView(activity, false, true);
         PreviewView dark = new PreviewView(activity, true, true);
         light.pack = dark.pack = template;
-        previews.addView(light, new LinearLayout.LayoutParams(0, activity.dp(130), 1));
-        previews.addView(dark, new LinearLayout.LayoutParams(0, activity.dp(130), 1));
-        previewPanel.addView(previews);
+        previews.addView(light, new LinearLayout.LayoutParams(0, activity.dp(60), 1));
+        previews.addView(dark, new LinearLayout.LayoutParams(0, activity.dp(60), 1));
+        previewRow.addView(previews, new LinearLayout.LayoutParams(0, activity.dp(60), 1));
+        previewRow.addView(previewTools, new LinearLayout.LayoutParams(activity.dp(104), activity.dp(60)));
         LinearLayout levelRow = new LinearLayout(activity);
         levelRow.setGravity(Gravity.CENTER_VERTICAL);
-        TextView levelLabel = text("电量 82%", 14);
-        levelRow.addView(levelLabel, new LinearLayout.LayoutParams(activity.dp(80), -2));
+        TextView levelLabel = text("82%", 12);
+        levelRow.addView(levelLabel, new LinearLayout.LayoutParams(activity.dp(48), -2));
         SeekBar level = new SeekBar(activity);
         level.setContentDescription("预览电量");
         activity.styleSeekBar(level);
@@ -238,27 +251,49 @@ public final class BatteryIconLibraryEditor {
         level.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar bar, int value, boolean user) {
                 light.level = dark.level = value;
-                light.invalidate(); dark.invalidate(); levelLabel.setText("电量 " + value + "%");
+                light.invalidate(); dark.invalidate(); levelLabel.setText(value + "%");
             }
             public void onStartTrackingTouch(SeekBar bar) { }
             public void onStopTrackingTouch(SeekBar bar) { }
         });
-        levelRow.addView(level, new LinearLayout.LayoutParams(0, activity.dp(48), 1));
+        levelRow.addView(level, new LinearLayout.LayoutParams(0, activity.dp(36), 1));
+        Switch numbers = new Switch(activity);
+        activity.styleSwitch(numbers);
+        numbers.setMinHeight(activity.dp(36));
+        numbers.setText("数字");
+        numbers.setTextSize(12);
+        numbers.setTextColor(activity.textColor());
+        numbers.setSwitchPadding(activity.dp(4));
+        numbers.setContentDescription("预览电量数字");
+        numbers.setChecked(true);
+        numbers.setOnCheckedChangeListener((button, checked) -> {
+            activity.performTapHaptic(button);
+            light.showNumbers = dark.showNumbers = checked;
+            light.invalidate();
+            dark.invalidate();
+        });
+        levelRow.addView(numbers, new LinearLayout.LayoutParams(-2, activity.dp(36)));
         previewPanel.addView(levelRow);
         Spinner state = spinner(new String[]{"未充电", "已插电", "普通充电", "快充"});
+        state.setPadding(activity.dp(8), 0, 0, 0);
         state.setContentDescription("预览充电状态");
         state.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             public void onItemSelected(AdapterView<?> parent, View view, int position, long itemId) {
+                TextView label = (TextView) view;
+                label.setTextSize(12);
+                label.setSingleLine(true);
+                label.setPadding(0, 0, 0, 0);
                 light.state = dark.state = position; light.invalidate(); dark.invalidate();
             }
             public void onNothingSelected(AdapterView<?> parent) { }
         });
-        previewTools.addView(state, new LinearLayout.LayoutParams(0, activity.dp(48), 1));
+        previewTools.addView(state, new LinearLayout.LayoutParams(-1, activity.dp(28)));
         root.addView(previewPanel);
         ImageView handle = new ImageView(activity);
         handle.setImageResource(R.drawable.ic_section_expand);
         handle.setImageTintList(ColorStateList.valueOf(activity.subtextColor()));
-        handle.setScaleType(ImageView.ScaleType.CENTER);
+        handle.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        handle.setPadding(0, activity.dp(2), 0, activity.dp(2));
         handle.setRotation(180);
         handle.setContentDescription("收起预览");
         activity.setTapClickListener(handle, v -> {
@@ -267,7 +302,7 @@ public final class BatteryIconLibraryEditor {
             handle.setRotation(expanded ? 0 : 180);
             handle.setContentDescription(expanded ? "展开预览" : "收起预览");
         });
-        root.addView(handle, new LinearLayout.LayoutParams(-1, activity.dp(48)));
+        root.addView(handle, new LinearLayout.LayoutParams(-1, activity.dp(16)));
         LinkedHashMap<String, EditText> fields = new LinkedHashMap<>();
         LinearLayout basic = editorSection(content, "基本信息");
         LinearLayout geometry = editorSection(content, "区域与填充");
@@ -310,12 +345,34 @@ public final class BatteryIconLibraryEditor {
         for (int i = 0; i < DIRECTIONS.length; i++) if (DIRECTIONS[i].equals(source.optString("fillDirection"))) direction.setSelection(i);
         geometry.addView(direction, new LinearLayout.LayoutParams(-1, activity.dp(48)));
         LinearLayout xmlSection = editorSection(content, "XML 图层");
-        Spinner layer = spinner(new String[]{"外壳 XML", "电芯 XML", "空电量底图 XML（可选）", "充电 XML（可选）", "快充 XML（可选）"});
-        layer.setContentDescription("XML 图层");
-        xmlSection.addView(layer, new LinearLayout.LayoutParams(-1, activity.dp(48)));
+        LinearLayout layers = new LinearLayout(activity);
+        LinearLayout.LayoutParams layerParams = new LinearLayout.LayoutParams(-1, -2);
+        layerParams.setMargins(0, activity.dp(8), 0, activity.dp(8));
+        xmlSection.addView(layers, layerParams);
+        String[] layerNames = {"外壳", "电芯", "空电量", "充电", "快充"};
         ArrayList<EditText> xmlFields = new ArrayList<>();
-        for (String key : XML_KEYS) {
+        for (int index = 0; index < XML_KEYS.length; index++) {
+            String key = XML_KEYS[index];
+            int position = index;
+            LinearLayout card = column();
+            card.setPadding(activity.dp(2), activity.dp(2), activity.dp(2), activity.dp(4));
+            card.setSelected(index == 0);
+            card.setBackground(activity.roundRect(index == 0
+                    ? activity.primaryContainerColor() : activity.surfaceColor(), 8));
+            card.setContentDescription(layerNames[index] + " XML" + (index >= 2 ? "，可选" : ""));
+            LayerPreviewView preview = new LayerPreviewView(activity);
+            card.addView(preview, new LinearLayout.LayoutParams(-1, activity.dp(72)));
+            TextView label = text(layerNames[index], 11);
+            label.setGravity(Gravity.CENTER);
+            label.setSingleLine(true);
+            label.setAutoSizeTextTypeUniformWithConfiguration(9, 11, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
+            label.setTextColor(index == 0 ? activity.primaryColor() : activity.textColor());
+            card.addView(label, new LinearLayout.LayoutParams(-1, activity.dp(24)));
+            LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(0, -2, 1);
+            cardParams.setMargins(activity.dp(2), 0, activity.dp(2), 0);
+            layers.addView(card, cardParams);
             EditText xml = input("XML", true);
+            xml.setContentDescription(card.getContentDescription());
             xml.setTypeface(Typeface.MONOSPACE);
             xml.setTextSize(12);
             xml.setMinLines(6);
@@ -327,13 +384,46 @@ public final class BatteryIconLibraryEditor {
             fields.put(key, xml);
             xmlFields.add(xml);
             xmlSection.addView(xml, new LinearLayout.LayoutParams(-1, -2));
+            activity.setTapClickListener(card, v -> {
+                for (int i = 0; i < xmlFields.size(); i++) {
+                    boolean selected = i == position;
+                    xmlFields.get(i).setVisibility(selected ? View.VISIBLE : View.GONE);
+                    View item = layers.getChildAt(i);
+                    item.setSelected(selected);
+                    item.setBackground(activity.roundRect(selected
+                            ? activity.primaryContainerColor() : activity.surfaceColor(), 8));
+                    ((TextView) ((LinearLayout) item).getChildAt(1)).setTextColor(selected
+                            ? activity.primaryColor() : activity.textColor());
+                }
+            });
+            Runnable refreshLayer = () -> {
+                String value = xml.getText().toString().trim();
+                preview.vector = null;
+                preview.message = null;
+                xml.setError(null);
+                if (value.isEmpty()) {
+                    preview.message = position >= 2 ? "未设置" : "未填写";
+                    if (position < 2) xml.setError("请填写" + layerNames[position] + " XML");
+                } else {
+                    try {
+                        preview.vector = RingerVectorXml.parse(value);
+                    } catch (IllegalArgumentException invalid) {
+                        preview.message = "XML 有误";
+                        xml.setError(invalid.getMessage());
+                    }
+                }
+                preview.invalidate();
+            };
+            xml.addTextChangedListener(new TextWatcher() {
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+                public void onTextChanged(CharSequence s, int start, int before, int count) { }
+                public void afterTextChanged(Editable value) {
+                    xml.removeCallbacks(refreshLayer);
+                    xml.postDelayed(refreshLayer, 300);
+                }
+            });
+            refreshLayer.run();
         }
-        layer.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long itemId) {
-                for (int i = 0; i < xmlFields.size(); i++) xmlFields.get(i).setVisibility(i == position ? View.VISIBLE : View.GONE);
-            }
-            public void onNothingSelected(AdapterView<?> parent) { }
-        });
         xmlFields.get(0).setVisibility(View.VISIBLE);
         TextView error = text("", 13);
         error.setTextColor(0xFFD32F2F);
@@ -343,23 +433,28 @@ public final class BatteryIconLibraryEditor {
             BatteryIconPack pack = readForm(fields, direction, id, error);
             if (pack != null) { light.pack = dark.pack = pack; light.invalidate(); dark.invalidate(); }
         });
+        TextView updatePreview = (TextView) previewTools.getChildAt(1);
+        updatePreview.setMinHeight(0);
+        updatePreview.setTextSize(12);
+        updatePreview.setSingleLine(true);
+        updatePreview.setPadding(0, 0, 0, 0);
+        updatePreview.setLayoutParams(new LinearLayout.LayoutParams(-1, activity.dp(28)));
         scroll.addView(content);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        LinearLayout actions = new LinearLayout(activity);
-        actions.setPadding(activity.dp(12), activity.dp(8), activity.dp(12), activity.dp(12));
-        for (boolean use : new boolean[]{false, true}) {
-            addButton(actions, use ? "保存并使用" : "保存到库", () -> {
-                BatteryIconPack pack = readForm(fields, direction, id, error);
-                if (pack == null) return;
-                ArrayList<Entry> entries = new ArrayList<>(library.entries);
-                entries.removeIf(entry -> entry.id().equals(id));
-                entries.add(new Entry(id, pack));
-                persist(new BatteryIconLibrary(entries, use ? id : library.selected));
-                dialog.dismiss();
-                activity.showToast(use ? "已保存并选用" : "已保存到图标库");
-            });
-        }
-        root.addView(actions);
+        TextView save = text("保存", 14);
+        save.setGravity(Gravity.CENTER);
+        save.setTextColor(activity.primaryColor());
+        activity.setTapClickListener(save, v -> {
+            BatteryIconPack pack = readForm(fields, direction, id, error);
+            if (pack == null) return;
+            ArrayList<Entry> entries = new ArrayList<>(library.entries);
+            entries.removeIf(entry -> entry.id().equals(id));
+            entries.add(new Entry(id, pack));
+            persist(new BatteryIconLibrary(entries, library.selected));
+            dialog.dismiss();
+            activity.showToast("已保存");
+        });
+        header.addView(save, new LinearLayout.LayoutParams(activity.dp(64), activity.dp(48)));
         showPage(dialog, root);
     }
 
@@ -396,12 +491,6 @@ public final class BatteryIconLibraryEditor {
             error.post(() -> error.requestRectangleOnScreen(new Rect(0, 0, error.getWidth(), error.getHeight()), false));
             return null;
         }
-    }
-
-    private void copy(BatteryIconPack pack) {
-        ClipboardManager clipboard = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
-        clipboard.setPrimaryClip(ClipData.newPlainText("电池 XML 图标包", pack.json));
-        activity.showToast("图标包已复制");
     }
 
     private void persist(BatteryIconLibrary updated) {
@@ -486,11 +575,55 @@ public final class BatteryIconLibraryEditor {
         dialog.show(); activity.styleDialog(dialog); activity.attachDialogButtonHaptics(dialog);
     }
 
+    private static final class LayerPreviewView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private RingerVectorXml vector;
+        private String message;
+
+        LayerPreviewView(Context context) {
+            super(context);
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float density = getResources().getDisplayMetrics().density;
+            float half = getHeight() / 2f;
+            for (int i = 0; i < 2; i++) {
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(i == 0 ? 0xFFF4F5F6 : 0xFF202124);
+                canvas.drawRect(0, i * half, getWidth(), (i + 1) * half, paint);
+                int tint = i == 0 ? Color.BLACK : Color.WHITE;
+                if (vector != null) {
+                    float scale = Math.min((getWidth() - 8 * density) / vector.getViewportWidth(),
+                            (half - 8 * density) / vector.getViewportHeight());
+                    int saved = canvas.save();
+                    canvas.translate((getWidth() - vector.getViewportWidth() * scale) / 2f,
+                            i * half + (half - vector.getViewportHeight() * scale) / 2f);
+                    canvas.scale(scale, scale);
+                    vector.drawRaw(canvas, paint, tint);
+                    canvas.restoreToCount(saved);
+                } else if (message != null) {
+                    paint.setColor(tint);
+                    paint.setStyle(Paint.Style.FILL);
+                    paint.setTextAlign(Paint.Align.CENTER);
+                    paint.setTextSize(10 * getResources().getDisplayMetrics().scaledDensity);
+                    float width = paint.measureText(message);
+                    if (width > getWidth() - 4 * density) {
+                        paint.setTextSize(paint.getTextSize() * (getWidth() - 4 * density) / width);
+                    }
+                    canvas.drawText(message, getWidth() / 2f,
+                            i * half + half / 2f - (paint.ascent() + paint.descent()) / 2f, paint);
+                }
+            }
+        }
+    }
+
     private static final class PreviewView extends View {
         private BatteryIconPack pack = BatteryIconLibrary.defaultPack();
         private final boolean dark, enlarged;
         private final Rect bounds = new Rect();
         private int level = 82, state;
+        private boolean showNumbers = true;
 
         PreviewView(Context context, boolean dark, boolean enlarged) {
             super(context);
@@ -506,23 +639,21 @@ public final class BatteryIconLibraryEditor {
             int textColor = (0.299 * Color.red(tint) + 0.587 * Color.green(tint) + 0.114 * Color.blue(tint)) >= 127.5
                     ? Color.BLACK : Color.WHITE;
             float density = getResources().getDisplayMetrics().density;
-            for (int i = 0; i < (enlarged ? 2 : 1); i++) {
-                int box = Math.round((i == 0 ? 22 : 66) * density);
-                int width = BatteryIconPainter.measureWidth(pack, box, state > 0);
-                if (width > getWidth() - 8 * density) {
-                    box = Math.max(1, (int) (box * (getWidth() - 8 * density) / width));
-                    width = BatteryIconPainter.measureWidth(pack, box, state > 0);
-                }
-                int top = enlarged ? Math.round((i == 0 ? 8 : 48) * density) : (getHeight() - box) / 2;
-                int left = (getWidth() - width) / 2;
-                bounds.set(left, top, left + width, top + box);
-                BatteryIconPainter.draw(pack, canvas, bounds, level, state > 0, state > 1, state == 3,
-                        tint, textColor, config.batteryLevelTextEnabled,
-                        config.batteryInnerTextScalePercent / 100f,
-                        SettingsStore.positionOffsetTenthDpToPx(getContext(), config.batteryIconYOffsetTenthDp),
-                        SettingsStore.positionOffsetTenthDpToPx(getContext(), config.batteryBoltYOffsetTenthDp),
-                        config.batteryHollowEnabled, config.batteryHollowFillFollowsLevel);
+            int box = Math.round((enlarged ? 44 : 22) * density);
+            int width = BatteryIconPainter.measureWidth(pack, box, state > 0);
+            if (width > getWidth() - 8 * density) {
+                box = Math.max(1, (int) (box * (getWidth() - 8 * density) / width));
+                width = BatteryIconPainter.measureWidth(pack, box, state > 0);
             }
+            int top = (getHeight() - box) / 2;
+            int left = (getWidth() - width) / 2;
+            bounds.set(left, top, left + width, top + box);
+            BatteryIconPainter.draw(pack, canvas, bounds, level, state > 0, state > 1, state == 3,
+                    tint, textColor, enlarged ? showNumbers : config.batteryLevelTextEnabled,
+                    config.batteryInnerTextScalePercent / 100f,
+                    SettingsStore.positionOffsetTenthDpToPx(getContext(), config.batteryIconYOffsetTenthDp),
+                    SettingsStore.positionOffsetTenthDpToPx(getContext(), config.batteryBoltYOffsetTenthDp),
+                    config.batteryHollowEnabled, config.batteryHollowFillFollowsLevel);
         }
     }
 }
