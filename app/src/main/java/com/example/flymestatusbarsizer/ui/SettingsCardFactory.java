@@ -97,13 +97,7 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_BATTERY_CODE_DRAW_ENABLED,
                 SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED);
         activity.addDivider(batteryIconOptions);
-        activity.addChoiceRow(batteryIconOptions, "电池样式",
-                "可选择类 iOS、类 One UI 和 iOS 旧版三种样式。",
-                SettingsStore.KEY_BATTERY_ICON_STYLE,
-                SettingsStore.DEFAULT_BATTERY_ICON_STYLE,
-                new int[]{SettingsStore.BATTERY_STYLE_IOS, SettingsStore.BATTERY_STYLE_ONEUI,
-                        SettingsStore.BATTERY_STYLE_FLYME_CAPSULE},
-                new String[]{"类 iOS", "类 One UI", "iOS 旧版"});
+        BatteryIconLibraryEditor.addSettingsRow(activity, batteryIconOptions);
         activity.addDivider(batteryIconOptions);
         LinearLayout hollowSection = new LinearLayout(activity);
         hollowSection.setOrientation(LinearLayout.VERTICAL);
@@ -140,28 +134,6 @@ public final class SettingsCardFactory {
                 SettingsStore.DEFAULT_BATTERY_TEXT_FONT,
                 batteryTextFontOptions,
                 BatteryTextFontHelper.getFontLabels(batteryTextFontOptions));
-        activity.addDivider(batteryIconOptions);
-        LinearLayout batteryAppearance = new LinearLayout(activity);
-        batteryAppearance.setOrientation(LinearLayout.VERTICAL);
-        activity.addApplySliderRow(batteryAppearance, "电池主体宽度",
-                "默认值为 100%。类 One UI 和带电池帽的两种样式均生效。",
-                SettingsStore.KEY_BATTERY_BODY_WIDTH_PERCENT,
-                SettingsStore.DEFAULT_BATTERY_BODY_WIDTH_PERCENT, 50, 150, "%");
-        activity.addApplySliderRow(batteryAppearance, "电池主体高度",
-                "默认值为 100%。只调整图形高度，不改变状态栏图标占用大小。",
-                SettingsStore.KEY_BATTERY_BODY_HEIGHT_PERCENT,
-                SettingsStore.DEFAULT_BATTERY_BODY_HEIGHT_PERCENT, 50, 150, "%");
-        activity.addApplySliderRow(batteryAppearance, "电池图形圆角",
-                "默认值保持当前样式。0% 为直角，200% 为最大圆角。",
-                SettingsStore.KEY_BATTERY_CORNER_RADIUS_PERCENT,
-                SettingsStore.DEFAULT_BATTERY_CORNER_RADIUS_PERCENT, 0, 200, "%");
-        activity.addApplySliderRow(batteryAppearance, "电池帽宽度",
-                "默认值为 100%，仅类 iOS 和 iOS 旧版样式生效。",
-                SettingsStore.KEY_BATTERY_CAP_WIDTH_PERCENT,
-                SettingsStore.DEFAULT_BATTERY_CAP_WIDTH_PERCENT, 50, 150, "%");
-        batteryIconOptions.addView(activity.buildSectionCard("电池图标外观",
-                "调整普通电池图标的宽度、高度、圆角和电池帽。", batteryAppearance),
-                PageViewUtils.matchWrap());
         content.addView(batteryIconOptions, PageViewUtils.matchWrap());
         updateBatteryOptionsVisibility();
         return activity.buildSectionCard(

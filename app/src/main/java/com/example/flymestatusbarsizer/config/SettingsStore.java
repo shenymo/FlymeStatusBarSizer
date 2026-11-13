@@ -1,5 +1,7 @@
 package com.example.flymestatusbarsizer.config;
 
+import com.example.flymestatusbarsizer.feature.battery.BatteryIconLibrary;
+
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryAnimationConfig;
 import com.example.flymestatusbarsizer.feature.clock.ClockDetailActionCodec;
 import com.example.flymestatusbarsizer.feature.statusbar.StatusBarIconVisibility;
@@ -83,16 +85,13 @@ public final class SettingsStore {
     public static final String KEY_SIGNAL_BAR_CORNER_RADIUS_PERCENT = "signal_bar_corner_radius_percent";
     public static final String KEY_SIGNAL_DOT_CORNER_RADIUS_PERCENT = "signal_dot_corner_radius_percent";
     public static final String KEY_BATTERY_ICON_STYLE = "battery_icon_style";
+    public static final String KEY_BATTERY_ICON_LIBRARY = "battery_icon_library";
     public static final String KEY_BATTERY_LEVEL_TEXT_ENABLED = "battery_level_text_enabled";
     public static final String KEY_BATTERY_HOLLOW_ENABLED = "battery_hollow_enabled";
     public static final String KEY_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL = "battery_hollow_fill_follows_level";
     public static final String KEY_BATTERY_TEXT_FONT = "battery_text_font";
     public static final String KEY_STATUS_BAR_ICON_SCALE_PERCENT = "status_bar_icon_scale_percent";
     public static final String KEY_BATTERY_INNER_TEXT_SCALE_PERCENT = "battery_inner_text_scale_percent";
-    public static final String KEY_BATTERY_BODY_WIDTH_PERCENT = "battery_body_width_percent";
-    public static final String KEY_BATTERY_BODY_HEIGHT_PERCENT = "battery_body_height_percent";
-    public static final String KEY_BATTERY_CORNER_RADIUS_PERCENT = "battery_corner_radius_percent";
-    public static final String KEY_BATTERY_CAP_WIDTH_PERCENT = "battery_cap_width_percent";
     public static final String KEY_BATTERY_ICON_Y_OFFSET_DP = "battery_icon_y_offset_dp";
     public static final String KEY_BATTERY_TEXT_Y_OFFSET_DP = "battery_text_y_offset_dp";
     public static final String KEY_BATTERY_BOLT_Y_OFFSET_DP = "battery_bolt_y_offset_dp";
@@ -663,9 +662,6 @@ public final class SettingsStore {
     public static final int DEFAULT_WIFI_BAND_GAP_PERCENT = 80;
     static final int DEFAULT_WIFI_ICON_STYLE = WifiIconStyles.DEFAULT;
     public static final boolean DEFAULT_SIGNAL_WIFI_SWAP_ENABLED = false;
-    public static final int BATTERY_STYLE_IOS = 0;
-    public static final int BATTERY_STYLE_ONEUI = 1;
-    public static final int BATTERY_STYLE_FLYME_CAPSULE = 2;
     public static final int BATTERY_TEXT_FONT_SYSTEM_DEFAULT = 0;
     public static final int BATTERY_TEXT_FONT_SERIF = 1;
     public static final int BATTERY_TEXT_FONT_MONOSPACE = 2;
@@ -673,17 +669,12 @@ public final class SettingsStore {
     public static final int BATTERY_TEXT_FONT_SANS_SERIF_MEDIUM = 4;
     public static final int BATTERY_TEXT_FONT_SANS_SERIF_CONDENSED = 5;
     public static final int BATTERY_TEXT_FONT_MI_SANS_LATIN_VF_NUMBER = 6;
-    public static final int DEFAULT_BATTERY_ICON_STYLE = BATTERY_STYLE_IOS;
     public static final boolean DEFAULT_BATTERY_LEVEL_TEXT_ENABLED = false;
     public static final boolean DEFAULT_BATTERY_HOLLOW_ENABLED = false;
     public static final boolean DEFAULT_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL = false;
     public static final int DEFAULT_BATTERY_TEXT_FONT = BATTERY_TEXT_FONT_SYSTEM_DEFAULT;
     public static final int DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT = 100;
     public static final int DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT = 100;
-    public static final int DEFAULT_BATTERY_BODY_WIDTH_PERCENT = 100;
-    public static final int DEFAULT_BATTERY_BODY_HEIGHT_PERCENT = 100;
-    public static final int DEFAULT_BATTERY_CORNER_RADIUS_PERCENT = 100;
-    public static final int DEFAULT_BATTERY_CAP_WIDTH_PERCENT = 100;
     public static final int DEFAULT_BATTERY_ICON_Y_OFFSET_DP = 0;
     public static final int DEFAULT_BATTERY_TEXT_Y_OFFSET_DP = 0;
     public static final int DEFAULT_BATTERY_BOLT_Y_OFFSET_DP = 0;
@@ -949,7 +940,6 @@ public final class SettingsStore {
             KEY_WIFI_BAND_CORNER_PERCENT,
             KEY_WIFI_TIP_CORNER_PERCENT,
             KEY_WIFI_BAND_GAP_PERCENT,
-            KEY_BATTERY_ICON_STYLE,
             KEY_BATTERY_TEXT_FONT,
             KEY_CAMERA_CIRCLE_BATTERY_TRANSPARENCY_TENTH_PERCENT,
             KEY_CAMERA_CIRCLE_BATTERY_NORMAL_LIGHT_COLOR,
@@ -963,10 +953,6 @@ public final class SettingsStore {
             KEY_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP,
             KEY_STATUS_BAR_ICON_SCALE_PERCENT,
             KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
-            KEY_BATTERY_BODY_WIDTH_PERCENT,
-            KEY_BATTERY_BODY_HEIGHT_PERCENT,
-            KEY_BATTERY_CORNER_RADIUS_PERCENT,
-            KEY_BATTERY_CAP_WIDTH_PERCENT,
             KEY_BATTERY_ICON_Y_OFFSET_DP,
             KEY_BATTERY_TEXT_Y_OFFSET_DP,
             KEY_BATTERY_BOLT_Y_OFFSET_DP,
@@ -1169,6 +1155,7 @@ public final class SettingsStore {
     });
 
     public static final String[] STRING_KEYS = {
+            KEY_BATTERY_ICON_LIBRARY,
             KEY_STATUS_BAR_SILENT_ICON_LIBRARY,
             KEY_STATUS_BAR_VIBRATE_ICON_LIBRARY,
             KEY_ASSISTANT_BACKGROUND_IMAGE,
@@ -1327,6 +1314,10 @@ public final class SettingsStore {
 
     public static void prepareRemoteSync(Context context) {
         SharedPreferences prefs = prefs(context);
+        if (readString(prefs, KEY_BATTERY_ICON_LIBRARY, "").isEmpty()) {
+            prefs.edit().putString(KEY_BATTERY_ICON_LIBRARY,
+                    BatteryIconLibrary.load(prefs).encode()).apply();
+        }
         if (!prefs.getBoolean(KEY_IME_VERIFICATION_CODE_SLOT_MIGRATED, false)) {
             String buttonSlots = readString(prefs, KEY_IME_CONTROL_BAR_BUTTON_SLOTS,
                     DEFAULT_IME_CONTROL_BAR_BUTTON_SLOTS);
@@ -1564,8 +1555,6 @@ public final class SettingsStore {
                 return DEFAULT_WORKSPACE_SIDEBAR_WIDTH_PERCENT;
             case KEY_POSITION_OFFSET_STORAGE_VERSION:
                 return POSITION_OFFSET_STORAGE_VERSION_CAMERA_HUNDREDTH_DP;
-            case KEY_BATTERY_ICON_STYLE:
-                return DEFAULT_BATTERY_ICON_STYLE;
             case KEY_WIFI_BAND_CORNER_PERCENT: return DEFAULT_WIFI_BAND_CORNER_PERCENT;
             case KEY_WIFI_TIP_CORNER_PERCENT: return DEFAULT_WIFI_TIP_CORNER_PERCENT;
             case KEY_WIFI_BAND_GAP_PERCENT: return DEFAULT_WIFI_BAND_GAP_PERCENT;
@@ -1597,14 +1586,6 @@ public final class SettingsStore {
                 return DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
             case KEY_BATTERY_INNER_TEXT_SCALE_PERCENT:
                 return DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
-            case KEY_BATTERY_BODY_WIDTH_PERCENT:
-                return DEFAULT_BATTERY_BODY_WIDTH_PERCENT;
-            case KEY_BATTERY_BODY_HEIGHT_PERCENT:
-                return DEFAULT_BATTERY_BODY_HEIGHT_PERCENT;
-            case KEY_BATTERY_CORNER_RADIUS_PERCENT:
-                return DEFAULT_BATTERY_CORNER_RADIUS_PERCENT;
-            case KEY_BATTERY_CAP_WIDTH_PERCENT:
-                return DEFAULT_BATTERY_CAP_WIDTH_PERCENT;
             case KEY_BATTERY_ICON_Y_OFFSET_DP:
                 return DEFAULT_BATTERY_ICON_Y_OFFSET_DP;
             case KEY_BATTERY_TEXT_Y_OFFSET_DP:
@@ -2129,16 +2110,6 @@ public final class SettingsStore {
                 || side == (leftEdge ? ASSISTANT_GESTURE_SIDE_LEFT : ASSISTANT_GESTURE_SIDE_RIGHT);
     }
 
-    public static int normalizeBatteryStyle(int value) {
-        switch (value) {
-            case BATTERY_STYLE_ONEUI:
-            case BATTERY_STYLE_FLYME_CAPSULE:
-                return value;
-            default:
-                return BATTERY_STYLE_IOS;
-        }
-    }
-
     static int normalizeMBackLongTouchAction(int value) {
         switch (value) {
             case MBACK_LONG_TOUCH_ACTION_CLOCK_POPUP:
@@ -2197,13 +2168,6 @@ public final class SettingsStore {
 
     public static int normalizeScalePercent(int value) {
         return Math.max(50, Math.min(200, value));
-    }
-
-    public static int normalizeBatteryGeometryPercent(String key, int value) {
-        if (KEY_BATTERY_CORNER_RADIUS_PERCENT.equals(key)) {
-            return Math.max(0, Math.min(200, value));
-        }
-        return Math.max(50, Math.min(150, value));
     }
 
     static int normalizeIconYOffsetDp(int value) {

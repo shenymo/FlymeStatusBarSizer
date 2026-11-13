@@ -236,6 +236,19 @@ public final class RingerVectorXml {
         }
     }
 
+    public float getViewportWidth() { return width; }
+
+    public float getViewportHeight() { return height; }
+
+    public void drawRaw(Canvas canvas, Paint paint, int color) {
+        paint.setColorFilter(null);
+        paint.setColor(color);
+        int save = canvas.save();
+        canvas.clipRect(0, 0, width, height);
+        root.draw(canvas, paint, alpha * Color.alpha(color) / 255f);
+        canvas.restoreToCount(save);
+    }
+
     public Drawable newDrawable(Context context) {
         return new VectorIcon(IconMetrics.resolveSignalBoxHeight(context, 1f));
     }

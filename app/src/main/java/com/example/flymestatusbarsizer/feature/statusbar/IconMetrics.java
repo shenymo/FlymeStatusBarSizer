@@ -38,6 +38,10 @@ public final class IconMetrics {
 
     public static int resolveSharedVisualBandHeight(Context context, float scale) {
         int sharedBoxHeight = resolveSharedIconBoxHeight(context, scale);
+        return resolveVisualBandHeight(sharedBoxHeight);
+    }
+
+    public static int resolveVisualBandHeight(int sharedBoxHeight) {
         if (sharedBoxHeight <= 0) {
             return 0;
         }

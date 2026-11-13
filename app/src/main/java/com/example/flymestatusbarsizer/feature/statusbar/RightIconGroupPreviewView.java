@@ -3,9 +3,9 @@ package com.example.flymestatusbarsizer.feature.statusbar;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.feature.battery.BatteryTextFontHelper;
-import com.example.flymestatusbarsizer.feature.battery.FlymeCapsuleBatteryPainter;
-import com.example.flymestatusbarsizer.feature.battery.IosBatteryPainter;
-import com.example.flymestatusbarsizer.feature.battery.OneUiBatteryPainter;
+import com.example.flymestatusbarsizer.feature.battery.BatteryIconPack;
+import com.example.flymestatusbarsizer.feature.battery.BatteryIconLibrary;
+import com.example.flymestatusbarsizer.feature.battery.BatteryIconPainter;
 import com.example.flymestatusbarsizer.feature.signal.SignalPreviewPainter;
 import com.example.flymestatusbarsizer.feature.wifi.ClassicWifiRenderer;
 import com.example.flymestatusbarsizer.feature.wifi.WifiIconRenderer;
@@ -41,17 +41,13 @@ public final class RightIconGroupPreviewView extends View {
     private final WifiIconRenderer wifiRenderer = new ClassicWifiRenderer();
 
     private int previewTintColor = DEFAULT_TEXT_COLOR;
-    private int batteryStyle = SettingsStore.DEFAULT_BATTERY_ICON_STYLE;
+    private BatteryIconPack batteryPack = BatteryIconLibrary.defaultPack();
     private boolean batteryLevelTextEnabled = true;
     private boolean batteryHollowEnabled = SettingsStore.DEFAULT_BATTERY_HOLLOW_ENABLED;
     private boolean batteryHollowFillFollowsLevel = SettingsStore.DEFAULT_BATTERY_HOLLOW_FILL_FOLLOWS_LEVEL;
     private int batteryTextFont = SettingsStore.DEFAULT_BATTERY_TEXT_FONT;
     private int iconScalePercent = SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
     private int batteryInnerTextScalePercent = SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
-    private int batteryBodyWidthPercent = SettingsStore.DEFAULT_BATTERY_BODY_WIDTH_PERCENT;
-    private int batteryBodyHeightPercent = SettingsStore.DEFAULT_BATTERY_BODY_HEIGHT_PERCENT;
-    private int batteryCornerRadiusPercent = SettingsStore.DEFAULT_BATTERY_CORNER_RADIUS_PERCENT;
-    private int batteryCapWidthPercent = SettingsStore.DEFAULT_BATTERY_CAP_WIDTH_PERCENT;
     private int batteryIconYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_ICON_Y_OFFSET_DP * 10;
     private int batteryTextYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_TEXT_Y_OFFSET_DP * 10;
     private int batteryBoltYOffsetTenthDp = SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP * 10;
@@ -121,15 +117,6 @@ public final class RightIconGroupPreviewView extends View {
         invalidate();
     }
 
-    public void setBatteryStyle(int style) {
-        int normalized = SettingsStore.normalizeBatteryStyle(style);
-        if (batteryStyle == normalized) {
-            return;
-        }
-        batteryStyle = normalized;
-        invalidate();
-    }
-
     public void setBatteryTextFont(int font) {
         int normalized = SettingsStore.normalizeBatteryTextFont(font);
         if (batteryTextFont == normalized) {
@@ -154,30 +141,6 @@ public final class RightIconGroupPreviewView extends View {
             return;
         }
         batteryInnerTextScalePercent = normalized;
-        invalidate();
-    }
-
-    public void setBatteryBodyWidthPercent(int percent) {
-        batteryBodyWidthPercent = SettingsStore.normalizeBatteryGeometryPercent(
-                SettingsStore.KEY_BATTERY_BODY_WIDTH_PERCENT, percent);
-        invalidate();
-    }
-
-    public void setBatteryBodyHeightPercent(int percent) {
-        batteryBodyHeightPercent = SettingsStore.normalizeBatteryGeometryPercent(
-                SettingsStore.KEY_BATTERY_BODY_HEIGHT_PERCENT, percent);
-        invalidate();
-    }
-
-    public void setBatteryCornerRadiusPercent(int percent) {
-        batteryCornerRadiusPercent = SettingsStore.normalizeBatteryGeometryPercent(
-                SettingsStore.KEY_BATTERY_CORNER_RADIUS_PERCENT, percent);
-        invalidate();
-    }
-
-    public void setBatteryCapWidthPercent(int percent) {
-        batteryCapWidthPercent = SettingsStore.normalizeBatteryGeometryPercent(
-                SettingsStore.KEY_BATTERY_CAP_WIDTH_PERCENT, percent);
         invalidate();
     }
 
@@ -256,6 +219,7 @@ public final class RightIconGroupPreviewView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
+        batteryPack = ModuleConfig.load(getContext()).batteryIconPack;
         if (getWidth() <= 0 || getHeight() <= 0) {
             return;
         }
@@ -354,15 +318,7 @@ public final class RightIconGroupPreviewView extends View {
     }
 
     private int resolveBatteryWidth(int iconSize) {
-        if (batteryStyle == SettingsStore.BATTERY_STYLE_FLYME_CAPSULE) {
-            return FlymeCapsuleBatteryPainter.getRequiredWidth(iconSize, false,
-                    batteryBodyWidthPercent, batteryCapWidthPercent);
-        }
-        if (batteryStyle == SettingsStore.BATTERY_STYLE_ONEUI) {
-            return OneUiBatteryPainter.getRequiredWidth(iconSize, false, batteryBodyWidthPercent);
-        }
-        return IosBatteryPainter.getRequiredWidth(iconSize, false,
-                batteryBodyWidthPercent, batteryCapWidthPercent);
+        return BatteryIconPainter.measureWidth(batteryPack, iconSize);
     }
 
     private void drawPreviewNotes(Canvas canvas) {
@@ -383,31 +339,10 @@ public final class RightIconGroupPreviewView extends View {
     private void drawBattery(Canvas canvas, Rect bounds, int level, boolean pluggedIn, boolean charging,
             int fillColor, int textColor, boolean showLevelText) {
         Typeface typeface = BatteryTextFontHelper.resolveTypeface(getContext(), batteryTextFont);
-        int style = SettingsStore.normalizeBatteryStyle(batteryStyle);
-        if (style == SettingsStore.BATTERY_STYLE_FLYME_CAPSULE) {
-            FlymeCapsuleBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, false,
-                    fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
-                    offsetPx(batteryIconYOffsetTenthDp), offsetPx(batteryTextYOffsetTenthDp),
-                    offsetPx(batteryBoltYOffsetTenthDp),
-                    batteryHollowEnabled, batteryHollowFillFollowsLevel, batteryBodyWidthPercent,
-                    batteryBodyHeightPercent, batteryCornerRadiusPercent, batteryCapWidthPercent);
-            return;
-        }
-        if (style == SettingsStore.BATTERY_STYLE_ONEUI) {
-            OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, false,
-                    fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
-                    offsetPx(batteryIconYOffsetTenthDp), offsetPx(batteryTextYOffsetTenthDp),
-                    offsetPx(batteryBoltYOffsetTenthDp),
-                    batteryHollowEnabled, batteryHollowFillFollowsLevel, batteryBodyWidthPercent,
-                    batteryBodyHeightPercent, batteryCornerRadiusPercent);
-            return;
-        }
-        IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, false,
+        BatteryIconPainter.draw(batteryPack, canvas, bounds, level, pluggedIn, charging, false,
                 fillColor, textColor, showLevelText, batteryInnerTextScalePercent / 100f, typeface,
                 offsetPx(batteryIconYOffsetTenthDp), offsetPx(batteryTextYOffsetTenthDp),
-                offsetPx(batteryBoltYOffsetTenthDp),
-                batteryHollowEnabled, batteryHollowFillFollowsLevel, batteryBodyWidthPercent,
-                batteryBodyHeightPercent, batteryCornerRadiusPercent, batteryCapWidthPercent);
+                offsetPx(batteryBoltYOffsetTenthDp), batteryHollowEnabled, batteryHollowFillFollowsLevel);
     }
 
     private int dp(int value) {

@@ -6,12 +6,12 @@ import com.example.flymestatusbarsizer.feature.share.GalleryShareTargetsHooks;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.feature.battery.BatteryTextFontHelper;
+import com.example.flymestatusbarsizer.feature.battery.BatteryIconPack;
+import com.example.flymestatusbarsizer.feature.battery.BatteryIconLibrary;
+import com.example.flymestatusbarsizer.feature.battery.BatteryIconPainter;
 import com.example.flymestatusbarsizer.feature.statusbar.NativeStatusBarTextWeight;
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryAppearance;
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryDynamics;
-import com.example.flymestatusbarsizer.feature.battery.FlymeCapsuleBatteryPainter;
-import com.example.flymestatusbarsizer.feature.battery.IosBatteryPainter;
-import com.example.flymestatusbarsizer.feature.battery.OneUiBatteryPainter;
 import com.example.flymestatusbarsizer.feature.carlink.CarLinkHooks;
 import com.example.flymestatusbarsizer.feature.clock.ClockHooks;
 import com.example.flymestatusbarsizer.feature.ime.ImeHooks;
@@ -1962,7 +1962,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                         applyIosBatteryStyleIfNeeded(drawable);
                         return chain.proceed();
                     }
-                    if (drawIosBatteryIfNeeded(drawable, (Canvas) chain.getArg(0))) {
+                    if (drawCustomBatteryIfNeeded(drawable, (Canvas) chain.getArg(0))) {
                         return null;
                     }
                     applyIosBatteryStyleIfNeeded(drawable);
@@ -1984,7 +1984,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 method.setAccessible(true);
                 hook(method).intercept(chain -> {
                     Object view = chain.getThisObject();
-                    if (drawIosBatteryViewIfNeeded(view, (Canvas) chain.getArg(0))) {
+                    if (drawCustomBatteryViewIfNeeded(view, (Canvas) chain.getArg(0))) {
                         return null;
                     }
                     return chain.proceed();
@@ -2005,7 +2005,7 @@ public class FlymeStatusBarSizer extends XposedModule {
                 method.setAccessible(true);
                 hook(method).intercept(chain -> {
                     Object view = chain.getThisObject();
-                    if (measureIosBatteryViewIfNeeded(view)) {
+                    if (measureCustomBatteryViewIfNeeded(view)) {
                         return null;
                     }
                     return chain.proceed();
@@ -2118,7 +2118,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
     }
 
-    private static boolean drawIosBatteryIfNeeded(Object drawable, Canvas canvas) {
+    private static boolean drawCustomBatteryIfNeeded(Object drawable, Canvas canvas) {
         Context context = (Context) ReflectUtils.getField(drawable, "mContext");
         if (context == null || !(drawable instanceof Drawable)) {
             return false;
@@ -2134,13 +2134,13 @@ public class FlymeStatusBarSizer extends XposedModule {
         int tintColor = resolveBatteryTintColor(drawable, Color.BLACK);
         int textColor = resolveBatteryTextColor(tintColor);
         boolean showLevelText = config.batteryLevelTextEnabled;
-        drawBatteryByStyle(config, canvas, ((Drawable) drawable).getBounds(), level, pluggedIn, charging,
+        drawBatteryPack(config, canvas, ((Drawable) drawable).getBounds(), level, pluggedIn, charging,
                 quickCharging,
                 tintColor, textColor, showLevelText);
         return true;
     }
 
-    private static boolean drawIosBatteryViewIfNeeded(Object view, Canvas canvas) {
+    private static boolean drawCustomBatteryViewIfNeeded(Object view, Canvas canvas) {
         if (!(view instanceof View)) {
             return false;
         }
@@ -2160,7 +2160,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (height > 0) {
             LAST_BATTERY_RENDER_HEIGHT = height;
         }
-        drawBatteryByStyle(config, canvas, state.drawBounds,
+        drawBatteryPack(config, canvas, state.drawBounds,
                 state.level, state.pluggedIn, state.charging, state.quickCharging,
                 state.tintColor, state.textColor, showLevelText);
         return true;
@@ -2174,22 +2174,13 @@ public class FlymeStatusBarSizer extends XposedModule {
         return luminance >= 0.5d ? Color.BLACK : Color.WHITE;
     }
 
-    private static void drawBatteryByStyle(ModuleConfig config, Canvas canvas, Rect bounds, int level,
+    private static void drawBatteryPack(ModuleConfig config, Canvas canvas, Rect bounds, int level,
             boolean pluggedIn, boolean charging, boolean quickCharging,
             int fillColor, int textColor, boolean showLevelText) {
         float textScale = resolveBatteryInnerTextScale(config);
         Typeface typeface = BatteryTextFontHelper.resolveTypeface(ModuleConfig.getSystemUiContext(), config == null
                 ? SettingsStore.DEFAULT_BATTERY_TEXT_FONT
                 : resolveBatteryTextFontOption(config));
-        int style = resolveBatteryStyle(config);
-        int bodyWidthPercent = config == null ? SettingsStore.DEFAULT_BATTERY_BODY_WIDTH_PERCENT
-                : config.batteryBodyWidthPercent;
-        int bodyHeightPercent = config == null ? SettingsStore.DEFAULT_BATTERY_BODY_HEIGHT_PERCENT
-                : config.batteryBodyHeightPercent;
-        int cornerRadiusPercent = config == null ? SettingsStore.DEFAULT_BATTERY_CORNER_RADIUS_PERCENT
-                : config.batteryCornerRadiusPercent;
-        int capWidthPercent = config == null ? SettingsStore.DEFAULT_BATTERY_CAP_WIDTH_PERCENT
-                : config.batteryCapWidthPercent;
         boolean hollow = config != null && config.batteryHollowEnabled;
         boolean hollowFillFollowsLevel = config != null && config.batteryHollowFillFollowsLevel;
         Context densityContext = ModuleConfig.getSystemUiContext();
@@ -2202,27 +2193,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         float boltYOffsetPx = resolveIconOffsetPx(densityContext, config == null
                 ? SettingsStore.DEFAULT_BATTERY_BOLT_Y_OFFSET_DP * 10
                 : config.batteryBoltYOffsetTenthDp);
-        if (style == SettingsStore.BATTERY_STYLE_FLYME_CAPSULE) {
-            FlymeCapsuleBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, quickCharging,
-                    fillColor, textColor, showLevelText, textScale, typeface,
-                    bodyYOffsetPx, textYOffsetPx, boltYOffsetPx, hollow,
-                    hollowFillFollowsLevel, bodyWidthPercent, bodyHeightPercent,
-                    cornerRadiusPercent, capWidthPercent);
-            return;
-        }
-        if (style == SettingsStore.BATTERY_STYLE_ONEUI) {
-            OneUiBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, quickCharging,
-                    fillColor, textColor, showLevelText, textScale, typeface,
-                    bodyYOffsetPx, textYOffsetPx, boltYOffsetPx, hollow,
-                    hollowFillFollowsLevel, bodyWidthPercent, bodyHeightPercent,
-                    cornerRadiusPercent);
-            return;
-        }
-        IosBatteryPainter.draw(canvas, bounds, level, pluggedIn, charging, quickCharging,
-                fillColor, textColor, showLevelText, textScale, typeface,
-                bodyYOffsetPx, textYOffsetPx, boltYOffsetPx, hollow,
-                hollowFillFollowsLevel, bodyWidthPercent, bodyHeightPercent,
-                cornerRadiusPercent, capWidthPercent);
+        BatteryIconPainter.draw(resolveBatteryPack(config), canvas, bounds, level, pluggedIn, charging,
+                quickCharging, fillColor, textColor, showLevelText, textScale, typeface,
+                bodyYOffsetPx, textYOffsetPx, boltYOffsetPx, hollow, hollowFillFollowsLevel);
     }
 
     private static float resolveIconOffsetPx(Context context, int offsetTenthDp) {
@@ -3170,7 +3143,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         return state;
     }
 
-    private static boolean measureIosBatteryViewIfNeeded(Object view) {
+    private static boolean measureCustomBatteryViewIfNeeded(Object view) {
         if (!(view instanceof View)) {
             return false;
         }
@@ -3182,8 +3155,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         BatteryViewState state = rememberBatteryViewState(batteryView);
         ensureBatteryViewRuntimeSnapshot(batteryView, state);
         ReflectUtils.setMeasuredDimension(batteryView,
-                iosBatteryMeasuredWidthWithMergedIcons(batteryView, config, state.showBolt),
-                iosBatteryMeasuredHeightWithMergedIcons(batteryView, config));
+                customBatteryMeasuredWidthWithMergedIcons(batteryView, config, state.showBolt),
+                customBatteryMeasuredHeightWithMergedIcons(batteryView, config));
         return true;
     }
 
@@ -3297,14 +3270,14 @@ public class FlymeStatusBarSizer extends XposedModule {
         disableAncestorClipping(view, 6);
         ensureBatteryViewRuntimeSnapshot(view, state);
         boolean showBolt = state.showBolt;
-        int width = iosBatteryMeasuredWidthWithMergedIcons(view, config, showBolt);
-        int height = iosBatteryMeasuredHeightWithMergedIcons(view, config);
+        int width = customBatteryMeasuredWidthWithMergedIcons(view, config, showBolt);
+        int height = customBatteryMeasuredHeightWithMergedIcons(view, config);
         int marginStart = resolveEffectiveBatteryMarginStart(view, state, config);
         int marginEnd = resolveBatteryMarginEnd(view, config);
         long layoutSignature = getBatteryLayoutSignature(config, showBolt, width, height, marginStart, marginEnd);
         if (force || !state.hasLayoutSignature || state.layoutSignature != layoutSignature) {
             boolean hasLayoutParams = view.getLayoutParams() != null;
-            if (resizeIosBatteryView(view, width, height)) {
+            if (resizeCustomBatteryView(view, width, height)) {
                 changed = true;
             }
             if (applyBatteryViewMarginsIfNeeded(view, state, marginStart, marginEnd)) {
@@ -3435,7 +3408,7 @@ public class FlymeStatusBarSizer extends XposedModule {
         return changed;
     }
 
-    private static boolean resizeIosBatteryView(View view, int width, int height) {
+    private static boolean resizeCustomBatteryView(View view, int width, int height) {
         ViewGroup.LayoutParams lp = view.getLayoutParams();
         if (lp == null) {
             return false;
@@ -3456,20 +3429,20 @@ public class FlymeStatusBarSizer extends XposedModule {
         return changed;
     }
 
-    private static int iosBatteryMeasuredWidth(View view, ModuleConfig config, boolean showBolt) {
+    private static int customBatteryMeasuredWidth(View view, ModuleConfig config, boolean showBolt) {
         return resolveBatteryRenderWidth(resolveBatterySquareSize(view, config), config, showBolt);
     }
 
-    private static int iosBatteryMeasuredHeight(View view, ModuleConfig config) {
+    private static int customBatteryMeasuredHeight(View view, ModuleConfig config) {
         return resolveBatteryRenderHeight(resolveBatterySquareSize(view, config));
     }
 
-    private static int iosBatteryMeasuredWidthWithMergedIcons(View view, ModuleConfig config, boolean showBolt) {
-        return iosBatteryMeasuredWidth(view, config, showBolt);
+    private static int customBatteryMeasuredWidthWithMergedIcons(View view, ModuleConfig config, boolean showBolt) {
+        return customBatteryMeasuredWidth(view, config, showBolt);
     }
 
-    private static int iosBatteryMeasuredHeightWithMergedIcons(View view, ModuleConfig config) {
-        return iosBatteryMeasuredHeight(view, config);
+    private static int customBatteryMeasuredHeightWithMergedIcons(View view, ModuleConfig config) {
+        return customBatteryMeasuredHeight(view, config);
     }
 
     private static long getBatteryLayoutSignature(ModuleConfig config, boolean showBolt,
@@ -3477,14 +3450,13 @@ public class FlymeStatusBarSizer extends XposedModule {
                                                   int marginStart, int marginEnd) {
         long signature = 17L;
         signature = signature * 31L + (isBatteryCodeDrawEnabled(config) ? 1L : 0L);
-        signature = signature * 31L + resolveBatteryStyle(config);
+        signature = signature * 31L + resolveBatteryPack(config).json.hashCode();
         signature = signature * 31L + SettingsStore.normalizeScalePercent(config == null
                 ? SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT
                 : config.statusBarIconScalePercent);
         signature = signature * 31L + SettingsStore.normalizeScalePercent(config == null
                 ? SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT
                 : config.batteryInnerTextScalePercent);
-        signature = signature * 31L + (showBolt ? 1L : 0L);
         signature = signature * 31L + width;
         signature = signature * 31L + height;
         signature = signature * 31L + marginStart;
@@ -3495,7 +3467,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static long getBatteryRenderConfigSignature(ModuleConfig config) {
         long signature = 17L;
         signature = signature * 31L + (isBatteryCodeDrawEnabled(config) ? 1L : 0L);
-        signature = signature * 31L + resolveBatteryStyle(config);
+        signature = signature * 31L + resolveBatteryPack(config).json.hashCode();
         signature = signature * 31L + SettingsStore.normalizeScalePercent(config == null
                 ? SettingsStore.DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT
                 : config.statusBarIconScalePercent);
@@ -3506,6 +3478,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         signature = signature * 31L + (config != null && config.batteryHollowEnabled ? 1L : 0L);
         signature = signature * 31L + (config != null && config.batteryHollowFillFollowsLevel ? 1L : 0L);
         signature = signature * 31L + resolveBatteryTextFontOption(config);
+        signature = signature * 31L + (config == null ? 0 : config.batteryIconYOffsetTenthDp);
+        signature = signature * 31L + (config == null ? 0 : config.batteryTextYOffsetTenthDp);
+        signature = signature * 31L + (config == null ? 0 : config.batteryBoltYOffsetTenthDp);
         return signature;
     }
 
@@ -3541,26 +3516,11 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static int resolveBatteryRenderWidth(int size, ModuleConfig config, boolean showBolt) {
-        int style = resolveBatteryStyle(config);
-        int bodyWidthPercent = config == null ? SettingsStore.DEFAULT_BATTERY_BODY_WIDTH_PERCENT
-                : config.batteryBodyWidthPercent;
-        int capWidthPercent = config == null ? SettingsStore.DEFAULT_BATTERY_CAP_WIDTH_PERCENT
-                : config.batteryCapWidthPercent;
-        if (style == SettingsStore.BATTERY_STYLE_FLYME_CAPSULE) {
-            return FlymeCapsuleBatteryPainter.getRequiredWidth(size, showBolt,
-                    bodyWidthPercent, capWidthPercent);
-        }
-        if (style == SettingsStore.BATTERY_STYLE_ONEUI) {
-            return OneUiBatteryPainter.getRequiredWidth(size, showBolt, bodyWidthPercent);
-        }
-        return IosBatteryPainter.getRequiredWidth(size, showBolt, bodyWidthPercent,
-                capWidthPercent);
+        return BatteryIconPainter.measureWidth(resolveBatteryPack(config), size);
     }
 
-    private static int resolveBatteryStyle(ModuleConfig config) {
-        return config == null
-                ? SettingsStore.DEFAULT_BATTERY_ICON_STYLE
-                : SettingsStore.normalizeBatteryStyle(config.batteryIconStyle);
+    private static BatteryIconPack resolveBatteryPack(ModuleConfig config) {
+        return config == null ? BatteryIconLibrary.defaultPack() : config.batteryIconPack;
     }
 
     private static int resolveBatteryTextFontOption(ModuleConfig config) {

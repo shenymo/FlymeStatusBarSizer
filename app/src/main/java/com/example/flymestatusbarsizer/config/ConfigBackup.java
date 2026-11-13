@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer.config;
 
 import android.content.SharedPreferences;
+import com.example.flymestatusbarsizer.feature.battery.BatteryIconLibrary;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -58,6 +59,17 @@ public final class ConfigBackup {
             }
         }
         if (!found) throw new JSONException("配置文件没有可恢复的分组");
+        JSONObject icons = groups.optJSONObject(GROUP_IDS[0]);
+        if (icons != null && icons.has(SettingsStore.KEY_BATTERY_ICON_LIBRARY)) {
+            String rawLibrary = icons.getString(SettingsStore.KEY_BATTERY_ICON_LIBRARY);
+            if (!rawLibrary.isEmpty()) {
+                try {
+                    BatteryIconLibrary.parse(rawLibrary);
+                } catch (IllegalArgumentException invalid) {
+                    throw new JSONException(invalid.getMessage());
+                }
+            }
+        }
         return root;
     }
 
@@ -76,6 +88,15 @@ public final class ConfigBackup {
         putValues(editor, groups, selectedGroups, SettingsStore.BOOLEAN_KEYS, 0);
         putValues(editor, groups, selectedGroups, SettingsStore.INT_KEYS, 1);
         putValues(editor, groups, selectedGroups, SettingsStore.STRING_KEYS, 2);
+        JSONObject icons = groups.optJSONObject(GROUP_IDS[0]);
+        if (selectedGroups.contains(GROUP_IDS[0]) && icons != null
+                && !icons.has(SettingsStore.KEY_BATTERY_ICON_LIBRARY)
+                && icons.has(SettingsStore.KEY_BATTERY_ICON_STYLE)) {
+            BatteryIconLibrary current = BatteryIconLibrary.load(prefs);
+            editor.putString(SettingsStore.KEY_BATTERY_ICON_LIBRARY,
+                    new BatteryIconLibrary(current.entries, BatteryIconLibrary.legacyId(
+                            icons.optInt(SettingsStore.KEY_BATTERY_ICON_STYLE))).encode());
+        }
         SettingsStore.markPositionOffsetStorageVersion(editor);
         editor.apply();
     }
@@ -92,7 +113,9 @@ public final class ConfigBackup {
             } else if (!SettingsStore.KEY_ASSISTANT_BACKGROUND_IMAGE.equals(key)
                     && !SettingsStore.KEY_CLOCK_DETAIL_ASSISTANT_ACTION_CACHE_JSON.equals(key)
                     && !SettingsStore.KEY_COLOR_PICKER_PALETTE.equals(key)) {
-                output.put(key, SettingsStore.readString(prefs, key, SettingsStore.defaultString(key)));
+                output.put(key, SettingsStore.KEY_BATTERY_ICON_LIBRARY.equals(key)
+                        ? BatteryIconLibrary.load(prefs).encode()
+                        : SettingsStore.readString(prefs, key, SettingsStore.defaultString(key)));
             }
         }
     }
