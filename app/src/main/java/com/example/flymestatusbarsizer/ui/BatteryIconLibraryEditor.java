@@ -213,17 +213,26 @@ public final class BatteryIconLibraryEditor {
         LinearLayout root = page(dialog, original == null || duplicate ? "新增电池图标包" : "修改电池图标包");
         ScrollView scroll = new ScrollView(activity);
         LinearLayout content = column();
-        content.setPadding(activity.dp(16), 0, activity.dp(16), activity.dp(12));
+        content.setPadding(activity.dp(16), activity.dp(16), activity.dp(16), activity.dp(12));
+        LinearLayout previewPanel = column();
+        previewPanel.setPadding(activity.dp(16), 0, activity.dp(16), 0);
+        LinearLayout previewTools = new LinearLayout(activity);
+        previewTools.setGravity(Gravity.CENTER_VERTICAL);
+        previewPanel.addView(previewTools);
         LinearLayout previews = new LinearLayout(activity);
         PreviewView light = new PreviewView(activity, false, true);
         PreviewView dark = new PreviewView(activity, true, true);
         light.pack = dark.pack = template;
         previews.addView(light, new LinearLayout.LayoutParams(0, activity.dp(130), 1));
         previews.addView(dark, new LinearLayout.LayoutParams(0, activity.dp(130), 1));
-        content.addView(previews);
+        previewPanel.addView(previews);
+        LinearLayout levelRow = new LinearLayout(activity);
+        levelRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView levelLabel = text("电量 82%", 14);
-        content.addView(levelLabel);
+        levelRow.addView(levelLabel, new LinearLayout.LayoutParams(activity.dp(80), -2));
         SeekBar level = new SeekBar(activity);
+        level.setContentDescription("预览电量");
+        activity.styleSeekBar(level);
         level.setMax(100);
         level.setProgress(82);
         level.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -234,48 +243,90 @@ public final class BatteryIconLibraryEditor {
             public void onStartTrackingTouch(SeekBar bar) { }
             public void onStopTrackingTouch(SeekBar bar) { }
         });
-        content.addView(level);
+        levelRow.addView(level, new LinearLayout.LayoutParams(0, activity.dp(48), 1));
+        previewPanel.addView(levelRow);
         Spinner state = spinner(new String[]{"未充电", "已插电", "普通充电", "快充"});
+        state.setContentDescription("预览充电状态");
         state.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             public void onItemSelected(AdapterView<?> parent, View view, int position, long itemId) {
                 light.state = dark.state = position; light.invalidate(); dark.invalidate();
             }
             public void onNothingSelected(AdapterView<?> parent) { }
         });
-        content.addView(state);
+        previewTools.addView(state, new LinearLayout.LayoutParams(0, activity.dp(48), 1));
+        root.addView(previewPanel);
+        ImageView handle = new ImageView(activity);
+        handle.setImageResource(R.drawable.ic_section_expand);
+        handle.setImageTintList(ColorStateList.valueOf(activity.subtextColor()));
+        handle.setScaleType(ImageView.ScaleType.CENTER);
+        handle.setRotation(180);
+        handle.setContentDescription("收起预览");
+        activity.setTapClickListener(handle, v -> {
+            boolean expanded = previewPanel.getVisibility() == View.VISIBLE;
+            previewPanel.setVisibility(expanded ? View.GONE : View.VISIBLE);
+            handle.setRotation(expanded ? 0 : 180);
+            handle.setContentDescription(expanded ? "展开预览" : "收起预览");
+        });
+        root.addView(handle, new LinearLayout.LayoutParams(-1, activity.dp(48)));
         LinkedHashMap<String, EditText> fields = new LinkedHashMap<>();
+        LinearLayout basic = editorSection(content, "基本信息");
+        LinearLayout geometry = editorSection(content, "区域与填充");
+        LinearLayout typography = editorSection(content, "数字样式");
+        LinearLayout sizeRow = new LinearLayout(activity);
         String[][] labels = {{"name", "名称"}, {"width", "画布宽度"}, {"height", "画布高度"},
                 {"visualBounds", "有效区域 [左,上,右,下]"}, {"fillBounds", "电芯区域 [左,上,右,下]"},
                 {"textBounds", "数字区域 [左,上,右,下]"}, {"textSize", "数字基础字号"},
                 {"textOutline", "数字描边宽度"}, {"textAlpha", "数字透明度 0–1"}};
-        for (String[] label : labels) {
-            content.addView(text(label[1], 13));
+        for (int i = 0; i < labels.length; i++) {
+            String[] label = labels[i];
+            LinearLayout fieldRow = column();
+            fieldRow.setPadding(0, activity.dp(8), 0, 0);
+            fieldRow.addView(text(label[1], 13));
             EditText field = input(label[1], false);
+            field.setContentDescription(label[1]);
+            field.setMinHeight(activity.dp(48));
             field.setText(source.optString(label[0], label[0].equals("textAlpha") ? "1" : "0"));
             if (label[0].equals("name") && (original == null || duplicate)) {
                 field.setText(uniqueName(original == null ? "自定义电池"
                         : library.entries.contains(original) ? template.name + " 副本" : template.name));
             }
             fields.put(label[0], field);
-            content.addView(field, new LinearLayout.LayoutParams(-1, -2));
+            fieldRow.addView(field, new LinearLayout.LayoutParams(-1, -2));
+            if (i == 1) basic.addView(sizeRow, new LinearLayout.LayoutParams(-1, -2));
+            if (i == 1 || i == 2) {
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -2, 1);
+                if (i == 1) params.rightMargin = activity.dp(12);
+                sizeRow.addView(fieldRow, params);
+            } else {
+                LinearLayout section = i == 0 ? basic : i < 6 ? geometry : typography;
+                section.addView(fieldRow, new LinearLayout.LayoutParams(-1, -2));
+            }
         }
-        content.addView(text("填充方向", 13));
+        TextView directionLabel = text("填充方向", 13);
+        directionLabel.setPadding(0, activity.dp(8), 0, 0);
+        geometry.addView(directionLabel);
         Spinner direction = spinner(new String[]{"从左到右", "从右到左", "从下到上", "从上到下"});
+        direction.setContentDescription("填充方向");
         for (int i = 0; i < DIRECTIONS.length; i++) if (DIRECTIONS[i].equals(source.optString("fillDirection"))) direction.setSelection(i);
-        content.addView(direction);
+        geometry.addView(direction, new LinearLayout.LayoutParams(-1, activity.dp(48)));
+        LinearLayout xmlSection = editorSection(content, "XML 图层");
         Spinner layer = spinner(new String[]{"外壳 XML", "电芯 XML", "空电量底图 XML（可选）", "充电 XML（可选）", "快充 XML（可选）"});
-        content.addView(layer);
+        layer.setContentDescription("XML 图层");
+        xmlSection.addView(layer, new LinearLayout.LayoutParams(-1, activity.dp(48)));
         ArrayList<EditText> xmlFields = new ArrayList<>();
         for (String key : XML_KEYS) {
-            EditText xml = input(key, true);
+            EditText xml = input("XML", true);
             xml.setTypeface(Typeface.MONOSPACE);
             xml.setTextSize(12);
             xml.setMinLines(6);
+            xml.setGravity(Gravity.TOP | Gravity.START);
+            xml.setPadding(activity.dp(8), activity.dp(8), activity.dp(8), activity.dp(8));
+            xml.setBackground(activity.roundRect(activity.surfaceColor(), 8));
             xml.setText(source.optString(key, ""));
             xml.setVisibility(View.GONE);
             fields.put(key, xml);
             xmlFields.add(xml);
-            content.addView(xml, new LinearLayout.LayoutParams(-1, -2));
+            xmlSection.addView(xml, new LinearLayout.LayoutParams(-1, -2));
         }
         layer.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             public void onItemSelected(AdapterView<?> parent, View view, int position, long itemId) {
@@ -288,16 +339,10 @@ public final class BatteryIconLibraryEditor {
         error.setTextColor(0xFFD32F2F);
         error.setVisibility(View.GONE);
         content.addView(error);
-        LinearLayout tools = new LinearLayout(activity);
-        addButton(tools, "更新预览", () -> {
+        addButton(previewTools, "更新预览", () -> {
             BatteryIconPack pack = readForm(fields, direction, id, error);
             if (pack != null) { light.pack = dark.pack = pack; light.invalidate(); dark.invalidate(); }
         });
-        addButton(tools, "复制图标包", () -> {
-            BatteryIconPack pack = readForm(fields, direction, id, error);
-            if (pack != null) copy(pack);
-        });
-        content.addView(tools);
         scroll.addView(content);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout actions = new LinearLayout(activity);
@@ -318,6 +363,20 @@ public final class BatteryIconLibraryEditor {
         showPage(dialog, root);
     }
 
+    private LinearLayout editorSection(LinearLayout parent, String title) {
+        LinearLayout section = column();
+        section.setPadding(activity.dp(12), activity.dp(12), activity.dp(12), activity.dp(12));
+        section.setBackground(activity.roundRect(activity.surfaceSoftColor(), 12));
+        TextView heading = text(title, 14);
+        heading.setTypeface(null, Typeface.BOLD);
+        heading.setTextColor(activity.primaryColor());
+        section.addView(heading);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.bottomMargin = activity.dp(16);
+        parent.addView(section, params);
+        return section;
+    }
+
     private BatteryIconPack readForm(Map<String, EditText> fields, Spinner direction, String id, TextView error) {
         try {
             JSONObject object = new JSONObject().put("version", 1).put("fillDirection", DIRECTIONS[direction.getSelectedItemPosition()]);
@@ -334,7 +393,7 @@ public final class BatteryIconLibraryEditor {
         } catch (JSONException | IllegalArgumentException invalid) {
             error.setText(invalid.getMessage());
             error.setVisibility(View.VISIBLE);
-            error.requestRectangleOnScreen(new Rect(0, 0, error.getWidth(), error.getHeight()), false);
+            error.post(() -> error.requestRectangleOnScreen(new Rect(0, 0, error.getWidth(), error.getHeight()), false));
             return null;
         }
     }
