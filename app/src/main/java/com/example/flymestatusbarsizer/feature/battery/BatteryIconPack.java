@@ -10,22 +10,55 @@ public final class BatteryIconPack {
     public enum Direction { LEFT_TO_RIGHT, RIGHT_TO_LEFT, BOTTOM_TO_TOP, TOP_TO_BOTTOM }
 
     public final String name, json;
-    public final float width, height, textSize, textOutline, textAlpha;
-    public final RectF visualBounds, bodyBounds, fillBounds, textBounds;
+    public final float width, height, textSize, textOutline, textAlpha, textOffsetX, textOffsetY;
+    public final RectF visualBounds, bodyBounds, fillBounds;
     public final Direction direction;
     public final RingerVectorXml shell, fill, background, charging, quickCharging;
 
     private BatteryIconPack(JSONObject object) throws JSONException {
-        if (object.getInt("version") != 1) throw new IllegalArgumentException("不支持的图标包版本");
+        int version = object.getInt("version");
+        if (version != 1 && version != 2) throw new IllegalArgumentException("不支持的图标包版本");
         name = object.getString("name").trim();
         if (name.isEmpty()) throw new IllegalArgumentException("请输入图标包名称");
-        width = positive(object, "width");
-        height = positive(object, "height");
-        visualBounds = rect(object, "visualBounds");
-        fillBounds = rect(object, "fillBounds");
-        textBounds = rect(object, "textBounds");
-        if (!visualBounds.contains(fillBounds) || !visualBounds.contains(textBounds)) {
-            throw new IllegalArgumentException("电芯和文字区域必须位于有效显示区域内");
+        shell = RingerVectorXml.parse(object.getString("shellXml"));
+        width = shell.getViewportWidth();
+        height = shell.getViewportHeight();
+        fill = vector(object, "fillXml", true);
+        background = vector(object, "backgroundXml", false);
+        charging = vector(object, "chargingXml", false);
+        RingerVectorXml quick = vector(object, "quickChargingXml", false);
+        quickCharging = quick == null ? charging : quick;
+        fillBounds = new RectF();
+        fill.unionDrawingBounds(fillBounds);
+        if (fillBounds.isEmpty()) throw new IllegalArgumentException("电芯 XML 没有可见图形，请修改电芯 XML");
+        RectF content = new RectF(fillBounds);
+        if (background != null) background.unionDrawingBounds(content);
+        shell.unionDrawingBounds(content);
+        visualBounds = new RectF(content);
+        if (charging != null) charging.unionDrawingBounds(visualBounds);
+        if (quick != null) quick.unionDrawingBounds(visualBounds);
+        bodyBounds = new RectF(content.left, visualBounds.top, content.right, visualBounds.bottom);
+        if (version == 1) {
+            JSONArray values = object.getJSONArray("textBounds");
+            if (values.length() != 4) throw new IllegalArgumentException("textBounds 需要左、上、右、下四个坐标");
+            float[] bounds = new float[4];
+            for (int i = 0; i < 4; i++) {
+                bounds[i] = (float) values.getDouble(i);
+                if (!Float.isFinite(bounds[i])) throw new IllegalArgumentException("textBounds 坐标无效");
+            }
+            RectF textBounds = new RectF(bounds[0], bounds[1], bounds[2], bounds[3]);
+            if (textBounds.isEmpty() || textBounds.left < 0 || textBounds.top < 0
+                    || textBounds.right > width || textBounds.bottom > height) {
+                throw new IllegalArgumentException("textBounds 必须位于画布内，且宽高大于 0");
+            }
+            textOffsetX = textBounds.centerX() - fillBounds.centerX();
+            textOffsetY = textBounds.centerY() - fillBounds.centerY();
+        } else {
+            textOffsetX = object.has("textOffsetX") ? (float) object.getDouble("textOffsetX") : 0;
+            textOffsetY = object.has("textOffsetY") ? (float) object.getDouble("textOffsetY") : 0;
+            if (!Float.isFinite(textOffsetX) || !Float.isFinite(textOffsetY)) {
+                throw new IllegalArgumentException("数字偏移必须为有限数值");
+            }
         }
         direction = switch (object.getString("fillDirection")) {
             case "left_to_right" -> Direction.LEFT_TO_RIGHT;
@@ -41,21 +74,12 @@ public final class BatteryIconPack {
                 || !Float.isFinite(textAlpha) || textAlpha < 0 || textAlpha > 1) {
             throw new IllegalArgumentException("文字描边或透明度无效");
         }
-        shell = vector(object, "shellXml", true);
-        fill = vector(object, "fillXml", true);
-        background = vector(object, "backgroundXml", false);
-        charging = vector(object, "chargingXml", false);
-        RingerVectorXml quick = vector(object, "quickChargingXml", false);
-        quickCharging = quick == null ? charging : quick;
-        RectF content = new RectF();
-        fill.unionDrawingBounds(content);
-        if (background != null) background.unionDrawingBounds(content);
-        if (!content.intersect(fillBounds)) content.setEmpty();
-        content.union(textBounds);
-        shell.unionDrawingBounds(content);
-        bodyBounds = new RectF(Math.max(visualBounds.left, content.left), visualBounds.top,
-                Math.min(visualBounds.right, content.right), visualBounds.bottom);
-        json = object.toString();
+        object.remove("width");
+        object.remove("height");
+        object.remove("visualBounds");
+        object.remove("fillBounds");
+        object.remove("textBounds");
+        json = object.put("version", 2).put("textOffsetX", textOffsetX).put("textOffsetY", textOffsetY).toString();
     }
 
     public RectF layoutBounds(boolean showBolt) {
@@ -74,21 +98,6 @@ public final class BatteryIconPack {
         float value = (float) object.getDouble(key);
         if (!Float.isFinite(value) || value <= 0) throw new IllegalArgumentException(key + " 必须大于 0");
         return value;
-    }
-
-    private RectF rect(JSONObject object, String key) throws JSONException {
-        JSONArray values = object.getJSONArray(key);
-        if (values.length() != 4) throw new IllegalArgumentException(key + " 需要左、上、右、下四个坐标");
-        float[] bounds = new float[4];
-        for (int i = 0; i < 4; i++) {
-            bounds[i] = (float) values.getDouble(i);
-            if (!Float.isFinite(bounds[i])) throw new IllegalArgumentException(key + " 坐标无效");
-        }
-        RectF rect = new RectF(bounds[0], bounds[1], bounds[2], bounds[3]);
-        if (rect.isEmpty() || rect.left < 0 || rect.top < 0 || rect.right > width || rect.bottom > height) {
-            throw new IllegalArgumentException(key + " 必须位于画布内，且宽高大于 0");
-        }
-        return rect;
     }
 
     private RingerVectorXml vector(JSONObject object, String key, boolean required) throws JSONException {

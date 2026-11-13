@@ -125,14 +125,9 @@ public final class BatteryIconLibrary {
                 String filled = "<path android:fillColor='#E0FFFFFF' android:pathData='" + path + "'/>";
                 String background = i == 2 ? "" : vector(width,
                         "<path android:fillColor='#4DFFFFFF' android:pathData='" + path + "'/>");
-                float textRight = i == 0 ? 79.5f : i == 1 ? 86 : 91.7f;
-                JSONArray fillBounds = i == 2 ? new JSONArray(new float[]{8.125f, 8.125f, 83.575f, 41.875f})
-                        : new JSONArray(new float[]{0, 0, i == 1 ? 86 : 90, 50});
-                JSONObject object = new JSONObject().put("version", 1).put("name", name)
-                        .put("width", width).put("height", 50)
-                        .put("visualBounds", new JSONArray(new int[]{0, 0, width, 50}))
-                        .put("fillBounds", fillBounds).put("fillDirection", "left_to_right")
-                        .put("textBounds", new JSONArray(new float[]{0, 0, textRight, 50}))
+                JSONObject object = new JSONObject().put("version", 2).put("name", name)
+                        .put("fillDirection", "left_to_right")
+                        .put("textOffsetX", i == 0 ? -5.25f : 0).put("textOffsetY", 0)
                         .put("textSize", i == 2 ? 29 : 31).put("textAlpha", 224f / 255)
                         .put("textOutline", i == 2 ? 2.9 : 0)
                         .put("shellXml", vector(width, i == 2 ? legacyShell : emptyShell))

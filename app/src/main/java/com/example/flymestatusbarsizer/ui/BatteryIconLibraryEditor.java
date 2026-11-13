@@ -11,17 +11,22 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.text.InputType;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.text.TextUtils;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -40,13 +45,14 @@ import com.example.flymestatusbarsizer.feature.battery.BatteryIconPack;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconPainter;
 import com.example.flymestatusbarsizer.feature.statusbar.RingerVectorXml;
 
-import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public final class BatteryIconLibraryEditor {
     private static final String[] XML_KEYS = {"shellXml", "fillXml", "backgroundXml", "chargingXml", "quickChargingXml"};
@@ -210,7 +216,13 @@ public final class BatteryIconLibraryEditor {
     private void edit(Entry original, boolean duplicate) {
         BatteryIconPack template = original == null ? library.selectedEntry().pack() : original.pack();
         JSONObject source;
-        try { source = new JSONObject(template.json); }
+        try {
+            source = new JSONObject(template.json);
+            if (original == null) {
+                source.put("textOffsetX", 0).put("textOffsetY", 0);
+                template = BatteryIconPack.parse(source.toString());
+            }
+        }
         catch (JSONException impossible) { throw new IllegalStateException(impossible); }
         String id = original == null || duplicate ? UUID.randomUUID().toString() : original.id();
         Dialog dialog = new Dialog(activity);
@@ -304,46 +316,80 @@ public final class BatteryIconLibraryEditor {
         });
         root.addView(handle, new LinearLayout.LayoutParams(-1, activity.dp(16)));
         LinkedHashMap<String, EditText> fields = new LinkedHashMap<>();
+        LinkedHashMap<String, SeekBar> styleSliders = new LinkedHashMap<>();
         LinearLayout basic = editorSection(content, "基本信息");
-        LinearLayout geometry = editorSection(content, "区域与填充");
         LinearLayout typography = editorSection(content, "数字样式");
-        LinearLayout sizeRow = new LinearLayout(activity);
-        String[][] labels = {{"name", "名称"}, {"width", "画布宽度"}, {"height", "画布高度"},
-                {"visualBounds", "有效区域 [左,上,右,下]"}, {"fillBounds", "电芯区域 [左,上,右,下]"},
-                {"textBounds", "数字区域 [左,上,右,下]"}, {"textSize", "数字基础字号"},
-                {"textOutline", "数字描边宽度"}, {"textAlpha", "数字透明度 0–1"}};
+        LinearLayout offsetRow = new LinearLayout(activity);
+        LinearLayout styleRow = new LinearLayout(activity);
+        LinearLayout alphaRow = new LinearLayout(activity);
+        typography.addView(offsetRow, new LinearLayout.LayoutParams(-1, -2));
+        typography.addView(styleRow, new LinearLayout.LayoutParams(-1, -2));
+        typography.addView(alphaRow, new LinearLayout.LayoutParams(-1, -2));
+        String[][] labels = {{"name", "名称", "名称"}, {"textOffsetX", "水平偏移", "数字水平偏移"},
+                {"textOffsetY", "垂直偏移", "数字垂直偏移"}, {"textSize", "基础字号", "数字基础字号"},
+                {"textOutline", "描边宽度", "数字描边宽度"}, {"textAlpha", "透明度 0–1", "数字透明度 0–1"}};
         for (int i = 0; i < labels.length; i++) {
             String[] label = labels[i];
             LinearLayout fieldRow = column();
             fieldRow.setPadding(0, activity.dp(8), 0, 0);
-            fieldRow.addView(text(label[1], 13));
+            TextView fieldLabel = text(label[1], i == 0 ? 13 : 11);
+            if (i != 0) {
+                fieldLabel.setTextColor(activity.subtextColor());
+                fieldLabel.setTypeface(null, Typeface.BOLD);
+            }
+            fieldRow.addView(fieldLabel);
             EditText field = input(label[1], false);
-            field.setContentDescription(label[1]);
+            field.setContentDescription(label[2]);
             field.setMinHeight(activity.dp(48));
             field.setText(source.optString(label[0], label[0].equals("textAlpha") ? "1" : "0"));
+            if (!label[0].equals("name")) {
+                field.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL
+                        | InputType.TYPE_NUMBER_FLAG_SIGNED);
+                field.setImeOptions(EditorInfo.IME_ACTION_DONE | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+                field.setSelectAllOnFocus(true);
+            }
             if (label[0].equals("name") && (original == null || duplicate)) {
                 field.setText(uniqueName(original == null ? "自定义电池"
                         : library.entries.contains(original) ? template.name + " 副本" : template.name));
             }
             fields.put(label[0], field);
-            fieldRow.addView(field, new LinearLayout.LayoutParams(-1, -2));
-            if (i == 1) basic.addView(sizeRow, new LinearLayout.LayoutParams(-1, -2));
-            if (i == 1 || i == 2) {
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -2, 1);
-                if (i == 1) params.rightMargin = activity.dp(12);
-                sizeRow.addView(fieldRow, params);
+            if (i == 0) {
+                fieldRow.addView(field, new LinearLayout.LayoutParams(-1, -2));
+                basic.addView(fieldRow, new LinearLayout.LayoutParams(-1, -2));
             } else {
-                LinearLayout section = i == 0 ? basic : i < 6 ? geometry : typography;
-                section.addView(fieldRow, new LinearLayout.LayoutParams(-1, -2));
+                SeekBar slider = new SeekBar(activity);
+                activity.styleSeekBar(slider);
+                slider.setContentDescription(label[2]);
+                float factor = i == 5 ? 100f : 10f;
+                float extent = i == 1 ? template.width : template.height;
+                float maximum = switch (i) {
+                    case 1, 2 -> extent / 2f;
+                    case 3 -> extent * 2f;
+                    case 4 -> extent / 5f;
+                    default -> 1f;
+                };
+                int minimum = i <= 2 ? -Math.round(maximum * factor) : i == 3 ? 1 : 0;
+                int current = Math.round((float) source.optDouble(label[0], 0) * factor);
+                slider.setMin(Math.min(minimum, current));
+                slider.setMax(Math.max(Math.round(maximum * factor), current));
+                slider.setProgress(current);
+                slider.setKeyProgressIncrement(1);
+                styleSliders.put(label[0], slider);
+                fieldRow.addView(new SliderValueView(activity, slider, field, factor),
+                        new LinearLayout.LayoutParams(-1, activity.dp(88)));
+                LinearLayout row = i <= 2 ? offsetRow : i <= 4 ? styleRow : alphaRow;
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -2, 1);
+                if (i == 1 || i == 3) params.rightMargin = activity.dp(12);
+                row.addView(fieldRow, params);
             }
         }
         TextView directionLabel = text("填充方向", 13);
         directionLabel.setPadding(0, activity.dp(8), 0, 0);
-        geometry.addView(directionLabel);
+        basic.addView(directionLabel);
         Spinner direction = spinner(new String[]{"从左到右", "从右到左", "从下到上", "从上到下"});
         direction.setContentDescription("填充方向");
         for (int i = 0; i < DIRECTIONS.length; i++) if (DIRECTIONS[i].equals(source.optString("fillDirection"))) direction.setSelection(i);
-        geometry.addView(direction, new LinearLayout.LayoutParams(-1, activity.dp(48)));
+        basic.addView(direction, new LinearLayout.LayoutParams(-1, activity.dp(48)));
         LinearLayout xmlSection = editorSection(content, "XML 图层");
         LinearLayout layers = new LinearLayout(activity);
         LinearLayout.LayoutParams layerParams = new LinearLayout.LayoutParams(-1, -2);
@@ -429,10 +475,54 @@ public final class BatteryIconLibraryEditor {
         error.setTextColor(0xFFD32F2F);
         error.setVisibility(View.GONE);
         content.addView(error);
-        addButton(previewTools, "更新预览", () -> {
-            BatteryIconPack pack = readForm(fields, direction, id, error);
-            if (pack != null) { light.pack = dark.pack = pack; light.invalidate(); dark.invalidate(); }
-        });
+        Consumer<Boolean> refreshPreview = showErrors -> {
+            BatteryIconPack pack = readForm(fields, direction, id, error, showErrors);
+            if (pack == null) return;
+            for (Map.Entry<String, SeekBar> control : styleSliders.entrySet()) {
+                float value = switch (control.getKey()) {
+                    case "textOffsetX" -> pack.textOffsetX;
+                    case "textOffsetY" -> pack.textOffsetY;
+                    case "textSize" -> pack.textSize;
+                    case "textOutline" -> pack.textOutline;
+                    default -> pack.textAlpha;
+                };
+                int progress = Math.round(value * (control.getKey().equals("textAlpha") ? 100f : 10f));
+                SeekBar slider = control.getValue();
+                slider.setMin(Math.min(slider.getMin(), progress));
+                slider.setMax(Math.max(slider.getMax(), progress));
+                slider.setProgress(progress);
+                ((SliderValueView) slider.getParent()).positionValue();
+            }
+            light.pack = dark.pack = pack;
+            light.invalidate();
+            dark.invalidate();
+        };
+        for (Map.Entry<String, SeekBar> control : styleSliders.entrySet()) {
+            EditText field = fields.get(control.getKey());
+            float factor = control.getKey().equals("textAlpha") ? 100f : 10f;
+            control.getValue().setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                public void onProgressChanged(SeekBar bar, int progress, boolean user) {
+                    ((SliderValueView) bar.getParent()).positionValue();
+                    if (!user) return;
+                    bar.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+                    field.setText(BigDecimal.valueOf(progress)
+                            .divide(BigDecimal.valueOf((int) factor)).stripTrailingZeros().toPlainString());
+                    field.setSelection(field.length());
+                }
+                public void onStartTrackingTouch(SeekBar bar) {
+                    ((SliderValueView) bar.getParent()).requestFocus();
+                    InputMethodManager keyboard = activity.getSystemService(InputMethodManager.class);
+                    keyboard.hideSoftInputFromWindow(field.getWindowToken(), 0);
+                }
+                public void onStopTrackingTouch(SeekBar bar) { }
+            });
+            field.addTextChangedListener(new TextWatcher() {
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+                public void onTextChanged(CharSequence s, int start, int before, int count) { }
+                public void afterTextChanged(Editable value) { refreshPreview.accept(false); }
+            });
+        }
+        addButton(previewTools, "更新预览", () -> refreshPreview.accept(true));
         TextView updatePreview = (TextView) previewTools.getChildAt(1);
         updatePreview.setMinHeight(0);
         updatePreview.setTextSize(12);
@@ -445,7 +535,7 @@ public final class BatteryIconLibraryEditor {
         save.setGravity(Gravity.CENTER);
         save.setTextColor(activity.primaryColor());
         activity.setTapClickListener(save, v -> {
-            BatteryIconPack pack = readForm(fields, direction, id, error);
+            BatteryIconPack pack = readForm(fields, direction, id, error, true);
             if (pack == null) return;
             ArrayList<Entry> entries = new ArrayList<>(library.entries);
             entries.removeIf(entry -> entry.id().equals(id));
@@ -472,13 +562,13 @@ public final class BatteryIconLibraryEditor {
         return section;
     }
 
-    private BatteryIconPack readForm(Map<String, EditText> fields, Spinner direction, String id, TextView error) {
+    private BatteryIconPack readForm(Map<String, EditText> fields, Spinner direction, String id, TextView error,
+            boolean showErrors) {
         try {
-            JSONObject object = new JSONObject().put("version", 1).put("fillDirection", DIRECTIONS[direction.getSelectedItemPosition()]);
+            JSONObject object = new JSONObject().put("version", 2).put("fillDirection", DIRECTIONS[direction.getSelectedItemPosition()]);
             for (Map.Entry<String, EditText> field : fields.entrySet()) {
                 String key = field.getKey(), value = field.getValue().getText().toString().trim();
-                if (key.endsWith("Bounds")) object.put(key, new JSONArray(value));
-                else if (key.equals("name") || key.endsWith("Xml")) object.put(key, value);
+                if (key.equals("name") || key.endsWith("Xml")) object.put(key, value);
                 else object.put(key, Double.parseDouble(value));
             }
             BatteryIconPack pack = BatteryIconPack.parse(object.toString());
@@ -486,9 +576,11 @@ public final class BatteryIconLibraryEditor {
             error.setVisibility(View.GONE);
             return pack;
         } catch (JSONException | IllegalArgumentException invalid) {
-            error.setText(invalid.getMessage());
-            error.setVisibility(View.VISIBLE);
-            error.post(() -> error.requestRectangleOnScreen(new Rect(0, 0, error.getWidth(), error.getHeight()), false));
+            if (showErrors) {
+                error.setText(invalid.getMessage());
+                error.setVisibility(View.VISIBLE);
+                error.post(() -> error.requestRectangleOnScreen(new Rect(0, 0, error.getWidth(), error.getHeight()), false));
+            }
             return null;
         }
     }
@@ -573,6 +665,88 @@ public final class BatteryIconLibraryEditor {
 
     private void showAlert(AlertDialog dialog) {
         dialog.show(); activity.styleDialog(dialog); activity.attachDialogButtonHaptics(dialog);
+    }
+
+    private static final class SliderValueView extends FrameLayout {
+        private final SeekBar slider;
+        private final EditText value;
+        private final TextView display;
+        private final float factor;
+
+        SliderValueView(MainActivity activity, SeekBar slider, EditText value, float factor) {
+            super(activity);
+            this.slider = slider;
+            this.value = value;
+            this.factor = factor;
+            setFocusableInTouchMode(true);
+            setDescendantFocusability(FOCUS_BEFORE_DESCENDANTS);
+            slider.setSplitTrack(false);
+            slider.setMinHeight(activity.dp(4));
+            slider.setMaxHeight(activity.dp(4));
+            GradientDrawable thumb = activity.roundRect(activity.primaryColor(), 8);
+            thumb.setSize(activity.dp(16), activity.dp(16));
+            slider.setThumb(thumb);
+            slider.setThumbOffset(activity.dp(8));
+            addView(slider, new FrameLayout.LayoutParams(-1, activity.dp(48), Gravity.BOTTOM));
+            value.setTextSize(12);
+            value.setTextColor(Color.TRANSPARENT);
+            value.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            value.setGravity(Gravity.CENTER);
+            value.setMinHeight(0);
+            value.setMinWidth(0);
+            value.setIncludeFontPadding(false);
+            value.setPadding(activity.dp(4), 0, activity.dp(4), 0);
+            value.setHint("");
+            value.setBackground(activity.roundRect(activity.primaryContainerColor(), 16));
+            value.setCursorVisible(false);
+            addView(value, new FrameLayout.LayoutParams(activity.dp(64), activity.dp(40)));
+            display = new TextView(activity);
+            display.setTextSize(12);
+            display.setTextColor(activity.primaryColor());
+            display.setTypeface(value.getTypeface());
+            display.setGravity(Gravity.CENTER);
+            display.setIncludeFontPadding(false);
+            display.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+            addView(display, new FrameLayout.LayoutParams(activity.dp(64), activity.dp(40)));
+            value.setOnFocusChangeListener((view, focused) -> {
+                GradientDrawable background = activity.roundRect(focused
+                        ? activity.surfaceColor() : activity.primaryContainerColor(), 16);
+                if (focused) background.setStroke(activity.dp(1), activity.primaryColor());
+                value.setBackground(background);
+                value.setTextColor(focused ? activity.primaryColor() : Color.TRANSPARENT);
+                display.setVisibility(focused ? INVISIBLE : VISIBLE);
+                value.setCursorVisible(focused);
+                if (!focused) positionValue();
+            });
+            value.setOnEditorActionListener((view, action, event) -> {
+                if (action != EditorInfo.IME_ACTION_DONE) return false;
+                requestFocus();
+                activity.getSystemService(InputMethodManager.class)
+                        .hideSoftInputFromWindow(value.getWindowToken(), 0);
+                return true;
+            });
+        }
+
+        @Override protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+            super.onLayout(changed, left, top, right, bottom);
+            positionValue();
+        }
+
+        void positionValue() {
+            display.setText(BigDecimal.valueOf(slider.getProgress())
+                    .divide(BigDecimal.valueOf((int) factor)).stripTrailingZeros().toPlainString());
+            if (value.hasFocus()) return;
+            float fraction = (slider.getProgress() - (float) slider.getMin())
+                    / (slider.getMax() - (float) slider.getMin());
+            if (slider.getLayoutDirection() == LAYOUT_DIRECTION_RTL) fraction = 1 - fraction;
+            float center = slider.getLeft() + slider.getPaddingLeft()
+                    + fraction * (slider.getWidth() - slider.getPaddingLeft() - slider.getPaddingRight());
+            float inset = 2 * getResources().getDisplayMetrics().density;
+            float x = Math.max(inset,
+                    Math.min(getWidth() - value.getWidth() - inset, center - value.getWidth() / 2f));
+            value.setTranslationX(x - value.getLeft());
+            display.setTranslationX(x - display.getLeft());
+        }
     }
 
     private static final class LayerPreviewView extends View {

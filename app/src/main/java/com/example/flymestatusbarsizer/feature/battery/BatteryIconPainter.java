@@ -57,8 +57,8 @@ public final class BatteryIconPainter {
             TEXT.setFakeBoldText(true);
             TEXT.setTextAlign(Paint.Align.CENTER);
             TEXT.setTextSize(pack.textSize * textScale);
-            float x = pack.textBounds.centerX();
-            float y = pack.textBounds.centerY() - (TEXT.ascent() + TEXT.descent()) / 2f;
+            float x = pack.fillBounds.centerX() + pack.textOffsetX;
+            float y = pack.fillBounds.centerY() + pack.textOffsetY - (TEXT.ascent() + TEXT.descent()) / 2f;
             TEXT.setXfermode(null);
             if (pack.textOutline > 0) {
                 TEXT.setStyle(Paint.Style.STROKE);
