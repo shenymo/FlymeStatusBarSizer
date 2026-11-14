@@ -43,6 +43,7 @@ import com.example.flymestatusbarsizer.feature.assistant.SideGestureActions;
 import com.example.flymestatusbarsizer.feature.onehanded.OneStepTaskAccess;
 import com.example.flymestatusbarsizer.feature.tasks.RecentTaskCard;
 import com.example.flymestatusbarsizer.feature.tasks.TaskProcessStopper;
+import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -272,7 +273,12 @@ public final class RecentTaskSwitcher {
             closeAllButton.setTextColor(accentColor());
             closeAllButton.setGravity(Gravity.CENTER);
             closeAllButton.setPadding(dp(8), 0, dp(8), 0);
+            closeAllButton.setBackground(new RippleDrawable(
+                    ColorStateList.valueOf(paletteColor(0x243a8885, 0x3877c6c1)),
+                    background(paletteColor(0x10287a78, 0x2077c6c1), dp(8), Color.TRANSPARENT),
+                    null));
             footer.addView(closeAllButton, new LinearLayout.LayoutParams(-2, dp(27)));
+            setButtonFeedback(closeAllButton);
             closeAllButton.setOnClickListener(view -> closeAllTasks());
             panel.addView(footer, new LinearLayout.LayoutParams(-1, dp(27)));
 
@@ -612,7 +618,7 @@ public final class RecentTaskSwitcher {
                         view.animate().cancel();
                         view.setScaleX(0.88f);
                         view.setScaleY(0.88f);
-                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK);
+                        HapticFeedbackUtils.perform(context, view, HapticFeedbackConstants.CONTEXT_CLICK);
                         break;
                     case MotionEvent.ACTION_UP:
                     case MotionEvent.ACTION_CANCEL:
@@ -663,6 +669,10 @@ public final class RecentTaskSwitcher {
             darkMode = nextDarkMode;
             panel.setBackground(panelBackground());
             closeAllButton.setTextColor(accentColor());
+            closeAllButton.setBackground(new RippleDrawable(
+                    ColorStateList.valueOf(paletteColor(0x243a8885, 0x3877c6c1)),
+                    background(paletteColor(0x10287a78, 0x2077c6c1), dp(8), Color.TRANSPARENT),
+                    null));
             renderRows();
         }
 
