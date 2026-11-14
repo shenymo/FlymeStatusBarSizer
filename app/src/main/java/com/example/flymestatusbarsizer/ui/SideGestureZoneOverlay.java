@@ -8,6 +8,7 @@ import static com.example.flymestatusbarsizer.config.SettingsStore.SIDE_GESTURE_
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.app.AlertDialog;
+import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -26,6 +27,7 @@ import android.widget.CheckBox;
 import android.widget.CheckedTextView;
 import android.widget.EditText;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.RadioButton;
@@ -1153,33 +1155,11 @@ public final class SideGestureZoneOverlay {
         }
 
         private void openActionForSlot(int directionIndex, int tier) {
-            int slot = cornerMode ? (leftSide ? 0 : 1)
-                    : (leftSide ? 0 : 3) + directionIndex;
-            int action = actions[tier][slot];
-            if (SideGestureTargetStore.isDynamicAction(action)) {
-                SideGestureTargetStore.Target target = SideGestureTargetStore.find(
-                        SideGestureTargetStore.readRaw(prefs), action);
-                if (target != null) {
-                    showCustomTargetEditor(directionIndex, tier, slot, action, target);
-                    return;
-                }
-            }
             showActionPicker(directionIndex, tier);
         }
 
         private void openFanActionForSlot(int zone, int band) {
-            int side = leftSide ? 0 : 1;
-            int slot = fanSlot(band, zone, side);
-            int action = fanActions[band][slot];
-            if (SideGestureTargetStore.isDynamicAction(action)) {
-                SideGestureTargetStore.Target target = SideGestureTargetStore.find(
-                        SideGestureTargetStore.readRaw(prefs), action);
-                if (target != null) {
-                    showCustomTargetEditor(zone, band, slot, action, target);
-                    return;
-                }
-            }
-            showFanActionPicker(zone, band, slot);
+            showFanActionPicker(zone, band, fanSlot(band, zone, leftSide ? 0 : 1));
         }
 
         private void showFanActionPicker(int zone, int band, int slot) {
@@ -1225,21 +1205,79 @@ public final class SideGestureZoneOverlay {
                 @Override public View getView(int position, View convertView, ViewGroup parent) {
                     ActionChoice choice = choices.get(position);
                     if (categoryState[0] == 3) {
+                        SideGestureTargetStore.Target target = SideGestureTargetStore.find(
+                                SideGestureTargetStore.readRaw(prefs), choice.value);
+                        boolean selected = choice.value == currentAction;
                         LinearLayout row = new LinearLayout(activity);
                         row.setGravity(Gravity.CENTER_VERTICAL);
                         row.setPadding(Math.round(dp(12)), Math.round(dp(4)),
                                 Math.round(dp(6)), Math.round(dp(4)));
+                        row.setMinimumHeight(Math.round(dp(56)));
+                        RadioButton selectedMark = new RadioButton(activity);
+                        selectedMark.setChecked(selected);
+                        selectedMark.setClickable(false);
+                        selectedMark.setFocusable(false);
+                        selectedMark.setPadding(0, 0, 0, 0);
+                        selectedMark.setButtonTintList(new ColorStateList(
+                                new int[][]{{android.R.attr.state_checked}, {}},
+                                new int[]{activity.primaryColor(), activity.subtextColor()}));
+                        row.addView(selectedMark, new LinearLayout.LayoutParams(
+                                Math.round(dp(32)), Math.round(dp(48))));
+                        int iconResource = target == null ? 0 : switch (target.type) {
+                            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP -> R.drawable.gesture_action_open_app;
+                            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY -> R.drawable.gesture_action_open_activity;
+                            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI -> R.drawable.gesture_action_open_intent_uri;
+                            case SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL -> R.drawable.gesture_action_open_scheme_url;
+                            default -> 0;
+                        };
+                        ImageView icon = new ImageView(activity);
+                        Drawable iconDrawable = iconResource == 0 ? null : activity.getDrawable(iconResource);
+                        if (iconDrawable != null) {
+                            iconDrawable = iconDrawable.mutate();
+                            iconDrawable.setTint(selected ? activity.primaryColor() : activity.textColor());
+                            icon.setImageDrawable(iconDrawable);
+                        }
+                        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(
+                                Math.round(dp(24)), Math.round(dp(24)));
+                        iconParams.rightMargin = Math.round(dp(8));
+                        row.addView(icon, iconParams);
+                        LinearLayout labels = new LinearLayout(activity);
+                        labels.setOrientation(LinearLayout.VERTICAL);
+                        labels.setGravity(Gravity.CENTER_VERTICAL);
+                        String titleText = target == null || target.customName.isEmpty()
+                                ? target == null ? choice.label : SideGestureTargetStore.shortLabel(target)
+                                : target.customName;
                         TextView title = new TextView(activity);
-                        title.setText(choice.label);
-                        title.setTextSize(15f);
-                        title.setTextColor(choice.value == currentAction
-                                ? activity.primaryColor() : activity.textColor());
-                        title.setGravity(Gravity.CENTER_VERTICAL);
+                        title.setText(titleText);
+                        title.setTextSize(14f);
+                        title.setTextColor(selected ? activity.primaryColor() : activity.textColor());
                         title.setMaxLines(1);
                         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                        row.setMinimumHeight(Math.round(dp(56)));
-                        row.addView(title, new LinearLayout.LayoutParams(0,
+                        labels.addView(title);
+                        if (target != null && !target.label.isEmpty()
+                                && !target.label.equals(titleText)) {
+                            TextView subtitle = new TextView(activity);
+                            subtitle.setText(target.label);
+                            subtitle.setTextSize(12f);
+                            subtitle.setTextColor(activity.subtextColor());
+                            subtitle.setMaxLines(1);
+                            subtitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                            labels.addView(subtitle);
+                        }
+                        row.addView(labels, new LinearLayout.LayoutParams(0,
                                 ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+                        TextView edit = activity.filledButton("编辑",
+                                activity.surfaceStrongColor(), activity.textColor());
+                        LinearLayout.LayoutParams editParams = new LinearLayout.LayoutParams(
+                                Math.round(dp(60)), Math.round(dp(38)));
+                        editParams.rightMargin = Math.round(dp(6));
+                        row.addView(edit, editParams);
+                        edit.setOnClickListener(v -> {
+                            SideGestureTargetStore.Target targetForEdit = SideGestureTargetStore.find(
+                                    SideGestureTargetStore.readRaw(prefs), choice.value);
+                            if (targetForEdit != null) showCustomTargetEditor(targetForEdit,
+                                    () -> refreshCategoryRef[0].run());
+                        });
                         TextView delete = activity.filledButton("删除",
                                 activity.surfaceStrongColor(), activity.textColor());
                         row.addView(delete, new LinearLayout.LayoutParams(
@@ -1353,15 +1391,7 @@ public final class SideGestureZoneOverlay {
                     .setNegativeButton("取消", null);
             if (SideGestureTargetStore.isDynamicAction(currentAction)) {
                 if (currentTarget != null) {
-                    builder.setNeutralButton("查看当前目标", (d, which) ->
-                            activity.showSideGestureTargetDetails(currentTarget, () ->
-                                    activity.configureSideGestureTarget(currentTarget.type, targetId -> {
-                                        actions[tier][slot] = targetId;
-                                        invalidate();
-                                    }), targetId -> {
-                                actions[tier][slot] = targetId;
-                                invalidate();
-                            }));
+                    builder.setNeutralButton("编辑当前目标", null);
                 }
             }
             AlertDialog dialog = builder.create();
@@ -1467,6 +1497,11 @@ public final class SideGestureZoneOverlay {
             refreshCategory[0].run();
             dialog.show();
             styleBottomDialog(dialog);
+            if (currentTarget != null) {
+                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v ->
+                        showCustomTargetEditor(currentTarget,
+                                () -> refreshCategoryRef[0].run()));
+            }
             list.post(() -> {
                 for (int i = 0; i < choices.size(); i++) {
                     if (choices.get(i).value == currentAction) list.setSelection(i);
@@ -1519,10 +1554,9 @@ public final class SideGestureZoneOverlay {
                     }).show();
         }
 
-        private void showCustomTargetEditor(int directionIndex, int tier, int slot,
-                int action, SideGestureTargetStore.Target target) {
+        private void showCustomTargetEditor(SideGestureTargetStore.Target target,
+                Runnable onSaved) {
             final SideGestureTargetStore.Target[] draftTarget = {target};
-            final int[] draftAction = {action};
             LinearLayout form = new LinearLayout(activity);
             form.setOrientation(LinearLayout.VERTICAL);
             form.setPadding(Math.round(dp(16)), Math.round(dp(4)),
@@ -1573,10 +1607,7 @@ public final class SideGestureZoneOverlay {
                             SideGestureTargetStore.Target replacement = SideGestureTargetStore.find(
                                     SideGestureTargetStore.readRaw(prefs), id);
                             if (replacement == null) return;
-                            draftTarget[0] = replacement;
-                            draftAction[0] = replacement.id;
-                            nameInput.setText(replacement.customName);
-                            summary.setText(targetSummary(replacement));
+                            replaceDraftTarget(target, replacement, draftTarget, summary);
                         }));
             } else if (target.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY) {
                 TextView replace = activity.filledButton("更换 Activity",
@@ -1588,23 +1619,22 @@ public final class SideGestureZoneOverlay {
                             SideGestureTargetStore.Target replacement = SideGestureTargetStore.find(
                                     SideGestureTargetStore.readRaw(prefs), id);
                             if (replacement == null) return;
-                            draftTarget[0] = replacement;
-                            draftAction[0] = replacement.id;
-                            nameInput.setText(replacement.customName);
-                            editorData[0].setText(replacement.dataUri);
-                            editorExtras[0].setText(replacement.extras);
-                            editorCustomAction[0].setText(replacement.action);
-                            editorNewTask[0].setChecked(replacement.newTask);
-                            editorRoot[0].setChecked(replacement.root);
-                            if ("android.intent.action.MAIN".equals(replacement.action)) {
+                            SideGestureTargetStore.Target edited = replaceDraftTarget(
+                                    target, replacement, draftTarget, summary);
+                            nameInput.setText(target.customName);
+                            editorData[0].setText(edited.dataUri);
+                            editorExtras[0].setText(edited.extras);
+                            editorCustomAction[0].setText(edited.action);
+                            editorNewTask[0].setChecked(edited.newTask);
+                            editorRoot[0].setChecked(edited.root);
+                            if ("android.intent.action.MAIN".equals(edited.action)) {
                                 editorMainAction[0].setChecked(true);
-                            } else if ("android.intent.action.VIEW".equals(replacement.action)
-                                    || replacement.action.isEmpty()) {
+                            } else if ("android.intent.action.VIEW".equals(edited.action)
+                                    || edited.action.isEmpty()) {
                                 editorViewAction[0].setChecked(true);
                             } else {
                                 editorCustomActionChoice[0].setChecked(true);
                             }
-                            summary.setText(targetSummary(replacement));
                         }));
                 dataInput = editorInput("附加 Data（Uri，可选）", target.dataUri, false);
                 extrasInput = editorInput("附加 Extra（每行 key=value，可选）", target.extras, true);
@@ -1665,10 +1695,9 @@ public final class SideGestureZoneOverlay {
             ScrollView scroll = new ScrollView(activity);
             scroll.addView(form);
             AlertDialog dialog = new AlertDialog.Builder(activity)
-                    .setTitle("编辑当前动作")
+                    .setTitle("编辑自定义动作")
                     .setView(scroll)
                     .setNegativeButton("取消", null)
-                    .setNeutralButton("切换动作", null)
                     .setPositiveButton("保存", null)
                     .create();
             dialog.show();
@@ -1711,55 +1740,45 @@ public final class SideGestureZoneOverlay {
                     saved = new SideGestureTargetStore.Target(old.id, old.type, value, value,
                             customName);
                 }
-                if (fanMode) {
-                    activity.commitSideGestureFanTarget(tier, slot, draftAction[0], saved);
-                    fanActions[tier][slot] = draftAction[0];
-                } else {
-                    activity.commitSideGestureTarget(cornerMode, tier, slot, draftAction[0], saved);
-                    actions[tier][slot] = draftAction[0];
+                List<SideGestureTargetStore.Target> targets = SideGestureTargetStore.parse(
+                        SideGestureTargetStore.readRaw(prefs));
+                for (int i = 0; i < targets.size(); i++) {
+                    if (targets.get(i).id == saved.id) {
+                        targets.set(i, saved);
+                        break;
+                    }
                 }
+                prefs.edit().putString(SettingsStore.KEY_SIDE_GESTURE_TARGETS_JSON,
+                        SideGestureTargetStore.encode(targets)).apply();
+                SettingsStore.notifyChanged(activity);
+                activity.notifySideGestureActionsChanged();
                 invalidate();
                 dialog.dismiss();
-            });
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
-                Runnable switchAction = () -> {
-                    dialog.dismiss();
-                    IntConsumer onSelected = selected -> {
-                        draftAction[0] = selected;
-                        if (SideGestureTargetStore.isDynamicAction(selected)) {
-                            SideGestureTargetStore.Target next = SideGestureTargetStore.find(
-                                    SideGestureTargetStore.readRaw(prefs), selected);
-                            if (next != null) showCustomTargetEditor(directionIndex, tier, slot,
-                                    selected, next);
-                        } else {
-                            showPendingActionEditor(directionIndex, tier, slot, selected);
-                        }
-                    };
-                    if (fanMode) showActionPicker(directionIndex, tier, slot, onSelected);
-                    else showActionPicker(directionIndex, tier, onSelected);
-                };
-                if (editorHasChanges(target, draftTarget[0], draftAction[0], action, nameInput,
-                        finalValueInput, finalDataInput, finalExtrasInput, finalCustomActionInput2,
-                        finalActionGroup, finalNewTaskInput, finalRootInput)) {
-                    confirmDiscard(dialog, switchAction);
-                } else switchAction.run();
+                if (onSaved != null) onSaved.run();
             });
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> {
-                if (editorHasChanges(target, draftTarget[0], draftAction[0], action, nameInput,
+                if (editorHasChanges(target, draftTarget[0], nameInput,
                         finalValueInput, finalDataInput, finalExtrasInput, finalCustomActionInput2,
                         finalActionGroup, finalNewTaskInput, finalRootInput)) {
-                    confirmDiscard(dialog, dialog::dismiss);
+                    confirmDiscard(dialog::dismiss, null);
                 } else dialog.dismiss();
             });
-            dialog.setCanceledOnTouchOutside(false);
+            dialog.setCanceledOnTouchOutside(true);
+            dialog.setOnCancelListener(d -> activity.getWindow().getDecorView().post(() -> {
+                if (editorHasChanges(target, draftTarget[0], nameInput,
+                        finalValueInput, finalDataInput, finalExtrasInput, finalCustomActionInput2,
+                        finalActionGroup, finalNewTaskInput, finalRootInput)) {
+                    confirmDiscard(dialog::dismiss, dialog::show);
+                }
+            }));
             dialog.setOnKeyListener((d, keyCode, event) -> {
                 if (keyCode != KeyEvent.KEYCODE_BACK || event.getAction() != KeyEvent.ACTION_UP) {
                     return false;
                 }
-                if (editorHasChanges(target, draftTarget[0], draftAction[0], action, nameInput,
+                if (editorHasChanges(target, draftTarget[0], nameInput,
                         finalValueInput, finalDataInput, finalExtrasInput, finalCustomActionInput2,
                         finalActionGroup, finalNewTaskInput, finalRootInput)) {
-                    confirmDiscard(dialog, dialog::dismiss);
+                    confirmDiscard(dialog::dismiss, null);
                 } else {
                     dialog.dismiss();
                 }
@@ -1843,10 +1862,12 @@ public final class SideGestureZoneOverlay {
         }
 
         private boolean editorHasChanges(SideGestureTargetStore.Target original,
-                SideGestureTargetStore.Target draft, int draftAction, int originalAction,
-                EditText name, EditText value, EditText data, EditText extras, EditText customAction,
+                SideGestureTargetStore.Target draft, EditText name, EditText value,
+                EditText data, EditText extras, EditText customAction,
                 RadioGroup actionGroup, CheckBox newTask, CheckBox root) {
-            if (draftAction != originalAction || !name.getText().toString().trim().equals(draft.customName)) return true;
+            if (draft.type != original.type || !draft.label.equals(original.label)
+                    || !draft.value.equals(original.value)
+                    || !name.getText().toString().trim().equals(draft.customName)) return true;
             if (draft.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI
                     || draft.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL) {
                 return value != null && !value.getText().toString().trim().equals(draft.value);
@@ -1863,10 +1884,30 @@ public final class SideGestureZoneOverlay {
                     || newTask.isChecked() != draft.newTask || root.isChecked() != draft.root;
         }
 
-        private void confirmDiscard(AlertDialog owner, Runnable onDiscard) {
+        private SideGestureTargetStore.Target replaceDraftTarget(
+                SideGestureTargetStore.Target original,
+                SideGestureTargetStore.Target replacement,
+                SideGestureTargetStore.Target[] draftTarget, TextView summary) {
+            SideGestureTargetStore.Target edited = new SideGestureTargetStore.Target(
+                    original.id, replacement.type, replacement.label, replacement.value,
+                    replacement.dataUri, replacement.extras, replacement.action,
+                    replacement.newTask, replacement.root, original.customName);
+            List<SideGestureTargetStore.Target> targets = SideGestureTargetStore.parse(
+                    SideGestureTargetStore.readRaw(prefs));
+            targets.removeIf(item -> item.id == replacement.id);
+            prefs.edit().putString(SettingsStore.KEY_SIDE_GESTURE_TARGETS_JSON,
+                    SideGestureTargetStore.encode(targets)).apply();
+            draftTarget[0] = edited;
+            summary.setText(targetSummary(edited));
+            return edited;
+        }
+
+        private void confirmDiscard(Runnable onDiscard, Runnable onKeepEditing) {
             new AlertDialog.Builder(activity)
                     .setMessage("放弃本次修改？")
-                    .setNegativeButton("继续编辑", null)
+                    .setNegativeButton("继续编辑", (d, which) -> {
+                        if (onKeepEditing != null) onKeepEditing.run();
+                    })
                     .setPositiveButton("放弃", (d, which) -> onDiscard.run())
                     .show();
         }
