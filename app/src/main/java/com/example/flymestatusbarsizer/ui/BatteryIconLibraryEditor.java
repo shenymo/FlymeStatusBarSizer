@@ -44,6 +44,7 @@ import com.example.flymestatusbarsizer.feature.battery.BatteryIconLibrary.Entry;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconPack;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconPainter;
 import com.example.flymestatusbarsizer.feature.statusbar.RingerVectorXml;
+import com.example.flymestatusbarsizer.util.OnlineIconLibraryClient;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -105,6 +106,7 @@ public final class BatteryIconLibraryEditor {
         addButton(buttons, "粘贴图标包", this::pastePack);
         actions.addView(buttons);
         root.addView(actions);
+        OnlineIconLibraryDialog.addEntry(activity, root, this::showOnlineLibrary);
         ScrollView scroll = new ScrollView(activity);
         list = column();
         list.setPadding(activity.dp(16), activity.dp(8), activity.dp(16), activity.dp(24));
@@ -593,6 +595,31 @@ public final class BatteryIconLibraryEditor {
         onChanged.run();
     }
 
+    private void showOnlineLibrary() {
+        OnlineIconLibraryDialog.show(activity, OnlineIconLibraryClient.TYPE_BATTERY, "在线电池图标",
+                () -> {
+                    return library.entries.stream().filter(entry -> !entry.builtIn())
+                            .map(entry -> new OnlineIconLibraryDialog.UploadData(
+                                    entry.pack().name, entry.pack().json)).toList();
+                },
+                icon -> {
+                    String localId = "online:" + icon.id();
+                    if (library.entries.stream().anyMatch(entry -> entry.id().equals(localId))) {
+                        throw new IllegalArgumentException("该图标包已经下载");
+                    }
+                    BatteryIconPack pack = BatteryIconPack.parse(icon.payload());
+                    if (!pack.name.equals(icon.name())) {
+                        pack = BatteryIconPack.parse(new JSONObject(pack.json).put("name", icon.name()).toString());
+                    }
+                    pack = BatteryIconPack.parse(new JSONObject(pack.json)
+                            .put("name", uniqueName(pack.name)).toString());
+                    ArrayList<Entry> entries = new ArrayList<>(library.entries);
+                    entries.add(new Entry(localId, pack));
+                    persist(new BatteryIconLibrary(entries, library.selected));
+                    return "已下载到本地图标库";
+                });
+    }
+
     private Spinner spinner(String[] values) {
         Spinner spinner = new Spinner(activity);
         ArrayAdapter<String> adapter = new ArrayAdapter<>(activity, android.R.layout.simple_spinner_item, values);
@@ -792,8 +819,8 @@ public final class BatteryIconLibraryEditor {
         }
     }
 
-    private static final class PreviewView extends View {
-        private BatteryIconPack pack = BatteryIconLibrary.defaultPack();
+    static final class PreviewView extends View {
+        BatteryIconPack pack = BatteryIconLibrary.defaultPack();
         private final boolean dark, enlarged;
         private final Rect bounds = new Rect();
         private int level = 82, state;

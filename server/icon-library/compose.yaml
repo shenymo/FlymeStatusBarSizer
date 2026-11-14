@@ -1,0 +1,19 @@
+services:
+  icon-library:
+    build: .
+    container_name: flyme-icon-library
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18182:8000"
+    volumes:
+      - ./data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

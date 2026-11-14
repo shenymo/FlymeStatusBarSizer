@@ -32,6 +32,7 @@ import com.example.flymestatusbarsizer.feature.statusbar.RingerIconLibrary;
 import com.example.flymestatusbarsizer.feature.statusbar.RingerIconLibrary.Entry;
 import com.example.flymestatusbarsizer.feature.statusbar.RingerIconVectorHooks;
 import com.example.flymestatusbarsizer.feature.statusbar.RingerVectorXml;
+import com.example.flymestatusbarsizer.util.OnlineIconLibraryClient;
 
 import java.util.ArrayList;
 import java.util.UUID;
@@ -84,6 +85,7 @@ public final class RingerIconLibraryEditor {
     private void show() {
         Dialog dialog = new Dialog(activity);
         LinearLayout root = page(dialog, silent ? "静音图标库" : "震动图标库");
+        OnlineIconLibraryDialog.addEntry(activity, root, this::showOnlineLibrary);
         FrameLayout body = new FrameLayout(activity);
         ScrollView scroll = new ScrollView(activity);
         list = column();
@@ -362,6 +364,34 @@ public final class RingerIconLibraryEditor {
         SettingsStore.notifyChanged(activity);
         renderList();
         onChanged.run();
+    }
+
+    private void showOnlineLibrary() {
+        OnlineIconLibraryDialog.show(activity,
+                silent ? OnlineIconLibraryClient.TYPE_SILENT : OnlineIconLibraryClient.TYPE_VIBRATE,
+                silent ? "在线静音图标" : "在线震动图标",
+                () -> {
+                    return library.entries.stream().filter(entry -> !entry.id().startsWith("builtin:"))
+                            .map(entry -> new OnlineIconLibraryDialog.UploadData(entry.name(), entry.xml()))
+                            .toList();
+                },
+                icon -> {
+                    if (library.entries.stream().anyMatch(entry -> entry.id().equals("online:" + icon.id()))) {
+                        throw new IllegalArgumentException("该图标已经下载");
+                    }
+                    RingerVectorXml vector = RingerVectorXml.parse(icon.payload());
+                    String name = uniqueName(icon.name());
+                    ArrayList<Entry> entries = new ArrayList<>(library.entries);
+                    entries.add(1, new Entry("online:" + icon.id(), name, icon.payload(), vector, null));
+                    persist(new RingerIconLibrary(entries, library.selected));
+                    return "已下载到本地图标库";
+                });
+    }
+
+    private String uniqueName(String base) {
+        String name = base;
+        for (int suffix = 2; nameExists(name, ""); suffix++) name = base + " " + suffix;
+        return name;
     }
 
     private Drawable drawable(Entry entry) {
