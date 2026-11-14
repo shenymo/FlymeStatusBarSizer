@@ -60,10 +60,7 @@ public final class SideGestureZoneOverlay {
             SettingsStore.SIDE_GESTURE_ACTION_TASK_SCALE,
             SettingsStore.SIDE_GESTURE_ACTION_QUICK_TOOLS,
             SettingsStore.SIDE_GESTURE_ACTION_APP_LAUNCHER,
-            SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP,
-            SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY,
-            SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI,
-            SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL
+            Integer.MIN_VALUE
     };
     private static final int[] ACTION_ICONS = {
             R.drawable.gesture_action_none,
@@ -79,21 +76,18 @@ public final class SideGestureZoneOverlay {
             R.drawable.gesture_action_task_scale,
             R.drawable.gesture_action_quick_tools,
             R.drawable.gesture_action_app_launcher,
-            R.drawable.gesture_action_open_app,
-            R.drawable.gesture_action_open_activity,
-            R.drawable.gesture_action_open_intent_uri,
-            R.drawable.gesture_action_open_scheme_url
+            R.drawable.gesture_action_open_app
     };
     private static final String[] ACTION_LABELS = {
             "无动作", "返回", "返回桌面", "最近任务", "锁屏", "结束当前任务（App）",
             "小窗选择面板", "贴边", "任务切换器", "全局负一屏", "多应用工作台",
-            "快捷工具", "应用启动器", "打开指定应用", "打开 Activity", "打开 Intent URI", "打开 Scheme URL"
+            "快捷工具", "应用启动器", "自定义打开"
     };
     private static final String[] ACTION_CATEGORIES = {
-            "基础控制", "多任务与桌面", "应用与快捷方式", "高级扩展"
+            "基础控制", "多任务与桌面", "应用与快捷方式", "自定义打开"
     };
-    private static final int[] ACTION_CATEGORY_STARTS = {0, 6, 11, 14};
-    private static final int[] ACTION_CATEGORY_ENDS = {6, 11, 14, 17};
+    private static final int[] ACTION_CATEGORY_STARTS = {0, 6, 11, 13};
+    private static final int[] ACTION_CATEGORY_ENDS = {6, 11, 13, 14};
     private static final class ActionChoice {
         final int value;
         final String label;
@@ -1210,7 +1204,7 @@ public final class SideGestureZoneOverlay {
                     : null;
             int initialCategory = 0;
             if (currentTarget != null) {
-                initialCategory = currentTarget.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP ? 2 : 3;
+                initialCategory = 3;
             } else if (currentAction != SIDE_GESTURE_INHERIT_LONG) {
                 for (int category = 0; category < ACTION_CATEGORIES.length; category++) {
                     for (int i = ACTION_CATEGORY_STARTS[category]; i < ACTION_CATEGORY_ENDS[category]; i++) {
@@ -1220,6 +1214,7 @@ public final class SideGestureZoneOverlay {
             }
             List<ActionChoice> choices = new ArrayList<>();
             final int[] categoryState = {initialCategory};
+            final Runnable[] refreshCategoryRef = {null};
             ListView list = new ListView(activity);
             list.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
             list.setDivider(null);
@@ -1229,6 +1224,34 @@ public final class SideGestureZoneOverlay {
                 @Override public long getItemId(int position) { return position; }
                 @Override public View getView(int position, View convertView, ViewGroup parent) {
                     ActionChoice choice = choices.get(position);
+                    if (categoryState[0] == 3) {
+                        LinearLayout row = new LinearLayout(activity);
+                        row.setGravity(Gravity.CENTER_VERTICAL);
+                        row.setPadding(Math.round(dp(12)), Math.round(dp(4)),
+                                Math.round(dp(6)), Math.round(dp(4)));
+                        TextView title = new TextView(activity);
+                        title.setText(choice.label);
+                        title.setTextSize(15f);
+                        title.setTextColor(choice.value == currentAction
+                                ? activity.primaryColor() : activity.textColor());
+                        title.setGravity(Gravity.CENTER_VERTICAL);
+                        title.setMaxLines(1);
+                        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                        row.setMinimumHeight(Math.round(dp(56)));
+                        row.addView(title, new LinearLayout.LayoutParams(0,
+                                ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+                        TextView delete = activity.filledButton("删除",
+                                activity.surfaceStrongColor(), activity.textColor());
+                        row.addView(delete, new LinearLayout.LayoutParams(
+                                Math.round(dp(60)), Math.round(dp(38))));
+                        delete.setOnClickListener(v -> confirmDeleteCustomTarget(choice.value,
+                                () -> {
+                                    if (refreshCategoryRef[0] != null) refreshCategoryRef[0].run();
+                                }));
+                        row.setBackground(activity.roundRect(choice.value == currentAction
+                                ? activity.surfaceSoftColor() : Color.TRANSPARENT, 8));
+                        return row;
+                    }
                     CheckedTextView row = convertView instanceof CheckedTextView
                             ? (CheckedTextView) convertView
                             : (CheckedTextView) activity.getLayoutInflater().inflate(
@@ -1239,7 +1262,8 @@ public final class SideGestureZoneOverlay {
                             ? activity.primaryColor() : activity.textColor());
                     row.setMinHeight(Math.round(dp(48)));
                     row.setPadding(Math.round(dp(14)), 0, Math.round(dp(14)), 0);
-                    int actionIndex = ACTION_CATEGORY_STARTS[categoryState[0]] + position;
+                    int actionIndex = Math.min(ACTION_CATEGORY_STARTS[categoryState[0]] + position,
+                            ACTION_ICONS.length - 1);
                     int iconResource = ACTION_ICONS[actionIndex];
                     Drawable icon = iconResource == 0 ? null : activity.getDrawable(iconResource);
                     if (icon != null) {
@@ -1307,7 +1331,20 @@ public final class SideGestureZoneOverlay {
                     ViewGroup.LayoutParams.MATCH_PARENT, Math.round(dp(44))));
 
             int visibleRows = 5;
+            TextView addCustomTarget = activity.filledButton("添加自定义动作",
+                    activity.primaryColor(), Color.WHITE);
+            addCustomTarget.setVisibility(View.GONE);
+            content.addView(addCustomTarget, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, Math.round(dp(44))));
             content.addView(list, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, Math.round(dp(56 * visibleRows))));
+            TextView emptyCustomTargets = new TextView(activity);
+            emptyCustomTargets.setText("暂无自定义动作");
+            emptyCustomTargets.setGravity(Gravity.CENTER);
+            emptyCustomTargets.setTextColor(activity.subtextColor());
+            emptyCustomTargets.setTextSize(14f);
+            emptyCustomTargets.setVisibility(View.GONE);
+            content.addView(emptyCustomTargets, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, Math.round(dp(48 * visibleRows))));
             AlertDialog.Builder builder = new AlertDialog.Builder(activity)
                     .setTitle((fanMode ? "扇形区域" : directionName(directionIndex)) + " · "
@@ -1328,9 +1365,30 @@ public final class SideGestureZoneOverlay {
                 }
             }
             AlertDialog dialog = builder.create();
+            addCustomTarget.setOnClickListener(v -> {
+                String[] types = {"应用", "Activity", "Intent URI", "Scheme URL"};
+                int[] values = {SettingsStore.SIDE_GESTURE_ACTION_OPEN_APP,
+                        SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY,
+                        SettingsStore.SIDE_GESTURE_ACTION_OPEN_INTENT_URI,
+                        SettingsStore.SIDE_GESTURE_ACTION_OPEN_SCHEME_URL};
+                new AlertDialog.Builder(activity).setTitle("新建自定义动作")
+                        .setItems(types, (typeDialog, which) ->
+                                activity.configureSideGestureTarget(values[which], targetId -> {
+                                    dialog.dismiss();
+                                    if (onSelected != null) onSelected.accept(targetId);
+                                    else { actions[tier][slot] = targetId; invalidate(); }
+                                })).setNegativeButton("取消", null).show();
+            });
             list.setOnItemClickListener((parent, row, position, id) -> {
                 ActionChoice choice = choices.get(position);
                 int selected = choice.value;
+                if (categoryState[0] == 3) {
+                    dialog.dismiss();
+                    if (onSelected != null) onSelected.accept(selected);
+                    else { actions[tier][slot] = selected; invalidate(); }
+                    activity.performTapHaptic(this);
+                    return;
+                }
                 dialog.dismiss();
                 if (SideGestureTargetStore.isTargetType(selected)) {
                     activity.configureSideGestureTarget(selected, targetId -> {
@@ -1367,9 +1425,21 @@ public final class SideGestureZoneOverlay {
             refreshCategory[0] = () -> {
                 int category = categoryState[0];
                 choices.clear();
-                for (int i = ACTION_CATEGORY_STARTS[category]; i < ACTION_CATEGORY_ENDS[category]; i++) {
+                if (category == 3) {
+                    for (SideGestureTargetStore.Target target : SideGestureTargetStore.parse(
+                            SideGestureTargetStore.readRaw(prefs))) {
+                        String label = (target.customName.isEmpty()
+                                ? SideGestureTargetStore.shortLabel(target) : target.customName)
+                                + "\n" + target.label;
+                        choices.add(new ActionChoice(target.id, label));
+                    }
+                    addCustomTarget.setVisibility(View.VISIBLE);
+                    list.setEmptyView(emptyCustomTargets);
+                }
+                else for (int i = ACTION_CATEGORY_STARTS[category]; i < ACTION_CATEGORY_ENDS[category]; i++) {
                     choices.add(new ActionChoice(ACTION_VALUES[i], ACTION_LABELS[i]));
                 }
+                if (category != 3) addCustomTarget.setVisibility(View.GONE);
                 adapter.notifyDataSetChanged();
                 list.clearChoices();
                 for (int i = 0; i < choices.size(); i++) {
@@ -1386,6 +1456,7 @@ public final class SideGestureZoneOverlay {
                 tabScroll.post(() -> tabScroll.smoothScrollTo(
                         Math.max(0, tabViews.get(category).getLeft() - Math.round(dp(12))), 0));
             };
+            refreshCategoryRef[0] = refreshCategory[0];
             for (int category = 0; category < tabViews.size(); category++) {
                 final int categoryIndex = category;
                 tabViews.get(category).setOnClickListener(v -> {
@@ -1402,6 +1473,50 @@ public final class SideGestureZoneOverlay {
                 }
             });
             activity.attachDialogButtonHaptics(dialog);
+        }
+
+        private void confirmDeleteCustomTarget(int targetId, Runnable onDeleted) {
+            SideGestureTargetStore.Target target = SideGestureTargetStore.find(
+                    SideGestureTargetStore.readRaw(prefs), targetId);
+            if (target == null) return;
+            int references = 0;
+            for (String[] tierKeys : SettingsStore.SIDE_GESTURE_ACTION_KEYS)
+                for (String key : tierKeys)
+                    if (SettingsStore.readInt(prefs, key, -1) == targetId) references++;
+            for (String[] tierKeys : SettingsStore.CORNER_GESTURE_ACTION_KEYS)
+                for (String key : tierKeys)
+                    if (SettingsStore.readInt(prefs, key, -1) == targetId) references++;
+            for (String[] bandKeys : SettingsStore.SIDE_GESTURE_FAN_ACTION_KEYS)
+                for (String key : bandKeys)
+                    if (SettingsStore.readInt(prefs, key, -1) == targetId) references++;
+            new AlertDialog.Builder(activity).setTitle("删除自定义动作")
+                    .setMessage("将删除“" + (target.customName.isEmpty()
+                            ? SideGestureTargetStore.shortLabel(target) : target.customName)
+                            + "”，并清空 " + references
+                            + " 个手势区域的设置。")
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("删除", (d, which) -> {
+                        SharedPreferences.Editor editor = prefs.edit();
+                        for (String[] tierKeys : SettingsStore.SIDE_GESTURE_ACTION_KEYS)
+                            for (String key : tierKeys)
+                                if (SettingsStore.readInt(prefs, key, -1) == targetId)
+                                    editor.putInt(key, SettingsStore.SIDE_GESTURE_ACTION_NONE);
+                        for (String[] tierKeys : SettingsStore.CORNER_GESTURE_ACTION_KEYS)
+                            for (String key : tierKeys)
+                                if (SettingsStore.readInt(prefs, key, -1) == targetId)
+                                    editor.putInt(key, SettingsStore.SIDE_GESTURE_ACTION_NONE);
+                        for (String[] bandKeys : SettingsStore.SIDE_GESTURE_FAN_ACTION_KEYS)
+                            for (String key : bandKeys)
+                                if (SettingsStore.readInt(prefs, key, -1) == targetId)
+                                    editor.putInt(key, SettingsStore.SIDE_GESTURE_ACTION_NONE);
+                        List<SideGestureTargetStore.Target> targets = SideGestureTargetStore.parse(
+                                SideGestureTargetStore.readRaw(prefs));
+                        targets.removeIf(item -> item.id == targetId);
+                        editor.putString(SettingsStore.KEY_SIDE_GESTURE_TARGETS_JSON,
+                                SideGestureTargetStore.encode(targets)).apply();
+                        if (onActionChanged != null) onActionChanged.run();
+                        if (onDeleted != null) onDeleted.run();
+                    }).show();
         }
 
         private void showCustomTargetEditor(int directionIndex, int tier, int slot,
@@ -1430,7 +1545,7 @@ public final class SideGestureZoneOverlay {
             nameLabel.setPadding(Math.round(dp(2)), Math.round(dp(12)),
                     Math.round(dp(2)), Math.round(dp(4)));
             form.addView(nameLabel);
-            EditText nameInput = editorInput("动作名称（可选）", target.customName, false);
+            EditText nameInput = editorInput("动作名称", target.customName, false);
             form.addView(nameInput);
             EditText valueInput = null;
             EditText dataInput = null;
@@ -1567,6 +1682,10 @@ public final class SideGestureZoneOverlay {
             CheckBox finalRootInput = rootInput;
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
                 String customName = nameInput.getText().toString().trim();
+                if (customName.isEmpty()) {
+                    nameInput.setError("请输入动作名称");
+                    return;
+                }
                 SideGestureTargetStore.Target old = draftTarget[0];
                 SideGestureTargetStore.Target saved;
                 if (old.type == SettingsStore.SIDE_GESTURE_ACTION_OPEN_ACTIVITY) {

@@ -861,7 +861,7 @@ public class MainActivity extends Activity {
             EditText urlInput = activityTargetInput(intentUri
                     ? "intent:#Intent;...;end" : "https://example.com 或 app://...", false);
             urlInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-            EditText nameInput = activityTargetInput("动作名称（可选，留空使用默认名称）", false);
+            EditText nameInput = activityTargetInput("动作名称", false);
             form.addView(urlInput);
             form.addView(nameInput);
             AlertDialog dialog = new AlertDialog.Builder(this)
@@ -877,8 +877,13 @@ public class MainActivity extends Activity {
                     urlInput.setError("请输入链接");
                     return;
                 }
+                String customName = nameInput.getText().toString().trim();
+                if (customName.isEmpty()) {
+                    nameInput.setError("请输入动作名称");
+                    return;
+                }
                 int id = appendSideGestureTarget(type, value, value,
-                        nameInput.getText().toString().trim());
+                        customName);
                 if (onSelected != null) onSelected.accept(id);
                 dialog.dismiss();
             });
@@ -901,7 +906,7 @@ public class MainActivity extends Activity {
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
         form.setPadding(dp(18), dp(4), dp(18), dp(8));
-        EditText input = activityTargetInput("动作名称（可选，留空使用默认名称）", false);
+        EditText input = activityTargetInput("动作名称", false);
         input.setText(currentName);
         input.setSelection(input.length());
         form.addView(input);
@@ -909,11 +914,18 @@ public class MainActivity extends Activity {
                 .setTitle("设置动作名称")
                 .setView(form)
                 .setNegativeButton("取消", null)
-                .setNeutralButton("恢复默认", (d, which) -> onSaved.accept(""))
-                .setPositiveButton("保存", (d, which) ->
-                        onSaved.accept(input.getText().toString().trim()))
+                .setPositiveButton("保存", null)
                 .create();
         dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String value = input.getText().toString().trim();
+            if (value.isEmpty()) {
+                input.setError("请输入动作名称");
+                return;
+            }
+            onSaved.accept(value);
+            dialog.dismiss();
+        });
         styleDialog(dialog);
         attachDialogButtonHaptics(dialog);
     }
@@ -969,13 +981,19 @@ public class MainActivity extends Activity {
                             if (customName.equals(target.customName)) return;
                             List<SideGestureTargetStore.Target> targets = SideGestureTargetStore.parse(
                                     SideGestureTargetStore.readRaw(prefs));
-                            int id = SideGestureTargetStore.nextId(targets);
-                            targets.add(new SideGestureTargetStore.Target(id, target.type,
-                                    target.label, target.value, target.dataUri, target.extras,
-                                    target.action, target.newTask, target.root, customName));
+                            for (int i = 0; i < targets.size(); i++) {
+                                SideGestureTargetStore.Target current = targets.get(i);
+                                if (current.id == target.id) {
+                                    targets.set(i, new SideGestureTargetStore.Target(current.id,
+                                            current.type, current.label, current.value,
+                                            current.dataUri, current.extras, current.action,
+                                            current.newTask, current.root, customName));
+                                    break;
+                                }
+                            }
                             putStringSetting(SettingsStore.KEY_SIDE_GESTURE_TARGETS_JSON,
                                     SideGestureTargetStore.encode(targets));
-                            onRenamed.accept(id);
+                            onRenamed.accept(target.id);
                         }))
                 .setPositiveButton("更换目标", (d, which) -> {
                     if (onReplace != null) onReplace.run();
@@ -1324,7 +1342,7 @@ public class MainActivity extends Activity {
         componentView.setPadding(0, dp(4), 0, dp(10));
         form.addView(componentView);
 
-        EditText nameInput = activityTargetInput("动作名称（可选，留空使用默认名称）", false);
+        EditText nameInput = activityTargetInput("动作名称", false);
         form.addView(nameInput);
         EditText dataInput = activityTargetInput("附加 Data (Uri)", false);
         EditText extrasInput = activityTargetInput("附加 Extra（每行一个，key=value）", true);
@@ -1379,7 +1397,15 @@ public class MainActivity extends Activity {
                 .setTitle("配置 Activity 启动参数")
                 .setView(scroll)
                 .setNegativeButton("取消", null)
-                .setPositiveButton("保存", (d, which) -> {
+                .setPositiveButton("保存", null)
+                .create();
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                    String customName = nameInput.getText().toString().trim();
+                    if (customName.isEmpty()) {
+                        nameInput.setError("请输入动作名称");
+                        return;
+                    }
                     String action = viewAction.isChecked()
                             ? "android.intent.action.VIEW"
                             : mainAction.isChecked() ? "android.intent.action.MAIN"
@@ -1390,11 +1416,10 @@ public class MainActivity extends Activity {
                             dataInput.getText().toString().trim(),
                             extrasInput.getText().toString(), action,
                             newTask.isChecked(), root.isChecked(),
-                            nameInput.getText().toString().trim());
+                            customName);
                     if (onSelected != null) onSelected.accept(id);
-                })
-                .create();
-        dialog.show();
+                    dialog.dismiss();
+                });
         styleDialog(dialog);
         attachDialogButtonHaptics(dialog);
     }
