@@ -297,6 +297,7 @@ public final class RecentTaskSwitcher {
                 if (active != null && active != this) active.close();
                 active = this;
             }
+            closeAllButton.setEnabled(!closingAll);
             if (attached) {
                 closing = false;
                 panel.animate().cancel();
@@ -906,8 +907,8 @@ public final class RecentTaskSwitcher {
                 }
                 boolean cleanupFailed = failed;
                 MAIN.post(() -> {
-                    if (!isCurrent()) return;
                     closingAll = false;
+                    if (!isCurrent()) return;
                     closeAllButton.setEnabled(true);
                     loadTasksAsync();
                     if (cleanupFailed) {
