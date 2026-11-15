@@ -256,8 +256,6 @@ final class QuickToolsPanel {
         private final Drawable playMediaDrawable;
         private final Drawable pauseMediaDrawable;
         private final Drawable nextMediaDrawable;
-        private final Drawable brightnessThumbDrawable;
-        private final Drawable volumeThumbDrawable;
         private final LottieDrawable brightnessAnimation = new LottieDrawable();
         private final LottieDrawable volumeAnimation = new LottieDrawable();
         private final float density;
@@ -341,8 +339,6 @@ final class QuickToolsPanel {
             playMediaDrawable = loadDrawable(resourceContext, R.drawable.quick_tool_play);
             pauseMediaDrawable = loadDrawable(resourceContext, R.drawable.quick_tool_pause);
             nextMediaDrawable = loadDrawable(resourceContext, R.drawable.quick_tool_next);
-            brightnessThumbDrawable = loadDrawable(resourceContext, R.drawable.quick_tool_brightness_thumb);
-            volumeThumbDrawable = loadDrawable(resourceContext, R.drawable.quick_tool_volume_thumb);
             try {
                 LottieComposition composition = LottieCompositionFactory
                         .fromAssetSync(resourceContext, "brightness.json").getValue();
@@ -558,8 +554,7 @@ final class QuickToolsPanel {
 
         private void drawVolumeCard(Canvas canvas) {
             drawSliderIcon(canvas, volumeTrack.left - dp(16), volumeTrack.centerY(), dp(10), 1, false);
-            drawProgressTrack(canvas, volumeTrack, volume / (float) Math.max(1, volumeMax),
-                    volumeThumbDrawable);
+            drawProgressTrack(canvas, volumeTrack, volume / (float) Math.max(1, volumeMax));
 
             float controlLeft = volumeCard.left + dp(4);
             float controlWidth = (volumeCard.width() - dp(8)) / mediaButtons.length;
@@ -568,10 +563,10 @@ final class QuickToolsPanel {
                 mediaButtons[i].set(left, dp(76), left + controlWidth, dp(108));
                 drawRect.set(left + dp(3), dp(78), left + controlWidth - dp(3), dp(106));
                 boolean focus = i == 1;
-                paint.setColor(focus ? (darkMode ? 0xff5dbdb8 : 0xff419f9a)
+                paint.setColor(focus ? (darkMode ? 0x4277c6c1 : 0x304ba8a4)
                         : (darkMode ? 0x1effffff : 0x22000000));
                 canvas.drawRoundRect(drawRect, dp(14), dp(14), paint);
-                paint.setColor(focus ? (darkMode ? 0xff172326 : 0xfff3ffff)
+                paint.setColor(focus ? (darkMode ? 0xffa9ded9 : 0xff2d7d79)
                         : (darkMode ? 0xffe0e5e7 : 0xff374249));
                 paint.setStyle(focus ? Paint.Style.FILL : Paint.Style.STROKE);
                 paint.setStrokeWidth(dp(1.8f));
@@ -582,30 +577,19 @@ final class QuickToolsPanel {
             }
         }
 
-        private void drawProgressTrack(Canvas canvas, RectF track, float fraction,
-                Drawable thumbDrawable) {
+        private void drawProgressTrack(Canvas canvas, RectF track, float fraction) {
             float clampedFraction = Math.max(0f, Math.min(1f, fraction));
             float radius = track.height() / 2f;
-            paint.setColor(darkMode ? 0xff555d62 : 0xffc0c8cd);
+            paint.setColor(darkMode ? 0x24555d62 : 0x24000000);
             canvas.drawRoundRect(track, radius, radius, paint);
             float progressRight = track.left + clampedFraction * track.width();
             if (progressRight > track.left) {
                 int saveCount = canvas.save();
                 canvas.clipRect(track.left, track.top, progressRight, track.bottom);
-                paint.setColor(darkMode ? 0xff66c9c3 : 0xff318f8a);
+                paint.setColor(darkMode ? 0xe666c9c3 : 0xe6318f8a);
                 canvas.drawRoundRect(track, radius, radius, paint);
                 canvas.restoreToCount(saveCount);
             }
-            drawSliderThumb(canvas, progressRight, track.centerY(), thumbDrawable);
-        }
-
-        private void drawSliderThumb(Canvas canvas, float cx, float cy, Drawable drawable) {
-            if (drawable == null) return;
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(darkMode ? 0xff2a2c2f : 0xffffffff);
-            canvas.drawCircle(cx, cy, dp(6.25f), paint);
-            drawDrawable(canvas, drawable, cx, cy, dp(20),
-                    darkMode ? 0xffe1e3e5 : 0xff191c1d);
         }
 
         private void drawMediaIcon(Canvas canvas, float cx, float cy, float size, int index) {
@@ -677,7 +661,7 @@ final class QuickToolsPanel {
                 paint.setTextSize(dp(7));
                 canvas.drawText("A", iconCenterX + dp(6), track.centerY() + dp(8), paint);
             }
-            drawProgressTrack(canvas, track, fraction, brightnessThumbDrawable);
+            drawProgressTrack(canvas, track, fraction);
         }
 
         private void drawButton(Canvas canvas, RectF bounds, boolean active, int index) {
