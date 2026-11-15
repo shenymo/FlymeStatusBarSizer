@@ -15,6 +15,7 @@ public final class IconsBatteryPageController {
         root.addView(activity.createIconSizingCard(), PageViewUtils.matchWrap());
         addIconVisibilityCard(activity, root);
         addRingerIconCard(activity, root);
+        addVectorDrawableEditorCard(activity, root);
         root.addView(activity.createBatterySettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createNotificationSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createSignalSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
@@ -35,6 +36,15 @@ public final class IconsBatteryPageController {
                 (button, enabled) -> libraries.setVisibility(enabled ? View.VISIBLE : View.GONE));
         content.addView(libraries);
         root.addView(activity.buildSectionCard("静音与震动", null, content),
+                PageViewUtils.matchWrapWithTop(activity, 8));
+    }
+
+    private static void addVectorDrawableEditorCard(MainActivity activity, LinearLayout root) {
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        VectorDrawableEditor.addSettingsRow(activity, content);
+        root.addView(activity.buildSectionCard("矢量图标编辑器",
+                "解析 Android Vector Drawable 代码，修改属性并保存到图标库。", content),
                 PageViewUtils.matchWrapWithTop(activity, 8));
     }
 
