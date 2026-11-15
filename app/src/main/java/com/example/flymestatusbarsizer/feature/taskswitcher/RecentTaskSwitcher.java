@@ -148,6 +148,9 @@ public final class RecentTaskSwitcher {
 
     private static final class Popup {
         private static final int ROW_HEIGHT_DP = 34;
+        private static final int TASK_SLOT_DP = 26;
+        private static final int TASK_CONTENT_HEIGHT_DP = 29;
+        private static final int TASK_ICON_DP = 16;
         private final Context context;
         private boolean fromLeft;
         private float anchorY;
@@ -494,8 +497,13 @@ public final class RecentTaskSwitcher {
 
             TaskViewHolder() {
                 super(new LinearLayout(context));
-                ((LinearLayout) itemView).setOrientation(LinearLayout.VERTICAL);
+                LinearLayout itemContainer = (LinearLayout) itemView;
+                itemContainer.setOrientation(LinearLayout.VERTICAL);
+                itemContainer.setLayoutParams(new RecyclerView.LayoutParams(
+                        RecyclerView.LayoutParams.MATCH_PARENT, dp(ROW_HEIGHT_DP)));
                 row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, dp(ROW_HEIGHT_DP)));
                 row.setMinimumHeight(dp(ROW_HEIGHT_DP));
                 row.setBackground(new RippleDrawable(
                         ColorStateList.valueOf(paletteColor(0x22287a78, 0x2877c6c1)), null, null));
@@ -505,16 +513,18 @@ public final class RecentTaskSwitcher {
                 name.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 name.setGravity(Gravity.CENTER_VERTICAL);
                 name.setMinHeight(0);
-                name.setPadding(dp(6), 0, dp(4), 0);
+                name.setPadding(dp(4), 0, dp(4), 0);
                 name.setTooltipText("长按锁定或解锁");
                 nameSlot.setMinimumWidth(0);
                 nameSlot.setMinimumHeight(0);
-                nameSlot.addView(name, new FrameLayout.LayoutParams(-1, dp(29), Gravity.CENTER));
+                nameSlot.addView(name,
+                        new FrameLayout.LayoutParams(-1, dp(TASK_CONTENT_HEIGHT_DP), Gravity.CENTER));
                 icon.setImageResource(android.R.drawable.sym_def_app_icon);
                 icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
                 icon.setMinimumWidth(0);
                 icon.setMinimumHeight(0);
-                iconSlot.addView(icon, new FrameLayout.LayoutParams(dp(16), dp(16), Gravity.CENTER));
+                iconSlot.addView(icon,
+                        new FrameLayout.LayoutParams(dp(TASK_ICON_DP), dp(TASK_ICON_DP), Gravity.CENTER));
                 actionButton.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
                 actionButton.setMinimumWidth(0);
                 actionButton.setMinimumHeight(0);
@@ -522,7 +532,7 @@ public final class RecentTaskSwitcher {
                 actionButton.setBackground(new RippleDrawable(
                         ColorStateList.valueOf(paletteColor(0x243a8885, 0x3877c6c1)), null, null));
                 actionSlot.addView(actionButton,
-                        new FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER));
+                        new FrameLayout.LayoutParams(dp(TASK_SLOT_DP), dp(TASK_SLOT_DP), Gravity.CENTER));
                 actionSlot.setMinimumWidth(0);
                 actionSlot.setMinimumHeight(0);
                 iconSlot.setMinimumWidth(0);
@@ -538,7 +548,7 @@ public final class RecentTaskSwitcher {
                 miniWindowSlot.setMinimumWidth(0);
                 miniWindowSlot.setMinimumHeight(0);
                 miniWindowSlot.addView(miniWindow,
-                        new FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER));
+                        new FrameLayout.LayoutParams(dp(TASK_SLOT_DP), dp(TASK_SLOT_DP), Gravity.CENTER));
                 setButtonFeedback(actionButton);
                 setButtonFeedback(miniWindow);
                 name.setOnLongClickListener(view -> {
@@ -559,8 +569,7 @@ public final class RecentTaskSwitcher {
                     activate(entry.card);
                 });
                 name.setOnClickListener(view -> row.performClick());
-                ((LinearLayout) itemView).addView(row,
-                        new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
+                itemContainer.addView(row);
             }
         }
 
@@ -584,8 +593,7 @@ public final class RecentTaskSwitcher {
                         ColorStateList.valueOf(paletteColor(0x243a8885, 0x3877c6c1)), null, null));
                 holder.miniWindow.setBackground(new RippleDrawable(
                         ColorStateList.valueOf(paletteColor(0x18000000, 0x20ffffff)), null, null));
-                holder.name.setGravity(fromLeft ? Gravity.LEFT | Gravity.CENTER_VERTICAL
-                        : Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+                holder.name.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
                 holder.icon.setImageDrawable(entry.icon == null
                         ? context.getDrawable(android.R.drawable.sym_def_app_icon) : entry.icon);
                 setActionIcon(holder.actionButton, isLocked(entry.card));
@@ -595,15 +603,23 @@ public final class RecentTaskSwitcher {
                     holder.arrangedFromLeft = fromLeft;
                     holder.row.removeAllViews();
                     if (fromLeft) {
-                        holder.row.addView(holder.miniWindowSlot, new LinearLayout.LayoutParams(dp(29), dp(29)));
-                        holder.row.addView(holder.iconSlot, new LinearLayout.LayoutParams(dp(29), dp(29)));
-                        holder.row.addView(holder.nameSlot, new LinearLayout.LayoutParams(0, dp(29), 1f));
-                        holder.row.addView(holder.actionSlot, new LinearLayout.LayoutParams(dp(29), dp(29)));
+                        holder.row.addView(holder.miniWindowSlot,
+                                new LinearLayout.LayoutParams(dp(TASK_SLOT_DP), dp(TASK_CONTENT_HEIGHT_DP)));
+                        holder.row.addView(holder.iconSlot,
+                                new LinearLayout.LayoutParams(dp(TASK_SLOT_DP), dp(TASK_CONTENT_HEIGHT_DP)));
+                        holder.row.addView(holder.nameSlot,
+                                new LinearLayout.LayoutParams(0, dp(TASK_CONTENT_HEIGHT_DP), 1f));
+                        holder.row.addView(holder.actionSlot,
+                                new LinearLayout.LayoutParams(dp(TASK_SLOT_DP), dp(TASK_CONTENT_HEIGHT_DP)));
                     } else {
-                        holder.row.addView(holder.actionSlot, new LinearLayout.LayoutParams(dp(29), dp(29)));
-                        holder.row.addView(holder.nameSlot, new LinearLayout.LayoutParams(0, dp(29), 1f));
-                        holder.row.addView(holder.iconSlot, new LinearLayout.LayoutParams(dp(29), dp(29)));
-                        holder.row.addView(holder.miniWindowSlot, new LinearLayout.LayoutParams(dp(29), dp(29)));
+                        holder.row.addView(holder.actionSlot,
+                                new LinearLayout.LayoutParams(dp(TASK_SLOT_DP), dp(TASK_CONTENT_HEIGHT_DP)));
+                        holder.row.addView(holder.iconSlot,
+                                new LinearLayout.LayoutParams(dp(TASK_SLOT_DP), dp(TASK_CONTENT_HEIGHT_DP)));
+                        holder.row.addView(holder.nameSlot,
+                                new LinearLayout.LayoutParams(0, dp(TASK_CONTENT_HEIGHT_DP), 1f));
+                        holder.row.addView(holder.miniWindowSlot,
+                                new LinearLayout.LayoutParams(dp(TASK_SLOT_DP), dp(TASK_CONTENT_HEIGHT_DP)));
                     }
                 }
                 requestMetadata(entry);
