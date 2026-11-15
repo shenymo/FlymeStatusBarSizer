@@ -18,6 +18,7 @@ import java.util.List;
 public final class OneStepRecentTasks {
     public static final int CLONE_USER_ID = 999;
     private static final int RECENT_WITH_INVISIBLE = 4;
+    private static final int RUNNING_TASK_LIMIT = 16;
     private final Object wrapper;
     private final Object taskManager;
     private final Method currentUser;
@@ -79,7 +80,7 @@ public final class OneStepRecentTasks {
 
     private void addRunningTasks(List<RecentTaskCard> cards, HashSet<Long> seen)
             throws ReflectiveOperationException {
-        Object result = runningTasks.invoke(taskManager, Integer.MAX_VALUE, false);
+        Object result = runningTasks.invoke(taskManager, RUNNING_TASK_LIMIT, false);
         if (!(result instanceof List)) return;
         for (Object info : (List<?>) result) {
             addCandidate(cards, seen, candidate(info, -1, true));

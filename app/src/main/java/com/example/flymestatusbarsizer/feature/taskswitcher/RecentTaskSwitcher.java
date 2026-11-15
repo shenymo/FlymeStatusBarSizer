@@ -1,6 +1,5 @@
 package com.example.flymestatusbarsizer.feature.taskswitcher;
 
-import android.animation.LayoutTransition;
 import android.content.Context;
 import android.content.BroadcastReceiver;
 import android.content.Intent;
@@ -8,7 +7,9 @@ import android.content.IntentFilter;
 import android.database.ContentObserver;
 import android.content.res.Configuration;
 import android.content.res.ColorStateList;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -33,9 +34,11 @@ import android.widget.ImageView;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.flymestatusbarsizer.R;
 import com.example.flymestatusbarsizer.feature.assistant.AssistantPanelBlur;
@@ -58,13 +61,6 @@ import java.util.concurrent.Executors;
 public final class RecentTaskSwitcher {
     private static final int[] WINDOW_TYPES = {2041, 2017, 2040};
     private static final String TAG = "FlymeRecentTaskSwitcher";
-    private static final int INITIAL_TASK_COUNT = 0;
-    private static final int APPEND_TASK_BATCH_SIZE = 4;
-    private static final long DEFERRED_TASK_BATCH_DELAY_MS = 360L;
-    private static final long APPEND_TASK_BATCH_DELAY_MS = 72L;
-    private static final long APPEND_ROW_ANIMATION_DURATION_MS = 180L;
-    private static final long APPEND_ROW_ANIMATION_STAGGER_MS = 24L;
-    private static final long INITIAL_ROW_ANIMATION_DELAY_MS = 100L;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "RecentTaskSwitcher");
@@ -107,10 +103,6 @@ public final class RecentTaskSwitcher {
         Drawable icon;
         boolean metadataLoaded;
         boolean metadataLoading;
-        TextView nameView;
-        ImageView iconView;
-        View row;
-
         TaskEntry(RecentTaskCard card) {
             this.card = card;
             label = card.description;
@@ -172,10 +164,11 @@ public final class RecentTaskSwitcher {
         private final FrameLayout root;
         private final LinearLayout panel;
         private final AssistantPanelBlur panelBlur;
-        private final LinearLayout rows;
-        private final ScrollView scroll;
+        private final RecyclerView rows;
+        private final FrameLayout listContainer;
+        private final ProgressBar loadingView;
+        private final TextView emptyView;
         private final TextView closeAllButton;
-        private View loadingRow;
         private boolean attached;
         private boolean closing;
         private boolean closingAll;
@@ -183,10 +176,8 @@ public final class RecentTaskSwitcher {
         private boolean loading = true;
         private boolean secondaryLoading;
         private int taskLoadId;
-        private long rowAnimationStartUptime;
-        private long nextRowAnimationStartUptime;
-        private int nextRowAnimationIndex;
         private final Map<Integer, Drawable.ConstantState> moduleIconStates = new HashMap<>();
+        private final TaskAdapter adapter = new TaskAdapter();
 
         Popup(Context context) {
             this.context = context;
@@ -245,23 +236,39 @@ public final class RecentTaskSwitcher {
             panelParams.topMargin = Math.max(0, Math.round(anchorY - dp(156)));
             root.addView(panel, panelParams);
 
-            rows = new LinearLayout(context);
-            rows.setOrientation(LinearLayout.VERTICAL);
-            LayoutTransition rowTransition = new LayoutTransition();
-            rowTransition.disableTransitionType(LayoutTransition.APPEARING);
-            rowTransition.disableTransitionType(LayoutTransition.DISAPPEARING);
-            rowTransition.setDuration(LayoutTransition.CHANGE_DISAPPEARING,
-                    APPEND_ROW_ANIMATION_DURATION_MS);
-            rowTransition.setInterpolator(LayoutTransition.CHANGE_DISAPPEARING,
-                    new PathInterpolator(0.2f, 0f, 0f, 1f));
-            rows.setLayoutTransition(rowTransition);
-            scroll = new ScrollView(context);
-            scroll.setFillViewport(true);
-            scroll.setVerticalScrollBarEnabled(false);
-            scroll.setOnScrollChangeListener((view, scrollX, scrollY, oldScrollX, oldScrollY) ->
-                    loadVisibleMetadata());
-            scroll.addView(rows, new ScrollView.LayoutParams(-1, -2));
-            panel.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+            rows = new RecyclerView(context);
+            rows.setLayoutManager(new LinearLayoutManager(context));
+            rows.setAdapter(adapter);
+            rows.setHasFixedSize(true);
+            rows.setItemViewCacheSize(4);
+            rows.setVerticalScrollBarEnabled(false);
+            rows.setOverScrollMode(View.OVER_SCROLL_NEVER);
+            rows.addItemDecoration(new RecyclerView.ItemDecoration() {
+                private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+                @Override public void onDraw(Canvas canvas, RecyclerView parent, RecyclerView.State state) {
+                    paint.setColor(paletteColor(0x18000000, 0x28ffffff));
+                    for (int i = 0; i < parent.getChildCount(); i++) {
+                        View child = parent.getChildAt(i);
+                        if (parent.getChildAdapterPosition(child) > 0)
+                            canvas.drawRect(child.getLeft(), child.getTop(), child.getRight(),
+                                    child.getTop() + Math.max(1, dp(1)), paint);
+                    }
+                }
+            });
+            listContainer = new FrameLayout(context);
+            listContainer.addView(rows, new FrameLayout.LayoutParams(-1, -1));
+            loadingView = new ProgressBar(context, null, android.R.attr.progressBarStyleSmall);
+            loadingView.setIndeterminateTintList(ColorStateList.valueOf(accentColor()));
+            listContainer.addView(loadingView,
+                    new FrameLayout.LayoutParams(dp(18), dp(18), Gravity.CENTER));
+            emptyView = new TextView(context);
+            emptyView.setText("没有最近任务");
+            emptyView.setTextColor(paletteColor(0xff777777, 0xffb8bec3));
+            emptyView.setTextSize(14);
+            emptyView.setGravity(Gravity.CENTER);
+            listContainer.addView(emptyView, new FrameLayout.LayoutParams(-1, -1));
+            panel.addView(listContainer, new LinearLayout.LayoutParams(-1, 0, 1f));
 
             LinearLayout footer = new LinearLayout(context);
             footer.setGravity(Gravity.CENTER_VERTICAL);
@@ -285,7 +292,8 @@ public final class RecentTaskSwitcher {
             int availableHeight = context.getResources().getDisplayMetrics().heightPixels;
             int rowsHeight = Math.min(dp(ROW_HEIGHT_DP * 9), Math.max(dp(ROW_HEIGHT_DP),
                     (int) (availableHeight / 3f) - dp(33)));
-            scroll.setLayoutParams(new LinearLayout.LayoutParams(-1, rowsHeight));
+            listContainer.setLayoutParams(new LinearLayout.LayoutParams(-1, rowsHeight));
+            updateListState();
         }
 
         void show(boolean fromLeft, float anchorY) {
@@ -301,6 +309,7 @@ public final class RecentTaskSwitcher {
             if (attached) {
                 closing = false;
                 panel.animate().cancel();
+                panelBlur.stop();
                 alignToGestureAnchor();
                 animateIn();
                 loadTasksAsync();
@@ -322,7 +331,6 @@ public final class RecentTaskSwitcher {
                     panel.post(() -> {
                         alignToGestureAnchor();
                         animateIn();
-                        panel.postOnAnimation(panelBlur::start);
                     });
                     loadTasksAsync();
                     return;
@@ -346,9 +354,9 @@ public final class RecentTaskSwitcher {
             int availableHeight = context.getResources().getDisplayMetrics().heightPixels;
             int rowsHeight = Math.min(dp(ROW_HEIGHT_DP * 9), Math.max(dp(ROW_HEIGHT_DP),
                     (int) (availableHeight / 3f) - dp(33)));
-            LinearLayout.LayoutParams scrollParams = (LinearLayout.LayoutParams) scroll.getLayoutParams();
+            LinearLayout.LayoutParams scrollParams = (LinearLayout.LayoutParams) listContainer.getLayoutParams();
             scrollParams.height = rowsHeight;
-            scroll.setLayoutParams(scrollParams);
+            listContainer.setLayoutParams(scrollParams);
         }
 
         private void alignToGestureAnchor() {
@@ -370,7 +378,8 @@ public final class RecentTaskSwitcher {
             panel.setAlpha(0.9f);
             panel.setTranslationX(fromLeft ? -dp(14) : dp(14));
             panel.animate().scaleX(1f).scaleY(1f).alpha(1f).translationX(0f)
-                    .setDuration(320L).setInterpolator(new PathInterpolator(0.4f, 0f, 0.6f, 1f)).start();
+                    .setDuration(320L).setInterpolator(new PathInterpolator(0.4f, 0f, 0.6f, 1f))
+                    .withEndAction(() -> { if (isCurrent()) panelBlur.start(); }).start();
         }
 
         private WindowManager.LayoutParams buildLayoutParams() {
@@ -398,11 +407,9 @@ public final class RecentTaskSwitcher {
             int loadId = ++taskLoadId;
             loading = true;
             secondaryLoading = false;
-            rowAnimationStartUptime = 0L;
-            nextRowAnimationStartUptime = 0L;
-            nextRowAnimationIndex = 0;
             entries.clear();
-            renderRows();
+            adapter.notifyDataSetChanged();
+            updateListState();
             WORKER.execute(() -> {
                 List<RecentTaskCard> cards = new ArrayList<>();
                 try { cards.addAll(getTaskAccess(context).currentUserRecentTasks()); }
@@ -417,7 +424,7 @@ public final class RecentTaskSwitcher {
         }
 
         private static AppMetadata appMetadata(Context context, RecentTaskCard card) {
-            String key = card.component.flattenToShortString();
+            String key = card.userId + ":" + card.component.flattenToShortString();
             synchronized (APP_METADATA) {
                 AppMetadata cached = APP_METADATA.get(key);
                 if (cached != null) return cached;
@@ -442,6 +449,9 @@ public final class RecentTaskSwitcher {
                 try { icon = pm.getApplicationIcon(card.component.getPackageName()); }
                 catch (Exception ignoredAgain) { icon = context.getDrawable(android.R.drawable.sym_def_app_icon); }
             }
+            if (card.userId == com.example.flymestatusbarsizer.feature.tasks.OneStepRecentTasks.CLONE_USER_ID)
+                icon = pm.getUserBadgedIcon(icon,
+                        android.os.UserHandle.getUserHandleForUid(card.userId * 100000));
             AppMetadata metadata = new AppMetadata(label, icon);
             synchronized (APP_METADATA) { APP_METADATA.put(key, metadata); }
             return metadata;
@@ -454,162 +464,175 @@ public final class RecentTaskSwitcher {
         }
 
         private void renderRows() {
-            renderRows(false);
+            adapter.notifyDataSetChanged();
+            updateListState();
         }
 
         private void renderRows(boolean animateRows) {
-            rows.removeAllViews();
-            loadingRow = null;
-            int count = 0;
-            for (TaskEntry entry : entries) {
-                if (count > 0) {
-                    View divider = new View(context);
-                    divider.setBackgroundColor(paletteColor(0x18000000, 0x28ffffff));
-                    rows.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
-                }
-                View taskRow = taskRow(entry);
-                rows.addView(taskRow, new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
-                if (animateRows) {
-                    animateTaskRow(taskRow, nextRowAnimationIndex++);
-                }
-                count++;
-            }
-            if (count == 0 && !loading) {
-                TextView empty = new TextView(context);
-                empty.setText("没有最近任务");
-                empty.setTextColor(paletteColor(0xff777777, 0xffb8bec3));
-                empty.setTextSize(14);
-                empty.setGravity(Gravity.CENTER);
-                rows.addView(empty, new LinearLayout.LayoutParams(-1, -1));
-            }
-            if (loading) addLoadingRow();
+            renderRows();
         }
 
-        private void loadVisibleMetadata() {
-            if (!isCurrent() || loading || entries.isEmpty()) return;
-            int height = scroll.getHeight();
-            if (height <= 0) {
-                scroll.post(this::loadVisibleMetadata);
-                return;
+        private void updateListState() {
+            loadingView.setVisibility(loading && entries.isEmpty() ? View.VISIBLE : View.GONE);
+            emptyView.setVisibility(!loading && entries.isEmpty() ? View.VISIBLE : View.GONE);
+            rows.setVisibility(entries.isEmpty() ? View.INVISIBLE : View.VISIBLE);
+        }
+
+        private final class TaskViewHolder extends RecyclerView.ViewHolder {
+            final LinearLayout row = new LinearLayout(context);
+            final TextView name = new TextView(context);
+            final ImageView icon = new ImageView(context);
+            final FrameLayout nameSlot = new FrameLayout(context);
+            final FrameLayout iconSlot = new FrameLayout(context);
+            final ImageButton actionButton = new ImageButton(context);
+            final ImageButton miniWindow = new ImageButton(context);
+            final FrameLayout actionSlot = new FrameLayout(context);
+            final FrameLayout miniWindowSlot = new FrameLayout(context);
+            TaskEntry entry;
+            boolean arranged;
+            boolean arrangedFromLeft;
+
+            TaskViewHolder() {
+                super(new LinearLayout(context));
+                ((LinearLayout) itemView).setOrientation(LinearLayout.VERTICAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setMinimumHeight(dp(ROW_HEIGHT_DP));
+                row.setBackground(new RippleDrawable(
+                        ColorStateList.valueOf(paletteColor(0x22287a78, 0x2877c6c1)), null, null));
+                name.setTextColor(paletteColor(0xff222222, 0xfff1f3f4));
+                name.setTextSize(12);
+                name.setSingleLine(true);
+                name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                name.setGravity(Gravity.CENTER_VERTICAL);
+                name.setMinHeight(0);
+                name.setPadding(dp(6), 0, dp(4), 0);
+                name.setTooltipText("长按锁定或解锁");
+                nameSlot.setMinimumWidth(0);
+                nameSlot.setMinimumHeight(0);
+                nameSlot.addView(name, new FrameLayout.LayoutParams(-1, dp(29), Gravity.CENTER));
+                icon.setImageResource(android.R.drawable.sym_def_app_icon);
+                icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                icon.setMinimumWidth(0);
+                icon.setMinimumHeight(0);
+                iconSlot.addView(icon, new FrameLayout.LayoutParams(dp(16), dp(16), Gravity.CENTER));
+                actionButton.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                actionButton.setMinimumWidth(0);
+                actionButton.setMinimumHeight(0);
+                actionButton.setPadding(dp(5), dp(5), dp(5), dp(5));
+                actionButton.setBackground(new RippleDrawable(
+                        ColorStateList.valueOf(paletteColor(0x243a8885, 0x3877c6c1)), null, null));
+                actionSlot.addView(actionButton,
+                        new FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER));
+                actionSlot.setMinimumWidth(0);
+                actionSlot.setMinimumHeight(0);
+                iconSlot.setMinimumWidth(0);
+                iconSlot.setMinimumHeight(0);
+                miniWindow.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                miniWindow.setMinimumWidth(0);
+                miniWindow.setMinimumHeight(0);
+                miniWindow.setPadding(dp(5), dp(5), dp(5), dp(5));
+                miniWindow.setBackground(new RippleDrawable(
+                        ColorStateList.valueOf(paletteColor(0x18000000, 0x20ffffff)), null, null));
+                miniWindow.setTooltipText("以小窗打开");
+                setModuleIcon(miniWindow, R.drawable.ic_task_window, android.R.drawable.ic_menu_view);
+                miniWindowSlot.setMinimumWidth(0);
+                miniWindowSlot.setMinimumHeight(0);
+                miniWindowSlot.addView(miniWindow,
+                        new FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER));
+                setButtonFeedback(actionButton);
+                setButtonFeedback(miniWindow);
+                name.setOnLongClickListener(view -> {
+                    if (entry == null) return true;
+                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                    toggleLock(entry, actionButton);
+                    return true;
+                });
+                actionButton.setOnClickListener(view -> {
+                    if (entry != null && !isLocked(entry.card)) removeTask(entry.card, row);
+                });
+                miniWindow.setOnClickListener(view -> {
+                    if (entry != null) openMiniWindow(entry.card, miniWindow);
+                });
+                row.setOnClickListener(view -> {
+                    if (entry == null) return;
+                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK);
+                    activate(entry.card);
+                });
+                name.setOnClickListener(view -> row.performClick());
+                ((LinearLayout) itemView).addView(row,
+                        new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
             }
-            int rowHeight = dp(ROW_HEIGHT_DP) + 1;
-            int first = Math.max(0, scroll.getScrollY() / rowHeight - 1);
-            int last = Math.min(entries.size(),
-                    (scroll.getScrollY() + height) / rowHeight + 2);
-            List<TaskEntry> pending = new ArrayList<>();
-            for (int i = first; i < last; i++) {
-                TaskEntry entry = entries.get(i);
-                if (!entry.metadataLoaded && !entry.metadataLoading) {
-                    entry.metadataLoading = true;
-                    pending.add(entry);
-                }
+        }
+
+        private final class TaskAdapter extends RecyclerView.Adapter<TaskViewHolder> {
+            TaskAdapter() { setHasStableIds(true); }
+
+            @Override public TaskViewHolder onCreateViewHolder(android.view.ViewGroup parent, int type) {
+                return new TaskViewHolder();
             }
-            if (pending.isEmpty()) return;
-            WORKER.execute(() -> {
-                List<AppMetadata> metadata = new ArrayList<>(pending.size());
-                for (TaskEntry entry : pending) {
-                    if (!isCurrent()) return;
-                    metadata.add(appMetadata(context, entry.card));
-                }
-                MAIN.post(() -> {
-                    if (!isCurrent()) return;
-                    for (int i = 0; i < pending.size(); i++) {
-                        TaskEntry entry = pending.get(i);
-                        AppMetadata loaded = metadata.get(i);
-                        entry.metadataLoading = false;
-                        entry.metadataLoaded = true;
-                        entry.label = loaded.label;
-                        entry.icon = loaded.icon;
-                        if (entry.nameView != null) entry.nameView.setText(entry.label);
-                        if (entry.iconView != null && entry.icon != null) {
-                            entry.iconView.setImageDrawable(entry.icon);
-                        }
+
+            @Override public void onBindViewHolder(TaskViewHolder holder, int position) {
+                TaskEntry entry = entries.get(position);
+                holder.entry = entry;
+                holder.row.setAlpha(1f);
+                holder.row.setTranslationX(0f);
+                holder.row.setEnabled(true);
+                holder.name.setText(entry.label);
+                holder.row.setBackground(new RippleDrawable(
+                        ColorStateList.valueOf(paletteColor(0x22287a78, 0x2877c6c1)), null, null));
+                holder.actionButton.setBackground(new RippleDrawable(
+                        ColorStateList.valueOf(paletteColor(0x243a8885, 0x3877c6c1)), null, null));
+                holder.miniWindow.setBackground(new RippleDrawable(
+                        ColorStateList.valueOf(paletteColor(0x18000000, 0x20ffffff)), null, null));
+                holder.name.setGravity(fromLeft ? Gravity.LEFT | Gravity.CENTER_VERTICAL
+                        : Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+                holder.icon.setImageDrawable(entry.icon == null
+                        ? context.getDrawable(android.R.drawable.sym_def_app_icon) : entry.icon);
+                setActionIcon(holder.actionButton, isLocked(entry.card));
+                holder.miniWindow.setContentDescription("以小窗打开" + entry.label);
+                if (!holder.arranged || holder.arrangedFromLeft != fromLeft) {
+                    holder.arranged = true;
+                    holder.arrangedFromLeft = fromLeft;
+                    holder.row.removeAllViews();
+                    if (fromLeft) {
+                        holder.row.addView(holder.miniWindowSlot, new LinearLayout.LayoutParams(dp(29), dp(29)));
+                        holder.row.addView(holder.iconSlot, new LinearLayout.LayoutParams(dp(29), dp(29)));
+                        holder.row.addView(holder.nameSlot, new LinearLayout.LayoutParams(0, dp(29), 1f));
+                        holder.row.addView(holder.actionSlot, new LinearLayout.LayoutParams(dp(29), dp(29)));
+                    } else {
+                        holder.row.addView(holder.actionSlot, new LinearLayout.LayoutParams(dp(29), dp(29)));
+                        holder.row.addView(holder.nameSlot, new LinearLayout.LayoutParams(0, dp(29), 1f));
+                        holder.row.addView(holder.iconSlot, new LinearLayout.LayoutParams(dp(29), dp(29)));
+                        holder.row.addView(holder.miniWindowSlot, new LinearLayout.LayoutParams(dp(29), dp(29)));
                     }
+                }
+                requestMetadata(entry);
+            }
+
+            @Override public int getItemCount() { return entries.size(); }
+
+            @Override public long getItemId(int position) {
+                RecentTaskCard card = entries.get(position).card;
+                return (((long) card.userId) << 32) ^ (card.taskId & 0xffffffffL);
+            }
+        }
+
+        private void requestMetadata(TaskEntry entry) {
+            if (!isCurrent() || entry.metadataLoaded || entry.metadataLoading) return;
+            entry.metadataLoading = true;
+            int loadId = taskLoadId;
+            WORKER.execute(() -> {
+                AppMetadata metadata = appMetadata(context, entry.card);
+                MAIN.post(() -> {
+                    if (!isCurrent() || loadId != taskLoadId || !entries.contains(entry)) return;
+                    entry.metadataLoading = false;
+                    entry.metadataLoaded = true;
+                    entry.label = metadata.label;
+                    entry.icon = metadata.icon;
+                    int index = entries.indexOf(entry);
+                    if (index >= 0) adapter.notifyItemChanged(index);
                 });
             });
-        }
-
-        private void addLoadingRow() {
-            FrameLayout row = new FrameLayout(context);
-            ProgressBar spinner = new ProgressBar(context, null, android.R.attr.progressBarStyleSmall);
-            spinner.setIndeterminateTintList(ColorStateList.valueOf(accentColor()));
-            row.addView(spinner, new FrameLayout.LayoutParams(dp(18), dp(18), Gravity.CENTER));
-            rows.addView(row, new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
-            loadingRow = row;
-        }
-
-        private View taskRow(TaskEntry entry) {
-            RecentTaskCard card = entry.card;
-            String label = entry.label;
-            boolean locked = isLocked(card);
-            LinearLayout row = new LinearLayout(context);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setBackground(new RippleDrawable(
-                    ColorStateList.valueOf(paletteColor(0x22287a78, 0x2877c6c1)), null, null));
-            TextView name = new TextView(context);
-            name.setText(label);
-            name.setTextColor(paletteColor(0xff222222, 0xfff1f3f4));
-            name.setTextSize(12);
-            name.setSingleLine(true);
-            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            name.setGravity(Gravity.CENTER_VERTICAL);
-            if (!fromLeft) name.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
-            name.setPadding(dp(6), 0, dp(4), 0);
-            name.setTooltipText("长按锁定或解锁");
-            int textHeight = name.getLineHeight();
-
-            ImageButton actionButton = new ImageButton(context);
-            actionButton.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            actionButton.setPadding(dp(5), dp(5), dp(5), dp(5));
-            actionButton.setBackground(new RippleDrawable(
-                    ColorStateList.valueOf(paletteColor(0x243a8885, 0x3877c6c1)), null, null));
-            setActionIcon(actionButton, locked);
-            setButtonFeedback(actionButton);
-
-            ImageView icon = new ImageView(context);
-            if (entry.icon != null) icon.setImageDrawable(entry.icon);
-            else icon.setImageResource(android.R.drawable.sym_def_app_icon);
-            entry.row = row;
-            entry.nameView = name;
-            entry.iconView = icon;
-            int iconSize = dp(16);
-            FrameLayout actionSlot = new FrameLayout(context);
-            actionSlot.addView(actionButton, new FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER));
-            ImageButton miniWindow = new ImageButton(context);
-            miniWindow.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            miniWindow.setPadding(dp(5), dp(5), dp(5), dp(5));
-            miniWindow.setBackground(new android.graphics.drawable.RippleDrawable(
-                    ColorStateList.valueOf(paletteColor(0x18000000, 0x20ffffff)), null, null));
-            miniWindow.setContentDescription("以小窗打开" + label);
-            miniWindow.setTooltipText("以小窗打开");
-            setModuleIcon(miniWindow, R.drawable.ic_task_window, android.R.drawable.ic_menu_view);
-            setButtonFeedback(miniWindow);
-            name.setOnLongClickListener(view -> {
-                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                toggleLock(entry, actionButton);
-                return true;
-            });
-            actionButton.setOnClickListener(view -> {
-                if (!isLocked(card)) removeTask(card, row);
-            });
-            miniWindow.setOnClickListener(view -> openMiniWindow(card, miniWindow));
-            if (fromLeft) {
-                row.addView(miniWindow, new LinearLayout.LayoutParams(dp(29), dp(29)));
-                row.addView(icon, new LinearLayout.LayoutParams(iconSize, iconSize));
-                row.addView(name, new LinearLayout.LayoutParams(0, textHeight, 1f));
-                row.addView(actionSlot, new LinearLayout.LayoutParams(dp(26), dp(26)));
-            } else {
-                row.addView(actionSlot, new LinearLayout.LayoutParams(dp(26), dp(26)));
-                row.addView(name, new LinearLayout.LayoutParams(0, textHeight, 1f));
-                row.addView(icon, new LinearLayout.LayoutParams(iconSize, iconSize));
-                row.addView(miniWindow, new LinearLayout.LayoutParams(dp(29), dp(29)));
-            }
-            row.setOnClickListener(view -> {
-                view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK);
-                activate(card);
-            });
-            name.setOnClickListener(view -> row.performClick());
-            return row;
         }
 
         private void setButtonFeedback(View button) {
@@ -674,6 +697,8 @@ public final class RecentTaskSwitcher {
                     ColorStateList.valueOf(paletteColor(0x243a8885, 0x3877c6c1)),
                     background(paletteColor(0x10287a78, 0x2077c6c1), dp(8), Color.TRANSPARENT),
                     null));
+            emptyView.setTextColor(paletteColor(0xff777777, 0xffb8bec3));
+            loadingView.setIndeterminateTintList(ColorStateList.valueOf(accentColor()));
             renderRows();
         }
 
@@ -746,7 +771,7 @@ public final class RecentTaskSwitcher {
             int entryIndex = -1;
             for (int i = 0; i < entries.size(); i++) {
                 TaskEntry entry = entries.get(i);
-                if (entry.card.sameTask(card) && entry.row == row) {
+                if (entry.card.sameTask(card)) {
                     target = entry;
                     entryIndex = i;
                     break;
@@ -763,8 +788,7 @@ public final class RecentTaskSwitcher {
                     .setDuration(140L)
                     .withEndAction(() -> {
                         if (!isCurrent() || pendingTaskRemoval != pending) return;
-                        pending.rowDetached = detachTaskRow(row);
-                        if (!pending.rowDetached) pending.reload = true;
+                        pending.rowDetached = true;
                         if (pending.resultReady) finishTaskRemoval(pending);
                     })
                     .start();
@@ -811,62 +835,15 @@ public final class RecentTaskSwitcher {
             pendingTaskRemoval = null;
             if (pending.reload) {
                 loadTasksAsync();
-            } else if (entries.isEmpty()) {
-                loading = false;
-                renderRows();
+            } else {
+                adapter.notifyItemRemoved(pending.entryIndex);
+                updateListState();
             }
-        }
-
-        private boolean detachTaskRow(View row) {
-            int index = rows.indexOfChild(row);
-            if (index < 0) return false;
-            rows.removeViewAt(index);
-            View next = index < rows.getChildCount() ? rows.getChildAt(index) : null;
-            if (next != null && next != loadingRow && !(next instanceof LinearLayout)) {
-                rows.removeViewAt(index);
-            } else if (index > 0) {
-                View previous = rows.getChildAt(index - 1);
-                if (previous != loadingRow && !(previous instanceof LinearLayout)) {
-                    rows.removeViewAt(index - 1);
-                }
-            }
-            return true;
         }
 
         private void restoreTaskRow(PendingTaskRemoval pending) {
             View row = pending.row;
             row.animate().cancel();
-            if (pending.rowDetached) {
-                View nextRow = null;
-                View previousRow = null;
-                for (int i = pending.entryIndex + 1; i < entries.size(); i++) {
-                    View candidate = entries.get(i).row;
-                    if (candidate != null && candidate.getParent() == rows) {
-                        nextRow = candidate;
-                        break;
-                    }
-                }
-                for (int i = pending.entryIndex - 1; i >= 0; i--) {
-                    View candidate = entries.get(i).row;
-                    if (candidate != null && candidate.getParent() == rows) {
-                        previousRow = candidate;
-                        break;
-                    }
-                }
-                if (nextRow != null) {
-                    int insertAt = rows.indexOfChild(nextRow);
-                    rows.addView(row, insertAt++);
-                    rows.addView(createDivider(), insertAt);
-                } else if (previousRow != null) {
-                    int insertAt = rows.indexOfChild(previousRow) + 1;
-                    rows.addView(createDivider(), insertAt++);
-                    rows.addView(row, insertAt);
-                } else {
-                    rows.addView(row, loadingRow == null ? rows.getChildCount()
-                            : rows.indexOfChild(loadingRow));
-                }
-                pending.entry.row = row;
-            }
             row.setEnabled(true);
             pendingTaskRemoval = null;
             row.setAlpha(0f);
@@ -874,11 +851,6 @@ public final class RecentTaskSwitcher {
             row.animate().alpha(1f).translationX(0f).setDuration(120L).start();
         }
 
-        private View createDivider() {
-            View divider = new View(context);
-            divider.setBackgroundColor(paletteColor(0x18000000, 0x28ffffff));
-            return divider;
-        }
 
         private boolean taskStillPresent(RecentTaskCard removed) throws ReflectiveOperationException {
             OneStepTaskAccess access = getTaskAccess(context);
@@ -920,40 +892,10 @@ public final class RecentTaskSwitcher {
 
         private void showFirstBatch(List<RecentTaskCard> loaded, int loadId) {
             if (!isCurrent() || loadId != taskLoadId) return;
-            if (loaded.isEmpty()) {
-                loading = false;
-                renderRows();
-                loadSecondaryTasks(loadId);
-                return;
-            }
-            int initialCount = Math.min(INITIAL_TASK_COUNT, loaded.size());
-            if (initialCount == 0) {
-                loadRemainingTaskBatches(loaded, 0, loadId, () -> loadSecondaryTasks(loadId));
-                return;
-            }
-            loadTaskBatch(loaded, 0, initialCount, loadId, () -> {
-                if (initialCount >= loaded.size()) {
-                    loadSecondaryTasks(loadId);
-                    return;
-                }
-                MAIN.postDelayed(() -> loadRemainingTaskBatches(
-                        loaded, initialCount, loadId, () -> loadSecondaryTasks(loadId)),
-                        DEFERRED_TASK_BATCH_DELAY_MS);
-            });
-        }
-
-        private void loadRemainingTaskBatches(List<RecentTaskCard> loaded, int start, int loadId,
-                Runnable after) {
-            if (!isCurrent() || loadId != taskLoadId) return;
-            int end = Math.min(loaded.size(), start + APPEND_TASK_BATCH_SIZE);
-            loadTaskBatch(loaded, start, end, loadId, () -> {
-                if (end >= loaded.size()) {
-                    if (after != null) after.run();
-                    return;
-                }
-                MAIN.postDelayed(() -> loadRemainingTaskBatches(loaded, end, loadId, after),
-                        APPEND_TASK_BATCH_DELAY_MS);
-            });
+            appendEntries(loaded);
+            loading = loaded.isEmpty();
+            updateListState();
+            loadSecondaryTasks(loadId);
         }
 
         private void loadSecondaryTasks(int loadId) {
@@ -969,90 +911,30 @@ public final class RecentTaskSwitcher {
                 MAIN.post(() -> {
                     if (!isCurrent() || loadId != taskLoadId) return;
                     secondaryLoading = false;
-                    if (loaded.isEmpty()) {
-                        loadVisibleMetadata();
-                        return;
-                    }
-                    loadRemainingTaskBatches(loaded, 0, loadId, this::loadVisibleMetadata);
-                });
-            });
-        }
-
-        private void loadTaskBatch(List<RecentTaskCard> loaded, int start, int end, int loadId,
-                Runnable after) {
-            boolean firstBatch = entries.isEmpty();
-            WORKER.execute(() -> {
-                if (!isCurrent()) return;
-                List<AppMetadata> metadata = new ArrayList<>(end - start);
-                for (int i = start; i < end; i++) {
-                    if (!isCurrent()) return;
-                    metadata.add(appMetadata(context, loaded.get(i)));
-                }
-                MAIN.post(() -> {
-                    if (!isCurrent() || loadId != taskLoadId) return;
-                    List<TaskEntry> addedEntries = new ArrayList<>(end - start);
-                    for (int i = start; i < end; i++) {
-                        TaskEntry entry = new TaskEntry(loaded.get(i));
-                        applyMetadata(entry, metadata.get(i - start));
-                        entries.add(entry);
-                        addedEntries.add(entry);
-                    }
+                    appendEntries(loaded);
                     loading = false;
-                    if (firstBatch) {
-                        rowAnimationStartUptime = SystemClock.uptimeMillis()
-                                + INITIAL_ROW_ANIMATION_DELAY_MS;
-                        renderRows(true);
-                    } else {
-                        appendTaskRows(addedEntries);
-                    }
-                    if (after != null) after.run();
+                    updateListState();
                 });
             });
         }
 
-        private void appendTaskRows(List<TaskEntry> addedEntries) {
-            if (loadingRow != null) {
-                rows.removeView(loadingRow);
-                loadingRow = null;
-            }
-            for (int i = 0; i < addedEntries.size(); i++) {
-                TaskEntry entry = addedEntries.get(i);
-                if (rows.getChildCount() > 0) {
-                    View divider = new View(context);
-                    divider.setBackgroundColor(paletteColor(0x18000000, 0x28ffffff));
-                    rows.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+        private void appendEntries(List<RecentTaskCard> cards) {
+            if (cards == null || cards.isEmpty()) return;
+            int start = entries.size();
+            for (RecentTaskCard card : cards) {
+                boolean duplicate = false;
+                for (TaskEntry entry : entries) {
+                    if (entry.card.sameTask(card)) { duplicate = true; break; }
                 }
-                View row = taskRow(entry);
-                rows.addView(row, new LinearLayout.LayoutParams(-1, dp(ROW_HEIGHT_DP)));
-                animateTaskRow(row, nextRowAnimationIndex++);
+                if (!duplicate) entries.add(new TaskEntry(card));
             }
-        }
-
-        private void animateTaskRow(View row, int index) {
-            row.setAlpha(0f);
-            row.setTranslationX(fromLeft ? -dp(6) : dp(6));
-            long now = SystemClock.uptimeMillis();
-            long startAt = Math.max(now, Math.max(rowAnimationStartUptime
-                    + index * APPEND_ROW_ANIMATION_STAGGER_MS, nextRowAnimationStartUptime));
-            nextRowAnimationStartUptime = startAt + APPEND_ROW_ANIMATION_STAGGER_MS;
-            long delay = startAt - now;
-            row.animate().alpha(1f).translationX(0f)
-                    .setStartDelay(delay)
-                    .setDuration(APPEND_ROW_ANIMATION_DURATION_MS)
-                    .setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f))
-                    .start();
-        }
-
-        private void applyMetadata(TaskEntry entry, AppMetadata metadata) {
-            entry.metadataLoading = false;
-            entry.metadataLoaded = true;
-            entry.label = metadata.label;
-            entry.icon = metadata.icon;
+            if (entries.size() > start) adapter.notifyItemRangeInserted(start, entries.size() - start);
         }
 
         private void close() {
             if (!attached || closing) return;
             closing = true;
+            panelBlur.stop();
             panel.animate().cancel();
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
             panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), anchorY - panel.getTop())));

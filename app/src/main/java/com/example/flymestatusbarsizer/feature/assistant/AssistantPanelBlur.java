@@ -5,6 +5,7 @@ import android.os.Build;
 import android.view.View;
 import android.view.ViewParent;
 import android.view.ViewTreeObserver;
+import android.view.AttachedSurfaceControl;
 
 /** Keeps a compositor blur aligned with a translucent side gesture panel. */
 public final class AssistantPanelBlur implements View.OnAttachStateChangeListener,
@@ -13,7 +14,10 @@ public final class AssistantPanelBlur implements View.OnAttachStateChangeListene
     private final int radius;
     private final float cornerRadius;
     private final Rect visibleBounds = new Rect();
+    private final Rect lastBounds = new Rect();
     private AssistantBlurSurface blur;
+    private AttachedSurfaceControl lastRootSurface;
+    private float lastAlpha = -1f;
     private ViewTreeObserver observer;
     private boolean active;
     private boolean failed;
@@ -28,6 +32,9 @@ public final class AssistantPanelBlur implements View.OnAttachStateChangeListene
         if (active) return;
         active = true;
         failed = false;
+        lastBounds.setEmpty();
+        lastRootSurface = null;
+        lastAlpha = -1f;
         content.addOnAttachStateChangeListener(this);
         if (content.isAttachedToWindow()) onViewAttachedToWindow(content);
     }
@@ -37,6 +44,9 @@ public final class AssistantPanelBlur implements View.OnAttachStateChangeListene
         content.removeOnAttachStateChangeListener(this);
         removePreDrawListener();
         releaseBlur();
+        lastBounds.setEmpty();
+        lastRootSurface = null;
+        lastAlpha = -1f;
     }
 
     @Override public void onViewAttachedToWindow(View view) {
@@ -74,10 +84,15 @@ public final class AssistantPanelBlur implements View.OnAttachStateChangeListene
                 }
             }
             alpha = Math.max(0f, Math.min(1f, alpha));
+            AttachedSurfaceControl rootSurface = content.getRootSurfaceControl();
             if (blur != null && !blur.isValid()) releaseBlur();
             if (blur == null) blur = AssistantBlurSurface.create(content, radius, cornerRadius);
-            if (blur != null) {
-                blur.update(visibleBounds, alpha, content.getRootSurfaceControl());
+            if (blur != null && (lastAlpha != alpha || !lastBounds.equals(visibleBounds)
+                    || lastRootSurface != rootSurface)) {
+                blur.update(visibleBounds, alpha, rootSurface);
+                lastBounds.set(visibleBounds);
+                lastAlpha = alpha;
+                lastRootSurface = rootSurface;
             }
         } catch (ReflectiveOperationException | RuntimeException error) {
             failed = true;
@@ -96,6 +111,9 @@ public final class AssistantPanelBlur implements View.OnAttachStateChangeListene
         if (blur == null) return;
         AssistantBlurSurface old = blur;
         blur = null;
+        lastBounds.setEmpty();
+        lastRootSurface = null;
+        lastAlpha = -1f;
         try { old.release(); }
         catch (RuntimeException error) { AssistantHooks.warn("Cannot release side gesture panel blur", error); }
     }
