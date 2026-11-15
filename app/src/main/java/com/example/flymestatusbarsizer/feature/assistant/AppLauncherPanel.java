@@ -913,7 +913,10 @@ final class AppLauncherPanel {
         }
 
         private Drawable panelBackground() {
-            return background(paletteColor(0xf5f7f8f8, 0xf52a2d30), dp(12), paletteColor(0x24000000, 0x38ffffff));
+            int alpha = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? 0x98 : 0xf5;
+            return background(
+                    paletteColor(0xffffff | (alpha << 24), 0x2a2c2f | (alpha << 24)),
+                    dp(12), paletteColor(0x24000000, 0x38ffffff));
         }
 
         private Drawable background(int color, float radius, int stroke) {
