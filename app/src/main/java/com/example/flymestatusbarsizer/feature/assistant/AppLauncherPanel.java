@@ -37,9 +37,11 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.flymestatusbarsizer.BuildConfig;
 import com.example.flymestatusbarsizer.R;
@@ -49,9 +51,11 @@ import com.example.flymestatusbarsizer.util.HapticFeedbackUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -64,11 +68,17 @@ final class AppLauncherPanel {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final long LONG_PRESS_MS = 800L;
     private static final long CACHE_REFRESH_DELAY_MS = 300L;
-    private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(runnable -> {
-        Thread thread = new Thread(runnable, "FlymeAppLauncher");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private static ExecutorService worker(String name) {
+        return Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable, name);
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+    private static final ExecutorService INDEX_WORKER = worker("FlymeAppIndex");
+    private static final ExecutorService SEARCH_WORKER = worker("FlymeAppSearch");
+    private static final ExecutorService ICON_WORKER = worker("FlymeAppIcons");
+    private static final ExecutorService LAUNCH_WORKER = worker("FlymeAppLaunch");
     private static final Transliterator PINYIN = Transliterator.getInstance("Han-Latin; Latin-ASCII");
     private static final Object CACHE_LOCK = new Object();
     private static volatile List<AppEntry> cachedApps;
@@ -84,6 +94,7 @@ final class AppLauncherPanel {
 
     static SideGestureActions.Action action(Context context) {
         ensurePackageReceiver(context);
+        warmupApps(context);
         return new SideGestureActions.Action() {
             private final Popup popup = new Popup(context);
 
@@ -171,6 +182,10 @@ final class AppLauncherPanel {
             popup.updateDarkMode(popup.context.getResources().getConfiguration());
             popup.refreshAfterPackageChange();
         }
+    }
+
+    private static void warmupApps(Context context) {
+        Popup.requestApps(context, null, 0);
     }
 
     static void refreshActivePopup(Configuration configuration) {
@@ -280,6 +295,28 @@ final class AppLauncherPanel {
         }
     }
 
+    private static final class RankedEntry {
+        final AppEntry entry;
+        final int score;
+
+        RankedEntry(AppEntry entry, int score) {
+            this.entry = entry;
+            this.score = score;
+        }
+    }
+
+    private static final class SearchRequest {
+        final int generation;
+        final List<String> query;
+        final List<AppEntry> entries;
+
+        SearchRequest(int generation, List<String> query, List<AppEntry> entries) {
+            this.generation = generation;
+            this.query = query;
+            this.entries = entries;
+        }
+    }
+
     private static final class Popup {
         private final Context context;
         private boolean fromLeft;
@@ -289,18 +326,25 @@ final class AppLauncherPanel {
         private final LinearLayout panel;
         private final AssistantPanelBlur panelBlur;
         private final EditText search;
-        private final LinearLayout rows;
-        private final ScrollView scroll;
+        private final TextView resultMessage;
+        private final RecyclerView resultGrid;
+        private final AppAdapter adapter;
         private final List<TextView> keyboardKeys = new ArrayList<>();
         private final List<String> query = new ArrayList<>();
         private final List<AppEntry> entries = new ArrayList<>();
+        private final Map<AppEntry, Drawable> iconCache = new HashMap<>();
+        private final Set<AppEntry> iconsLoading = new HashSet<>();
+        private final Object searchLock = new Object();
+        private SearchRequest pendingSearch;
+        private boolean searchWorkerRunning;
+        private int queryGeneration;
+        private long iconCacheGeneration = -1;
         private boolean darkMode;
         private boolean attached;
         private boolean closing;
         private boolean loading;
         private boolean indexRequested;
         private volatile int loadRequestId;
-        private volatile int iconLoadRequestId;
         private View holdView;
         private ImageView holdIcon;
         private Runnable holdRunnable;
@@ -362,20 +406,30 @@ final class AppLauncherPanel {
             search.setBackground(background(paletteColor(0x12000000, 0x1cffffff), dp(7), Color.TRANSPARENT));
             search.setOnClickListener(view -> {
                 query.clear();
+                queryGeneration++;
                 updateSearch();
-                renderRows();
+                scheduleSearch();
             });
             panel.addView(search, new LinearLayout.LayoutParams(-1, dp(32)));
 
-            rows = new LinearLayout(context);
-            rows.setOrientation(LinearLayout.VERTICAL);
-            scroll = new ScrollView(context);
-            scroll.setVerticalScrollBarEnabled(false);
-            scroll.addView(rows, new ScrollView.LayoutParams(-1, -2));
+            FrameLayout resultArea = new FrameLayout(context);
+            resultMessage = new TextView(context);
+            resultMessage.setTextSize(12);
+            resultMessage.setTextColor(paletteColor(0xff7d8589, 0xffaeb6ba));
+            resultMessage.setGravity(Gravity.CENTER);
+            resultArea.addView(resultMessage, new FrameLayout.LayoutParams(-1, -1));
+            resultGrid = new RecyclerView(context);
+            resultGrid.setClipToPadding(false);
+            resultGrid.setVerticalScrollBarEnabled(false);
+            resultGrid.setItemAnimator(null);
+            resultGrid.setLayoutManager(new GridLayoutManager(context, 3));
+            adapter = new AppAdapter();
+            resultGrid.setAdapter(adapter);
+            resultArea.addView(resultGrid, new FrameLayout.LayoutParams(-1, -1));
             LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(-1, dp(108));
             scrollParams.topMargin = dp(4);
             scrollParams.bottomMargin = dp(4);
-            panel.addView(scroll, scrollParams);
+            panel.addView(resultArea, scrollParams);
 
             LinearLayout keyboard = new LinearLayout(context);
             keyboard.setOrientation(LinearLayout.VERTICAL);
@@ -395,8 +449,10 @@ final class AppLauncherPanel {
                 active = this;
             }
             query.clear();
+            queryGeneration++;
+            warmupApps(context);
             updateSearch();
-            renderRows();
+            ensureAppsLoaded();
             if (attached) {
                 closing = false;
                 panel.animate().cancel();
@@ -450,11 +506,16 @@ final class AppLauncherPanel {
                 button.setContentDescription("输入 " + key);
                 keyboardKeys.add(button);
                 button.setOnClickListener(view -> {
+                    view.animate().cancel();
+                    view.setScaleX(0.9f);
+                    view.setScaleY(0.9f);
+                    view.animate().scaleX(1f).scaleY(1f).setDuration(120L).start();
                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                     query.add(key.toLowerCase(Locale.ROOT));
+                    queryGeneration++;
                     updateSearch();
                     ensureAppsLoaded();
-                    renderRows();
+                    scheduleSearch();
                 });
                 LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(0, dp(32), 1f);
                 buttonParams.setMargins(dp(2), dp(2), dp(2), dp(2));
@@ -468,7 +529,7 @@ final class AppLauncherPanel {
             indexRequested = true;
             loading = true;
             int requestId = ++loadRequestId;
-            renderRows();
+            showMessage("正在准备应用");
             requestApps(context, this, requestId);
         }
 
@@ -477,10 +538,14 @@ final class AppLauncherPanel {
                 if (generation != cacheGeneration) return;
             }
             if (!isCurrent() || requestId != loadRequestId) return;
+            if (iconCacheGeneration != generation) {
+                iconCache.clear();
+                iconCacheGeneration = generation;
+            }
             entries.clear();
             entries.addAll(loaded);
             loading = false;
-            renderRows();
+            scheduleSearch();
         }
 
         private static void requestApps(Context context, Popup popup, int requestId) {
@@ -489,19 +554,22 @@ final class AppLauncherPanel {
             synchronized (CACHE_LOCK) {
                 cached = cachedApps;
                 generation = cacheGeneration;
+                if (cached == null && popup != null && !pendingPopups.contains(popup)) {
+                    pendingPopups.add(popup);
+                }
                 if (cached == null) {
-                    if (!pendingPopups.contains(popup)) pendingPopups.add(popup);
                     if (indexLoading) return;
                     indexLoading = true;
                 }
             }
             if (cached != null) {
+                if (popup == null) return;
                 List<AppEntry> result = cached;
                 long resultGeneration = generation;
                 MAIN.post(() -> popup.setApps(result, requestId, resultGeneration));
                 return;
             }
-            WORKER.execute(() -> {
+            INDEX_WORKER.execute(() -> {
                 while (true) {
                     long scanGeneration;
                     synchronized (CACHE_LOCK) { scanGeneration = cacheGeneration; }
@@ -551,9 +619,9 @@ final class AppLauncherPanel {
                     if (context.getPackageName().equals(packageName)) continue;
                     CharSequence rawLabel = activity.getLabel();
                     String label = rawLabel == null ? packageName : rawLabel.toString();
-                    found.put(user + "#" + component.flattenToShortString(),
-                            new AppEntry(label, component, activity, packageName,
-                                    null, user, buildKeys(label)));
+                    String key = user + "#" + component.flattenToShortString();
+                    found.put(key, new AppEntry(label, component, activity, packageName,
+                            null, user, buildKeys(label)));
                 }
 
                 LauncherApps.ShortcutQuery shortcutQuery = new LauncherApps.ShortcutQuery()
@@ -573,10 +641,10 @@ final class AppLauncherPanel {
                     catch (android.content.pm.PackageManager.NameNotFoundException ignored) { continue; }
                     CharSequence appLabel = application.loadLabel(pm);
                     String label = rawLabel.toString();
-                    found.put(packageName + "#" + user + "#" + shortcut.getId(),
-                            new AppEntry(label, null, null, packageName,
-                                    shortcut.getId(), user,
-                                    buildKeys(label, appLabel == null ? null : appLabel.toString())));
+                    String key = packageName + "#" + user + "#" + shortcut.getId();
+                    found.put(key, new AppEntry(label, null, null, packageName,
+                            shortcut.getId(), user,
+                            buildKeys(label, appLabel == null ? null : appLabel.toString())));
                 }
             }
             List<AppEntry> result = new ArrayList<>(found.values());
@@ -603,99 +671,167 @@ final class AppLauncherPanel {
 
         private void refreshAfterPackageChange() {
             entries.clear();
+            iconCache.clear();
+            iconsLoading.clear();
             indexRequested = false;
             loading = false;
             loadRequestId++;
-            renderRows();
-            if (!query.isEmpty()) loadAppsAsync();
+            queryGeneration++;
+            adapter.setEntries(Collections.emptyList());
+            showMessage(query.isEmpty() ? "请输入应用首字母" : "正在准备应用");
+            if (!query.isEmpty()) ensureAppsLoaded();
         }
 
-        private void renderRows() {
-            int iconRequest = ++iconLoadRequestId;
-            rows.removeAllViews();
-            if (!indexRequested) {
-                addMessage("点击键盘开始搜索");
-                return;
-            }
-            if (loading) {
-                addMessage("正在加载应用");
+        private void scheduleSearch() {
+            if (!indexRequested || loading) {
+                showMessage(query.isEmpty() ? "请输入应用首字母" : "正在准备应用");
                 return;
             }
             if (query.isEmpty()) {
-                addMessage("请输入应用首字母");
+                adapter.setEntries(Collections.emptyList());
+                showMessage("请输入应用首字母");
                 return;
             }
-            List<AppEntry> matches = new ArrayList<>();
-            for (AppEntry entry : entries) {
-                if (entry.matchScore(query) != Integer.MAX_VALUE) matches.add(entry);
+            List<String> querySnapshot = new ArrayList<>(query);
+            List<AppEntry> appSnapshot = new ArrayList<>(entries);
+            SearchRequest request = new SearchRequest(queryGeneration, querySnapshot, appSnapshot);
+            synchronized (searchLock) {
+                pendingSearch = request;
+                if (searchWorkerRunning) return;
+                searchWorkerRunning = true;
             }
-            matches.sort((left, right) -> {
-                int score = Integer.compare(left.matchScore(query), right.matchScore(query));
-                return score != 0 ? score : left.label.compareToIgnoreCase(right.label);
-            });
-            if (matches.isEmpty()) {
-                addMessage(query.isEmpty() ? "没有可启动的应用" : "未找到匹配应用");
+            SEARCH_WORKER.execute(this::runSearches);
+        }
+
+        private void runSearches() {
+            while (true) {
+                SearchRequest request;
+                synchronized (searchLock) {
+                    request = pendingSearch;
+                    pendingSearch = null;
+                    if (request == null) {
+                        searchWorkerRunning = false;
+                        return;
+                    }
+                }
+                List<RankedEntry> ranked = new ArrayList<>();
+                for (AppEntry entry : request.entries) {
+                    int score = entry.matchScore(request.query);
+                    if (score != Integer.MAX_VALUE) ranked.add(new RankedEntry(entry, score));
+                }
+                ranked.sort((left, right) -> {
+                    int score = Integer.compare(left.score, right.score);
+                    return score != 0 ? score : left.entry.label.compareToIgnoreCase(right.entry.label);
+                });
+                List<AppEntry> matches = new ArrayList<>(ranked.size());
+                for (RankedEntry result : ranked) matches.add(result.entry);
+                MAIN.post(() -> {
+                    if (!isCurrent() || request.generation != queryGeneration) return;
+                    adapter.setEntries(matches);
+                    showMessage(matches.isEmpty() ? "未找到匹配应用" : null);
+                });
+            }
+        }
+
+        private void showMessage(String message) {
+            resultMessage.setText(message == null ? "" : message);
+            resultMessage.setVisibility(message == null ? View.GONE : View.VISIBLE);
+            resultGrid.setVisibility(message == null ? View.VISIBLE : View.GONE);
+        }
+
+        private void bindIcon(ImageView image, AppEntry entry) {
+            Drawable cached = iconCache.get(entry);
+            if (cached != null) {
+                image.setImageDrawable(cached.getConstantState() == null ? cached
+                        : cached.getConstantState().newDrawable(context.getResources()).mutate());
                 return;
             }
-            Map<ImageView, AppEntry> iconTargets = new HashMap<>();
-            for (int start = 0; start < matches.size(); start += 3) {
-                LinearLayout row = new LinearLayout(context);
-                row.setGravity(Gravity.CENTER_VERTICAL);
-                for (int index = start; index < Math.min(start + 3, matches.size()); index++) {
-                    ImageView icon = addEntry(row, matches.get(index));
-                    iconTargets.put(icon, matches.get(index));
-                }
-                rows.addView(row, new LinearLayout.LayoutParams(-1, dp(54)));
-            }
-            loadResultIcons(iconTargets, iconRequest);
-        }
-
-        private void addMessage(String message) {
-            TextView view = new TextView(context);
-            view.setText(message);
-            view.setTextSize(12);
-            view.setTextColor(paletteColor(0xff7d8589, 0xffaeb6ba));
-            view.setGravity(Gravity.CENTER);
-            rows.addView(view, new LinearLayout.LayoutParams(-1, dp(48)));
-        }
-
-        private ImageView addEntry(LinearLayout row, AppEntry entry) {
-            LinearLayout cell = new LinearLayout(context);
-            cell.setOrientation(LinearLayout.VERTICAL);
-            cell.setGravity(Gravity.CENTER);
-            cell.setPadding(dp(2), dp(1), dp(2), dp(1));
-            ImageView icon = new ImageView(context);
-            icon.setTag(entry);
-            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            cell.addView(icon, new LinearLayout.LayoutParams(dp(34), dp(34)));
-            TextView name = new TextView(context);
-            name.setText(entry.label);
-            name.setTextSize(10);
-            name.setSingleLine(true);
-            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            name.setTextColor(paletteColor(0xff202426, 0xfff2f4f5));
-            name.setGravity(Gravity.CENTER);
-            cell.addView(name, new LinearLayout.LayoutParams(-1, dp(16)));
-            cell.setOnTouchListener((view, event) -> handleEntryTouch(view, icon, entry, event));
-            row.addView(cell, new LinearLayout.LayoutParams(0, -1, 1f));
-            return icon;
-        }
-
-        private void loadResultIcons(Map<ImageView, AppEntry> targets, int requestId) {
-            WORKER.execute(() -> {
-                for (Map.Entry<ImageView, AppEntry> target : targets.entrySet()) {
-                    if (requestId != iconLoadRequestId) return;
-                    Drawable icon = target.getValue().loadIcon(context);
-                    if (icon == null) continue;
-                    ImageView view = target.getKey();
-                    MAIN.post(() -> {
-                        if (requestId == iconLoadRequestId && isCurrent()
-                                && view.isAttachedToWindow() && view.getTag() == target.getValue()) {
-                            view.setImageDrawable(icon);
-                        }
-                    });
-                }
+            image.setImageDrawable(null);
+            if (!iconsLoading.add(entry)) return;
+            long requestedGeneration = iconCacheGeneration;
+            ICON_WORKER.execute(() -> {
+                Drawable icon = entry.loadIcon(context);
+                MAIN.post(() -> {
+                    iconsLoading.remove(entry);
+                    boolean currentGeneration;
+                    synchronized (CACHE_LOCK) {
+                        currentGeneration = requestedGeneration == iconCacheGeneration
+                                && requestedGeneration == cacheGeneration;
+                    }
+                    if (icon != null && currentGeneration) {
+                        iconCache.put(entry, icon);
+                        int position = adapter.indexOf(entry);
+                        if (position >= 0) adapter.notifyItemChanged(position);
+                    }
+                });
             });
+        }
+
+        private final class AppAdapter extends RecyclerView.Adapter<AppHolder> {
+            private final List<AppEntry> values = new ArrayList<>();
+
+            @Override public AppHolder onCreateViewHolder(android.view.ViewGroup parent, int type) {
+                LinearLayout cell = new LinearLayout(context);
+                cell.setOrientation(LinearLayout.VERTICAL);
+                cell.setGravity(Gravity.CENTER);
+                cell.setPadding(dp(2), dp(1), dp(2), dp(1));
+                ImageView icon = new ImageView(context);
+                icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                cell.addView(icon, new LinearLayout.LayoutParams(dp(34), dp(34)));
+                TextView name = new TextView(context);
+                name.setTextSize(10);
+                name.setSingleLine(true);
+                name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                name.setTextColor(paletteColor(0xff202426, 0xfff2f4f5));
+                name.setGravity(Gravity.CENTER);
+                cell.addView(name, new LinearLayout.LayoutParams(-1, dp(16)));
+                cell.setLayoutParams(new RecyclerView.LayoutParams(-1, dp(54)));
+                return new AppHolder(cell, icon, name);
+            }
+
+            @Override public void onBindViewHolder(AppHolder holder, int position) {
+                AppEntry entry = values.get(position);
+                holder.entry = entry;
+                holder.name.setText(entry.label);
+                holder.name.setTextColor(paletteColor(0xff202426, 0xfff2f4f5));
+                holder.icon.setTag(entry);
+                holder.cell.setOnTouchListener((view, event) ->
+                        handleEntryTouch(view, holder.icon, entry, event));
+                bindIcon(holder.icon, entry);
+            }
+
+            @Override public void onViewRecycled(AppHolder holder) {
+                holder.cell.setOnTouchListener(null);
+                holder.icon.setTag(null);
+                holder.icon.setImageDrawable(null);
+                holder.entry = null;
+            }
+
+            @Override public int getItemCount() { return values.size(); }
+
+            void setEntries(List<AppEntry> next) {
+                values.clear();
+                values.addAll(next);
+                showMessage(values.isEmpty() ? "未找到匹配应用" : null);
+                notifyDataSetChanged();
+                resultGrid.scrollToPosition(0);
+            }
+
+            int indexOf(AppEntry entry) { return values.indexOf(entry); }
+        }
+
+        private final class AppHolder extends RecyclerView.ViewHolder {
+            final LinearLayout cell;
+            final ImageView icon;
+            final TextView name;
+            AppEntry entry;
+
+            AppHolder(LinearLayout cell, ImageView icon, TextView name) {
+                super(cell);
+                this.cell = cell;
+                this.icon = icon;
+                this.name = name;
+            }
         }
 
         private boolean handleEntryTouch(View view, ImageView icon, AppEntry entry, MotionEvent event) {
@@ -761,33 +897,37 @@ final class AppLauncherPanel {
 
         private void launchEntry(AppEntry entry, View target) {
             HapticFeedbackUtils.perform(context, target, HapticFeedbackConstants.CONTEXT_CLICK);
-            close();
-            try {
-                if (entry.isShortcut()) {
+            closeImmediately();
+            LAUNCH_WORKER.execute(() -> {
+                try {
                     LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
-                    launcherApps.startShortcut(entry.packageName, entry.shortcutId, null, null, entry.user);
-                } else {
-                    context.getSystemService(LauncherApps.class)
-                            .startMainActivity(entry.component, entry.user, null, null);
+                    if (entry.isShortcut()) {
+                        launcherApps.startShortcut(entry.packageName, entry.shortcutId,
+                                null, null, entry.user);
+                    } else {
+                        launcherApps.startMainActivity(entry.component, entry.user, null, null);
+                    }
+                } catch (Throwable ignored) {
                 }
-            } catch (Throwable ignored) { }
+            });
         }
 
         private void launchMiniWindow(AppEntry entry) {
-            close();
-            try {
-                if (entry.isShortcut()) {
+            closeImmediately();
+            LAUNCH_WORKER.execute(() -> {
+                try {
                     LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
-                    FlymeMiniWindowLauncher.startShortcutInMiniWindow(
-                            context, launcherApps, entry.packageName, entry.shortcutId, entry.user);
-                } else {
-                    FlymeMiniWindowLauncher.startLauncherActivityInMiniWindow(
-                            context, context.getSystemService(LauncherApps.class),
-                            entry.component, entry.user, entry.packageName);
+                    if (entry.isShortcut()) {
+                        FlymeMiniWindowLauncher.startShortcutInMiniWindow(
+                                context, launcherApps, entry.packageName, entry.shortcutId, entry.user);
+                    } else {
+                        FlymeMiniWindowLauncher.startLauncherActivityInMiniWindow(
+                                context, launcherApps, entry.component, entry.user, entry.packageName);
+                    }
+                } catch (Throwable error) {
+                    MAIN.post(() -> Toast.makeText(context, "无法打开小窗", Toast.LENGTH_SHORT).show());
                 }
-            } catch (Throwable error) {
-                Toast.makeText(context, "无法打开小窗", Toast.LENGTH_SHORT).show();
-            }
+            });
         }
 
         private void updateSearch() {
@@ -850,7 +990,6 @@ final class AppLauncherPanel {
             loading = false;
             indexRequested = false;
             loadRequestId++;
-            iconLoadRequestId++;
             cancelHold();
             panel.animate().cancel();
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
@@ -909,7 +1048,8 @@ final class AppLauncherPanel {
                 key.setBackground(background(
                         paletteColor(0x16000000, 0x20ffffff), dp(7), Color.TRANSPARENT));
             }
-            renderRows();
+            resultMessage.setTextColor(paletteColor(0xff7d8589, 0xffaeb6ba));
+            adapter.notifyDataSetChanged();
         }
 
         private Drawable panelBackground() {
