@@ -242,6 +242,7 @@ public final class RecentTaskSwitcher {
             rows = new RecyclerView(context);
             rows.setLayoutManager(new LinearLayoutManager(context));
             rows.setAdapter(adapter);
+            rows.getItemAnimator().setMoveDuration(120L);
             rows.setHasFixedSize(true);
             rows.setItemViewCacheSize(4);
             rows.setVerticalScrollBarEnabled(false);
@@ -312,7 +313,6 @@ public final class RecentTaskSwitcher {
             if (attached) {
                 closing = false;
                 panel.animate().cancel();
-                panelBlur.stop();
                 alignToGestureAnchor();
                 animateIn();
                 loadTasksAsync();
@@ -380,9 +380,10 @@ public final class RecentTaskSwitcher {
             panel.setScaleY(0.28f);
             panel.setAlpha(0.9f);
             panel.setTranslationX(fromLeft ? -dp(14) : dp(14));
+            panelBlur.start();
             panel.animate().scaleX(1f).scaleY(1f).alpha(1f).translationX(0f)
                     .setDuration(320L).setInterpolator(new PathInterpolator(0.4f, 0f, 0.6f, 1f))
-                    .withEndAction(() -> { if (isCurrent()) panelBlur.start(); }).start();
+                    .start();
         }
 
         private WindowManager.LayoutParams buildLayoutParams() {
@@ -950,7 +951,6 @@ public final class RecentTaskSwitcher {
         private void close() {
             if (!attached || closing) return;
             closing = true;
-            panelBlur.stop();
             panel.animate().cancel();
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
             panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), anchorY - panel.getTop())));
