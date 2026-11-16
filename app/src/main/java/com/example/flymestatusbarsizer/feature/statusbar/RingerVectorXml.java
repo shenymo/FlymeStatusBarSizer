@@ -41,6 +41,7 @@ public final class RingerVectorXml {
     private final Group root;
     private final float width, height, alpha;
     private final String xml;
+    private RectF iconDrawingBounds;
 
     private RingerVectorXml(Group root, float width, float height, float alpha, String xml) {
         this.root = root;
@@ -314,6 +315,24 @@ public final class RingerVectorXml {
     public float getViewportWidth() { return width; }
 
     public float getViewportHeight() { return height; }
+
+    RectF iconDrawingBounds() {
+        if (root == null) return null;
+        if (iconDrawingBounds == null) {
+            iconDrawingBounds = new RectF();
+            unionDrawingBounds(iconDrawingBounds);
+            if (!iconDrawingBounds.isEmpty()) {
+                IconMetrics.VisualCanvas visual = IconMetrics.resolveCenteredVisualCanvas(
+                        new RectF(0, 0, 1, 1), width / height, null);
+                iconDrawingBounds.set(
+                        visual.rect.left + iconDrawingBounds.left * visual.rect.width() / width,
+                        visual.rect.top + iconDrawingBounds.top * visual.rect.height() / height,
+                        visual.rect.left + iconDrawingBounds.right * visual.rect.width() / width,
+                        visual.rect.top + iconDrawingBounds.bottom * visual.rect.height() / height);
+            }
+        }
+        return iconDrawingBounds.isEmpty() ? null : iconDrawingBounds;
+    }
 
     public void unionDrawingBounds(RectF bounds) {
         if (root == null) {

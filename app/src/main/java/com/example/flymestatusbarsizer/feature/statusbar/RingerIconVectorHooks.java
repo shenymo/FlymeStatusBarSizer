@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.graphics.Canvas;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.DrawableWrapper;
@@ -82,7 +83,8 @@ public final class RingerIconVectorHooks {
                         return chain.proceed();
                     }
                     if (state == null) return chain.proceed();
-                    return config.bluetoothIcons.newDrawable(context, state);
+                    return compactDrawable(config.bluetoothIcons.newDrawable(context, state),
+                            context, config.bluetoothIcons.iconDrawingBounds());
                 }
                 if (!config.statusBarRingerVectorIconsEnabled) {
                     return chain.proceed();
@@ -90,7 +92,8 @@ public final class RingerIconVectorHooks {
                 RingerVectorXml custom = "mute".equals(slot) ? config.silentIconVector : config.vibrateIconVector;
                 if (custom != null) {
                     try {
-                        return custom.newDrawable(context);
+                        return compactDrawable(custom.newDrawable(context), context,
+                                custom.iconDrawingBounds());
                     } catch (IllegalArgumentException invalid) {
                         Log.w(TAG, "Ignoring unsupported custom ringer icon", invalid);
                     }
@@ -112,8 +115,39 @@ public final class RingerIconVectorHooks {
                 if (drawableId == 0) {
                     return chain.proceed();
                 }
-                return new RingerVectorDrawable(context.getDrawable(drawableId), context,
+                RingerVectorDrawable drawable = new RingerVectorDrawable(context.getDrawable(drawableId), context,
                         "mute".equals(slot));
+                RectF bounds = new RectF(0, 0, 1, 1);
+                IconMetrics.VisualCanvas visual = IconMetrics.resolveCenteredVisualCanvas(bounds,
+                        drawable.pathBounds.width() / drawable.pathBounds.height(), null);
+                return compactDrawable(drawable, context, visual.rect);
+            });
+            module.intercept(type.getDeclaredMethod("onMeasure", int.class, int.class), chain -> {
+                ImageView view = (ImageView) chain.getThisObject();
+                Drawable drawable = view.getDrawable();
+                if (drawable instanceof AnimationDrawable animation && animation.getNumberOfFrames() > 0) {
+                    drawable = animation.getFrame(0);
+                }
+                int heightSpec = (Integer) chain.getArg(1);
+                if (!(drawable instanceof CompactIconDrawable)
+                        || View.MeasureSpec.getMode(heightSpec) != View.MeasureSpec.EXACTLY) {
+                    return chain.proceed();
+                }
+                // The system slot can be shorter than the shared module icon box.
+                ModuleConfig config = ModuleConfig.load(view.getContext());
+                int height = IconMetrics.resolveSignalBoxHeight(view.getContext(),
+                        config.statusBarIconScalePercent / 100f);
+                heightSpec = View.MeasureSpec.makeMeasureSpec(
+                        height + view.getPaddingTop() + view.getPaddingBottom(),
+                        View.MeasureSpec.EXACTLY);
+                int width = (int) Math.ceil(height * (double) drawable.getIntrinsicWidth()
+                        / drawable.getIntrinsicHeight()) + view.getPaddingLeft() + view.getPaddingRight();
+                int widthSpec = (Integer) chain.getArg(0);
+                if (View.MeasureSpec.getMode(widthSpec) != View.MeasureSpec.UNSPECIFIED) {
+                    width = Math.min(width, View.MeasureSpec.getSize(widthSpec));
+                }
+                return chain.proceed(new Object[]{
+                        View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), heightSpec});
             });
             module.intercept(type.getDeclaredMethod("setStaticDrawableColor", int.class), chain -> {
                 Object result = chain.proceed();
@@ -160,6 +194,7 @@ public final class RingerIconVectorHooks {
         Drawable drawable = view.getDrawable();
         if (drawable instanceof RingerVectorXml.VectorIcon
                 || drawable instanceof RingerVectorXml.NativeIcon
+                || drawable instanceof CompactIconDrawable
                 || drawable instanceof AnimationDrawable) {
             // A previous native color filter would take precedence over the new tint.
             drawable.clearColorFilter();
@@ -188,6 +223,59 @@ public final class RingerIconVectorHooks {
     public static Drawable builtInPreview(Context context, boolean silent) {
         return new RingerVectorDrawable(context.getDrawable(silent ? R.drawable.ringer_builtin_silent
                 : R.drawable.ringer_builtin_vibrate), context, silent);
+    }
+
+    private static Drawable compactDrawable(Drawable source, Context context, RectF drawingBounds) {
+        if (drawingBounds == null) return source;
+        if (source instanceof AnimationDrawable animation) {
+            AnimationDrawable compact = new AnimationDrawable();
+            compact.setOneShot(animation.isOneShot());
+            for (int i = 0; i < animation.getNumberOfFrames(); i++) {
+                compact.addFrame(compactDrawable(animation.getFrame(i), context, drawingBounds),
+                        animation.getDuration(i));
+            }
+            return compact;
+        }
+        int width = source.getIntrinsicWidth();
+        int height = source.getIntrinsicHeight();
+        float padding = 2f * context.getResources().getDisplayMetrics().density;
+        int compactWidth = (int) Math.ceil(drawingBounds.width() * width + 2f * padding);
+        if (compactWidth >= width) return source;
+        return new CompactIconDrawable(source, compactWidth, width, height,
+                drawingBounds.left * width - padding);
+    }
+
+    private static final class CompactIconDrawable extends DrawableWrapper {
+        private final int width, sourceWidth, sourceHeight;
+        private final float sourceLeft;
+
+        CompactIconDrawable(Drawable source, int width, int sourceWidth, int sourceHeight,
+                            float sourceLeft) {
+            super(source.mutate());
+            this.width = width;
+            this.sourceWidth = sourceWidth;
+            this.sourceHeight = sourceHeight;
+            this.sourceLeft = sourceLeft;
+            getDrawable().setBounds(0, 0, sourceWidth, sourceHeight);
+        }
+
+        @Override protected void onBoundsChange(Rect bounds) {
+            getDrawable().setBounds(0, 0, sourceWidth, sourceHeight);
+        }
+
+        @Override public void draw(Canvas canvas) {
+            Rect bounds = getBounds();
+            float scale = bounds.height() / (float) sourceHeight;
+            int save = canvas.save();
+            canvas.translate(bounds.left - sourceLeft * scale, bounds.top);
+            canvas.scale(scale, scale);
+            getDrawable().draw(canvas);
+            canvas.restoreToCount(save);
+        }
+
+        @Override public int getIntrinsicWidth() { return width; }
+        @Override public int getIntrinsicHeight() { return sourceHeight; }
+        @Override public ConstantState getConstantState() { return null; }
     }
 
     private static final class RingerVectorDrawable extends DrawableWrapper {
