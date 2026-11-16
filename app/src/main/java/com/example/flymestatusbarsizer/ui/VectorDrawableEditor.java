@@ -51,6 +51,11 @@ import java.util.UUID;
 import java.util.function.BiConsumer;
 
 public final class VectorDrawableEditor {
+    @FunctionalInterface
+    public interface SaveHandler {
+        void save(String xml, RingerVectorXml vector, Runnable onSaved);
+    }
+
     private final MainActivity activity;
     private VectorDrawableDocument document;
     private Dialog editorDialog;
@@ -62,7 +67,8 @@ public final class VectorDrawableEditor {
     private TextView xmlToggle;
     private String initialXml;
     private String editorTitle = "矢量图标编辑器";
-    private BiConsumer<String, RingerVectorXml> onSave;
+    private SaveHandler onSave;
+    private Runnable onCopyAiPrompt;
     private Drawable previewDrawable;
     private boolean darkPreview;
     private int previewSize = 96;
@@ -73,9 +79,18 @@ public final class VectorDrawableEditor {
     }
 
     public void show(String xml, String title, BiConsumer<String, RingerVectorXml> onSave) {
+        show(xml, title, (source, vector, onSaved) -> {
+            onSave.accept(source, vector);
+            onSaved.run();
+            activity.showToast("已保存");
+        }, null);
+    }
+
+    public void show(String xml, String title, SaveHandler onSave, Runnable onCopyAiPrompt) {
         initialXml = xml;
         editorTitle = title;
         this.onSave = onSave;
+        this.onCopyAiPrompt = onCopyAiPrompt;
         try {
             document = VectorDrawableDocument.parse(xml);
         } catch (IllegalArgumentException unsupported) {
@@ -167,9 +182,7 @@ public final class VectorDrawableEditor {
                 String xml = xmlSource == null ? document.toXml() : xmlSource.getText().toString();
                 RingerVectorXml vector = RingerVectorXml.parse(xml, activity);
                 vector.newDrawable(activity);
-                onSave.accept(xml, vector);
-                editorDialog.dismiss();
-                activity.showToast("已保存");
+                onSave.save(xml, vector, editorDialog::dismiss);
             } catch (IllegalArgumentException error) {
                 previewError.setText(error.getMessage());
                 if (xmlSource != null) xmlSource.setError(error.getMessage());
@@ -226,6 +239,29 @@ public final class VectorDrawableEditor {
         if (xmlSource == null) {
             String source = document == null ? initialXml : document.toXml();
             properties.removeAllViews();
+            if (onCopyAiPrompt != null) {
+                LinearLayout xmlHeader = new LinearLayout(activity);
+                xmlHeader.setGravity(Gravity.CENTER_VERTICAL);
+                xmlHeader.addView(text(activity, "XML 代码", 14),
+                        new LinearLayout.LayoutParams(0, -2, 1));
+                TextView promptButton = text(activity, "AI 提示词", 14);
+                promptButton.setGravity(Gravity.CENTER);
+                promptButton.setTextColor(activity.primaryColor());
+                promptButton.setPadding(activity.dp(12), activity.dp(8), activity.dp(12), activity.dp(8));
+                promptButton.setBackground(activity.outlinedRect(activity.primaryContainerColor(),
+                        activity.primaryColor(), 1, 8));
+                Drawable copyIcon = activity.getDrawable(R.drawable.ic_content_copy_24px).mutate();
+                copyIcon.setTint(activity.primaryColor());
+                copyIcon.setBounds(0, 0, activity.dp(20), activity.dp(20));
+                promptButton.setCompoundDrawablesRelative(copyIcon, null, null, null);
+                promptButton.setCompoundDrawablePadding(activity.dp(8));
+                promptButton.setContentDescription("AI 提示词，点击复制");
+                activity.setTapClickListener(promptButton, v -> onCopyAiPrompt.run());
+                xmlHeader.addView(promptButton, new LinearLayout.LayoutParams(-2, activity.dp(48)));
+                LinearLayout.LayoutParams headerParams = new LinearLayout.LayoutParams(-1, -2);
+                headerParams.bottomMargin = activity.dp(8);
+                properties.addView(xmlHeader, headerParams);
+            }
             xmlSource = input("粘贴 Android Vector XML", true);
             xmlSource.setTypeface(Typeface.MONOSPACE);
             xmlSource.setTextSize(12);

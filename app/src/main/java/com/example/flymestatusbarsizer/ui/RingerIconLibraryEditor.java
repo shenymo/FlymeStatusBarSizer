@@ -5,13 +5,10 @@ import android.app.Dialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.res.ColorStateList;
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
-import android.text.Editable;
 import android.text.InputType;
-import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
@@ -156,7 +153,7 @@ public final class RingerIconLibraryEditor {
 
     private void showMenu(Entry entry) {
         AlertDialog dialog = new AlertDialog.Builder(activity).setTitle(entry.name())
-                .setItems(new String[]{"重命名", "修改代码", "删除"}, (d, which) -> {
+                .setItems(new String[]{"重命名", "编辑图标", "删除"}, (d, which) -> {
                     if (which == 0) rename(entry);
                     else if (which == 1) edit(entry);
                     else {
@@ -196,18 +193,16 @@ public final class RingerIconLibraryEditor {
     }
 
     private void edit(Entry original) {
-        Dialog dialog = new Dialog(activity);
-        LinearLayout root = page(dialog, original == null ? "新增图标" : "修改图标");
-        ScrollView scroll = new ScrollView(activity);
+        new VectorDrawableEditor(activity).show(
+                original == null ? RingerIconLibrary.TRIANGLE_XML : original.xml(),
+                original == null ? "新增图标" : original.name(),
+                (xml, vector, onSaved) -> showSaveDialog(original, xml, vector, onSaved),
+                this::copyAiPrompt);
+    }
+
+    private void showSaveDialog(Entry original, String xml, RingerVectorXml vector, Runnable onSaved) {
         LinearLayout content = column();
-        content.setPadding(activity.dp(20), activity.dp(8), activity.dp(20), activity.dp(16));
-        LinearLayout preview = new LinearLayout(activity);
-        preview.setGravity(Gravity.CENTER);
-        preview.setMinimumHeight(activity.dp(116));
-        TextView hint = text("预览", 14);
-        hint.setTextColor(activity.subtextColor());
-        preview.addView(hint);
-        content.addView(preview, new LinearLayout.LayoutParams(-1, -2));
+        content.setPadding(activity.dp(20), activity.dp(8), activity.dp(20), 0);
         EditText name = input("图标名称", false);
         content.addView(name);
         RadioGroup mode = new RadioGroup(activity);
@@ -215,91 +210,44 @@ public final class RingerIconLibraryEditor {
         RadioButton copy = new RadioButton(activity);
         copy.setId(View.generateViewId());
         copy.setText("另存新图标");
+        copy.setTextColor(activity.textColor());
         RadioButton replace = new RadioButton(activity);
         replace.setId(View.generateViewId());
         replace.setText("替换原图标");
+        replace.setTextColor(activity.textColor());
         if (original != null) {
             mode.addView(copy);
             mode.addView(replace);
             mode.check(copy.getId());
             content.addView(mode);
-            String base = original.name() + " 副本";
-            String candidate = base;
-            int suffix = 2;
-            while (nameExists(candidate, "")) candidate = base + " " + suffix++;
-            final String copyName = candidate;
+            String copyName = uniqueName(original.name() + " 副本");
             name.setText(copyName);
-            mode.setOnCheckedChangeListener((group, checked) -> name.setText(checked == replace.getId() ? original.name() : copyName));
-        }
-        LinearLayout xmlHeader = new LinearLayout(activity);
-        xmlHeader.setGravity(Gravity.CENTER_VERTICAL);
-        TextView xmlLabel = text("XML 代码", 14);
-        xmlHeader.addView(xmlLabel, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView promptButton = button("AI 提示词", this::copyAiPrompt);
-        promptButton.setPadding(activity.dp(12), activity.dp(8), activity.dp(12), activity.dp(8));
-        promptButton.setBackground(activity.outlinedRect(activity.primaryContainerColor(),
-                activity.primaryColor(), 1, 8));
-        Drawable copyIcon = activity.getDrawable(R.drawable.ic_content_copy_24px).mutate();
-        copyIcon.setTint(activity.primaryColor());
-        copyIcon.setBounds(0, 0, activity.dp(20), activity.dp(20));
-        promptButton.setCompoundDrawablesRelative(copyIcon, null, null, null);
-        promptButton.setCompoundDrawablePadding(activity.dp(8));
-        promptButton.setContentDescription("AI 提示词，点击复制");
-        xmlHeader.addView(promptButton, new LinearLayout.LayoutParams(-2, activity.dp(48)));
-        LinearLayout.LayoutParams headerParams = new LinearLayout.LayoutParams(-1, -2);
-        headerParams.setMargins(0, activity.dp(8), 0, activity.dp(8));
-        content.addView(xmlHeader, headerParams);
-        EditText xml = input("粘贴 Android Vector XML", true);
-        xml.setTypeface(Typeface.MONOSPACE);
-        xml.setTextSize(12);
-        xml.setMinLines(10);
-        xml.setGravity(Gravity.TOP | Gravity.START);
-        if (original != null) xml.setText(original.xml());
-        content.addView(xml, new LinearLayout.LayoutParams(-1, -2));
-        TextView rule = text("支持静态 Android Vector XML，不支持外部资源引用。", 12);
-        rule.setTextColor(activity.subtextColor());
-        content.addView(rule);
-        xml.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
-            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
-                preview.removeAllViews();
-                preview.addView(hint);
-                xml.setError(null);
-            }
-            @Override public void afterTextChanged(Editable s) { }
-        });
-        TextView generate = button("生成预览", () -> {
-            RingerVectorXml vector = parseInput(xml);
-            if (vector != null) showPreview(preview, vector);
-        });
-        content.addView(generate, new LinearLayout.LayoutParams(-1, activity.dp(48)));
-        if (original != null && original.vector() != null) showPreview(preview, original.vector());
-        scroll.addView(content);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        LinearLayout actions = new LinearLayout(activity);
-        actions.setPadding(activity.dp(16), activity.dp(8), activity.dp(16), activity.dp(12));
-        for (boolean use : new boolean[]{false, true}) {
-            TextView save = button(use ? "保存并使用" : "保存到库", () -> {
-                boolean replacing = original != null && mode.getCheckedRadioButtonId() == replace.getId();
-                String title = name.getText().toString().trim();
-                if (!validateName(name, title, replacing ? original.id() : "")) return;
-                RingerVectorXml vector = parseInput(xml);
-                if (vector == null) return;
-                String id = replacing ? original.id() : UUID.randomUUID().toString();
-                Entry entry = new Entry(id, title, xml.getText().toString(), vector, null);
-                ArrayList<Entry> entries = new ArrayList<>(library.entries);
-                if (replacing) entries.set(entries.indexOf(original), entry);
-                else entries.add(1, entry);
-                persist(new RingerIconLibrary(entries, use ? id : library.selected));
-                dialog.dismiss();
-                activity.showToast(use ? "已保存并选用" : "已保存到图标库");
+            mode.setOnCheckedChangeListener((group, checked) -> {
+                name.setText(checked == replace.getId() ? original.name() : copyName);
+                name.setError(null);
             });
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, activity.dp(48), 1);
-            params.setMargins(activity.dp(4), 0, activity.dp(4), 0);
-            actions.addView(save, params);
         }
-        root.addView(actions);
-        showPage(dialog, root);
+        AlertDialog dialog = new AlertDialog.Builder(activity).setTitle("保存图标")
+                .setView(content).setNegativeButton("取消", null)
+                .setNeutralButton("保存到库", null).setPositiveButton("保存并使用", null).create();
+        showAlert(dialog);
+        for (boolean use : new boolean[]{false, true}) {
+            dialog.getButton(use ? AlertDialog.BUTTON_POSITIVE : AlertDialog.BUTTON_NEUTRAL)
+                    .setOnClickListener(v -> {
+                        boolean replacing = original != null && mode.getCheckedRadioButtonId() == replace.getId();
+                        String title = name.getText().toString().trim();
+                        if (!validateName(name, title, replacing ? original.id() : "")) return;
+                        String id = replacing ? original.id() : UUID.randomUUID().toString();
+                        Entry entry = new Entry(id, title, xml, vector, null);
+                        ArrayList<Entry> entries = new ArrayList<>(library.entries);
+                        if (replacing) entries.set(entries.indexOf(original), entry);
+                        else entries.add(1, entry);
+                        persist(new RingerIconLibrary(entries, use ? id : library.selected));
+                        dialog.dismiss();
+                        onSaved.run();
+                        activity.showToast(use ? "已保存并选用" : "已保存到图标库");
+                    });
+        }
     }
 
     private void copyAiPrompt() {
@@ -321,43 +269,6 @@ public final class RingerIconLibraryEditor {
         if (clipboard != null) {
             clipboard.setPrimaryClip(ClipData.newPlainText("Android Vector XML 提示词", prompt));
             activity.showToast("AI 提示词已复制");
-        }
-    }
-
-    private RingerVectorXml parseInput(EditText xml) {
-        try {
-            RingerVectorXml vector = RingerVectorXml.parse(xml.getText().toString());
-            xml.setError(null);
-            return vector;
-        } catch (IllegalArgumentException error) {
-            xml.setError(error.getMessage());
-            xml.requestFocus();
-            return null;
-        }
-    }
-
-    private void showPreview(LinearLayout preview, RingerVectorXml vector) {
-        preview.removeAllViews();
-        for (boolean dark : new boolean[]{false, true}) {
-            LinearLayout tile = new LinearLayout(activity);
-            tile.setGravity(Gravity.CENTER);
-            tile.setBackground(activity.roundRect(dark ? 0xFF202124 : 0xFFF4F5F6, 8));
-            for (int size : new int[]{22, 88}) {
-                ImageView image = new ImageView(activity);
-                Drawable drawable;
-                try {
-                    drawable = vector.newDrawable(activity);
-                } catch (IllegalArgumentException invalid) {
-                    drawable = RingerIconVectorHooks.builtInPreview(activity, silent);
-                }
-                image.setImageDrawable(drawable);
-                image.setImageTintList(ColorStateList.valueOf(dark ? Color.WHITE : Color.BLACK));
-                image.setContentDescription((dark ? "深色" : "浅色") + "背景，" + (size == 22 ? "正常尺寸" : "放大预览"));
-                tile.addView(image, new LinearLayout.LayoutParams(activity.dp(size), activity.dp(size)));
-            }
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, activity.dp(108), 1);
-            params.setMargins(activity.dp(3), activity.dp(4), activity.dp(3), activity.dp(8));
-            preview.addView(tile, params);
         }
     }
 
