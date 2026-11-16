@@ -15,10 +15,30 @@ public final class IconsBatteryPageController {
         root.addView(activity.createIconSizingCard(), PageViewUtils.matchWrap());
         addIconVisibilityCard(activity, root);
         addRingerIconCard(activity, root);
+        addBluetoothIconCard(activity, root);
         addVectorDrawableEditorCard(activity, root);
         root.addView(activity.createBatterySettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createNotificationSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createSignalSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
+    }
+
+    private static void addBluetoothIconCard(MainActivity activity, LinearLayout root) {
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout states = new LinearLayout(activity);
+        states.setOrientation(LinearLayout.VERTICAL);
+        BluetoothIconLibraryEditor.addSettingsRows(activity, states);
+        states.setVisibility(SettingsStore.readBoolean(activity.prefs(),
+                SettingsStore.KEY_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED,
+                SettingsStore.DEFAULT_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED)
+                ? View.VISIBLE : View.GONE);
+        activity.addSwitchRow(content, "使用矢量图标", null,
+                SettingsStore.KEY_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED,
+                SettingsStore.DEFAULT_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED,
+                (button, enabled) -> states.setVisibility(enabled ? View.VISIBLE : View.GONE));
+        content.addView(states);
+        root.addView(activity.buildSectionCard("蓝牙状态栏图标", null, content),
+                PageViewUtils.matchWrapWithTop(activity, 8));
     }
 
     private static void addRingerIconCard(MainActivity activity, LinearLayout root) {

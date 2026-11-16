@@ -7,6 +7,7 @@ import com.example.flymestatusbarsizer.feature.battery.CircleBatteryAnimationCon
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconPack;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconLibrary;
 import com.example.flymestatusbarsizer.feature.statusbar.StatusBarIconVisibility;
+import com.example.flymestatusbarsizer.feature.statusbar.BluetoothIconLibrary;
 import com.example.flymestatusbarsizer.feature.statusbar.RingerIconLibrary;
 import com.example.flymestatusbarsizer.feature.statusbar.RingerVectorXml;
 import com.example.flymestatusbarsizer.feature.wifi.WifiIconStyles;
@@ -47,6 +48,9 @@ public final class ModuleConfig {
             SettingsStore.DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED;
     public RingerVectorXml silentIconVector;
     public RingerVectorXml vibrateIconVector;
+    public boolean statusBarBluetoothVectorIconsEnabled =
+            SettingsStore.DEFAULT_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED;
+    public BluetoothIconLibrary bluetoothIcons = BluetoothIconLibrary.defaults();
     public boolean hideIdleCameraCutout = SettingsStore.DEFAULT_HIDE_IDLE_CAMERA_CUTOUT;
     public final int[] statusBarTintModes = new int[SettingsStore.STATUS_BAR_TINT_KEYS.length];
     public boolean batteryCodeDrawEnabled = SettingsStore.DEFAULT_BATTERY_CODE_DRAW_ENABLED;
@@ -548,6 +552,10 @@ public final class ModuleConfig {
             RingerIconLibrary.Entry vibrateIcon = RingerIconLibrary.load(prefs, false).selectedEntry();
             config.silentIconVector = silentIcon == null ? null : silentIcon.vector();
             config.vibrateIconVector = vibrateIcon == null ? null : vibrateIcon.vector();
+            config.statusBarBluetoothVectorIconsEnabled = SettingsStore.readBoolean(prefs,
+                    SettingsStore.KEY_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED,
+                    SettingsStore.DEFAULT_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED);
+            config.bluetoothIcons = BluetoothIconLibrary.load(prefs, null);
             config.hideIdleCameraCutout = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_HIDE_IDLE_CAMERA_CUTOUT, SettingsStore.DEFAULT_HIDE_IDLE_CAMERA_CUTOUT);
             for (int i = 0; i < config.statusBarTintModes.length; i++) {

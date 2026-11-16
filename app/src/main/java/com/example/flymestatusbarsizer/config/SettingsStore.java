@@ -38,8 +38,12 @@ public final class SettingsStore {
     public static final String KEY_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED =
             "status_bar_ringer_vector_icons_enabled";
     public static final boolean DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED = false;
+    public static final String KEY_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED =
+            "status_bar_bluetooth_vector_icons_enabled";
+    public static final boolean DEFAULT_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED = true;
     public static final String KEY_STATUS_BAR_SILENT_ICON_LIBRARY = "status_bar_silent_icon_library";
     public static final String KEY_STATUS_BAR_VIBRATE_ICON_LIBRARY = "status_bar_vibrate_icon_library";
+    public static final String KEY_STATUS_BAR_BLUETOOTH_ICON_LIBRARY = "status_bar_bluetooth_icon_library";
     public static final String KEY_ICON_LIBRARY_DEVICE_ID = "icon_library_device_id";
     public static final String KEY_HIDE_IDLE_CAMERA_CUTOUT = "hide_idle_camera_cutout";
     public static final String KEY_BATTERY_CODE_DRAW_ENABLED = "battery_code_draw_enabled";
@@ -1081,6 +1085,7 @@ public final class SettingsStore {
             KEY_ENABLED,
             KEY_STATUS_BAR_TINT_ENABLED,
             KEY_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED,
+            KEY_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED,
             KEY_HIDE_IDLE_CAMERA_CUTOUT,
             KEY_BATTERY_CODE_DRAW_ENABLED,
             KEY_CAMERA_CIRCLE_BATTERY_ENABLED,
@@ -1146,6 +1151,7 @@ public final class SettingsStore {
             KEY_BATTERY_ICON_LIBRARY,
             KEY_STATUS_BAR_SILENT_ICON_LIBRARY,
             KEY_STATUS_BAR_VIBRATE_ICON_LIBRARY,
+            KEY_STATUS_BAR_BLUETOOTH_ICON_LIBRARY,
             KEY_ASSISTANT_BACKGROUND_IMAGE,
             KEY_ANIP_BUNDLE_TARGET,
             KEY_SHARE_TARGET_PROFILES,
@@ -1769,6 +1775,8 @@ public final class SettingsStore {
                 return DEFAULT_STATUS_BAR_TINT_ENABLED;
             case KEY_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED:
                 return DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED;
+            case KEY_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED:
+                return DEFAULT_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED;
             case KEY_HIDE_IDLE_CAMERA_CUTOUT:
                 return DEFAULT_HIDE_IDLE_CAMERA_CUTOUT;
             case KEY_BATTERY_CODE_DRAW_ENABLED:

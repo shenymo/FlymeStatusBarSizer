@@ -2,10 +2,13 @@ package com.example.flymestatusbarsizer.feature.statusbar;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
+import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.DrawableWrapper;
+import android.graphics.drawable.AnimationDrawable;
+import android.graphics.drawable.Icon;
 import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
@@ -21,7 +24,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-/** Loads SystemUI's vector alternatives for the native silent and vibrate status icons. */
+/** Replaces silent, vibrate and Bluetooth status icons with vector drawables. */
 public final class RingerIconVectorHooks {
     private static final String TAG = "RingerIconVector";
     private static final Map<View, Integer> ICON_VIEWS =
@@ -45,22 +48,45 @@ public final class RingerIconVectorHooks {
                     return chain.proceed();
                 }
                 String slot = (String) ReflectUtils.getField(iconView, "mSlot");
+                if (!"mute".equals(slot) && !"volume".equals(slot) && !"bluetooth".equals(slot)) {
+                    return chain.proceed();
+                }
                 String drawableName;
                 if ("mute".equals(slot)) {
                     drawableName = "ic_legacy_speaker_mute";
                 } else if ("volume".equals(slot)) {
                     drawableName = "ic_legacy_volume_ringer_vibrate";
                 } else {
-                    return chain.proceed();
+                    drawableName = null;
                 }
                 ICON_VIEWS.putIfAbsent(iconView, null);
 
                 ModuleConfig config = ModuleConfig.load(iconView.getContext());
-                if (!config.enabled || !config.statusBarRingerVectorIconsEnabled) {
+                if (!config.enabled) {
                     return chain.proceed();
                 }
 
                 Context context = (Context) chain.getArg(0);
+                if ("bluetooth".equals(slot)) {
+                    if (!config.statusBarBluetoothVectorIconsEnabled) return chain.proceed();
+                    Object statusBarIcon = chain.getArg(2);
+                    Icon sourceIcon = (Icon) ReflectUtils.getField(statusBarIcon, "icon");
+                    if (sourceIcon == null || sourceIcon.getType() != Icon.TYPE_RESOURCE) {
+                        return chain.proceed();
+                    }
+                    BluetoothIconState state;
+                    try {
+                        String resourceName = context.getResources().getResourceEntryName(sourceIcon.getResId());
+                        state = BluetoothIconState.fromResourceName(resourceName);
+                    } catch (Resources.NotFoundException invalidResource) {
+                        return chain.proceed();
+                    }
+                    if (state == null) return chain.proceed();
+                    return config.bluetoothIcons.newDrawable(context, state);
+                }
+                if (!config.statusBarRingerVectorIconsEnabled) {
+                    return chain.proceed();
+                }
                 RingerVectorXml custom = "mute".equals(slot) ? config.silentIconVector : config.vibrateIconVector;
                 if (custom != null) {
                     try {
@@ -101,7 +127,9 @@ public final class RingerIconVectorHooks {
                 ImageView view = (ImageView) chain.getThisObject();
                 if (!ICON_VIEWS.containsKey(view)) return result;
                 ColorStateList tint = view.getImageTintList();
-                applyTint(view, tint.getColorForState(view.getDrawableState(), tint.getDefaultColor()));
+                if (tint != null) {
+                    applyTint(view, tint.getColorForState(view.getDrawableState(), tint.getDefaultColor()));
+                }
                 return result;
             });
             module.intercept(type.getDeclaredMethod("updateDrawable", boolean.class), chain -> {
@@ -131,7 +159,8 @@ public final class RingerIconVectorHooks {
         ICON_VIEWS.put(view, color);
         Drawable drawable = view.getDrawable();
         if (drawable instanceof RingerVectorXml.VectorIcon
-                || drawable instanceof RingerVectorXml.NativeIcon) {
+                || drawable instanceof RingerVectorXml.NativeIcon
+                || drawable instanceof AnimationDrawable) {
             // A previous native color filter would take precedence over the new tint.
             drawable.clearColorFilter();
             drawable.setTintList(ColorStateList.valueOf(color));
@@ -149,7 +178,7 @@ public final class RingerIconVectorHooks {
                     continue;
                 }
                 String slot = (String) ReflectUtils.getField(view, "mSlot");
-                if ("mute".equals(slot) || "volume".equals(slot)) {
+                if ("mute".equals(slot) || "volume".equals(slot) || "bluetooth".equals(slot)) {
                     FlymeStatusBarSizer.invokeNoArgCompat(view, "updateDrawable");
                 }
             }
