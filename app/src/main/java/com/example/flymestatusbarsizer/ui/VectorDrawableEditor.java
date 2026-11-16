@@ -13,6 +13,7 @@ import android.graphics.drawable.Animatable;
 import android.graphics.drawable.Drawable;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
@@ -47,6 +48,7 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 
 public final class VectorDrawableEditor {
     private final MainActivity activity;
@@ -56,6 +58,11 @@ public final class VectorDrawableEditor {
     private ImageView preview;
     private TextView previewError;
     private EditText previewSource;
+    private EditText xmlSource;
+    private TextView xmlToggle;
+    private String initialXml;
+    private String editorTitle = "矢量图标编辑器";
+    private BiConsumer<String, RingerVectorXml> onSave;
     private Drawable previewDrawable;
     private boolean darkPreview;
     private int previewSize = 96;
@@ -63,6 +70,18 @@ public final class VectorDrawableEditor {
 
     public VectorDrawableEditor(MainActivity activity) {
         this.activity = activity;
+    }
+
+    public void show(String xml, String title, BiConsumer<String, RingerVectorXml> onSave) {
+        initialXml = xml;
+        editorTitle = title;
+        this.onSave = onSave;
+        try {
+            document = VectorDrawableDocument.parse(xml);
+        } catch (IllegalArgumentException unsupported) {
+            document = null;
+        }
+        showEditor();
     }
 
     public static void addSettingsRow(MainActivity activity, LinearLayout parent) {
@@ -126,13 +145,36 @@ public final class VectorDrawableEditor {
         back.setContentDescription("返回");
         activity.setTapClickListener(back, v -> editorDialog.dismiss());
         header.addView(back, new LinearLayout.LayoutParams(activity.dp(48), activity.dp(56)));
-        TextView title = text(activity, "矢量图标编辑器", 20);
+        TextView title = text(activity, editorTitle, 20);
         title.setTypeface(null, Typeface.BOLD);
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
         header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        xmlToggle = text(activity, "XML", 14);
+        xmlToggle.setGravity(Gravity.CENTER);
+        xmlToggle.setTextColor(activity.primaryColor());
+        activity.setTapClickListener(xmlToggle, v -> toggleXml());
+        header.addView(xmlToggle, new LinearLayout.LayoutParams(activity.dp(56), activity.dp(48)));
         TextView save = text(activity, "保存", 14);
         save.setGravity(Gravity.CENTER);
         save.setTextColor(activity.primaryColor());
-        activity.setTapClickListener(save, v -> showSaveDialog());
+        activity.setTapClickListener(save, v -> {
+            if (onSave == null) {
+                showSaveDialog();
+                return;
+            }
+            try {
+                String xml = xmlSource == null ? document.toXml() : xmlSource.getText().toString();
+                RingerVectorXml vector = RingerVectorXml.parse(xml, activity);
+                vector.newDrawable(activity);
+                onSave.accept(xml, vector);
+                editorDialog.dismiss();
+                activity.showToast("已保存");
+            } catch (IllegalArgumentException error) {
+                previewError.setText(error.getMessage());
+                if (xmlSource != null) xmlSource.setError(error.getMessage());
+            }
+        });
         header.addView(save, new LinearLayout.LayoutParams(activity.dp(64), activity.dp(48)));
         root.addView(header);
 
@@ -164,14 +206,50 @@ public final class VectorDrawableEditor {
         scroll.addView(properties);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         editorDialog.setContentView(root);
+        editorDialog.setOnDismissListener(ignored -> {
+            properties.removeCallbacks(previewRunnable);
+            if (previewDrawable instanceof Animatable animation) animation.stop();
+        });
         editorDialog.show();
         Window window = editorDialog.getWindow();
         window.setBackgroundDrawable(new ColorDrawable(activity.surfaceColor()));
         window.setLayout(-1, -1);
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
                 | WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
-        rebuildProperties();
+        if (document == null) toggleXml(); else rebuildProperties();
         setPreview(false);
+    }
+
+    private void toggleXml() {
+        properties.removeCallbacks(previewRunnable);
+        previewSource = null;
+        if (xmlSource == null) {
+            String source = document == null ? initialXml : document.toXml();
+            properties.removeAllViews();
+            xmlSource = input("粘贴 Android Vector XML", true);
+            xmlSource.setTypeface(Typeface.MONOSPACE);
+            xmlSource.setTextSize(12);
+            xmlSource.setMinLines(12);
+            xmlSource.setGravity(Gravity.TOP | Gravity.START);
+            xmlSource.setText(source);
+            xmlSource.addTextChangedListener(new TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+                @Override public void onTextChanged(CharSequence s, int start, int before, int count) { }
+                @Override public void afterTextChanged(Editable s) { schedulePreview(xmlSource); }
+            });
+            properties.addView(xmlSource, new LinearLayout.LayoutParams(-1, -2));
+            xmlToggle.setText("图形");
+        } else {
+            try {
+                document = VectorDrawableDocument.parse(xmlSource.getText().toString());
+            } catch (IllegalArgumentException error) {
+                xmlSource.setError(error.getMessage());
+                return;
+            }
+            xmlSource = null;
+            xmlToggle.setText("XML");
+            rebuildProperties();
+        }
         refreshPreview(null);
     }
 
@@ -340,7 +418,7 @@ public final class VectorDrawableEditor {
 
     private void refreshPreview(EditText source) {
         try {
-            String xml = document.toXml();
+            String xml = xmlSource == null ? document.toXml() : xmlSource.getText().toString();
             RingerVectorXml vector = RingerVectorXml.parse(xml, activity);
             if (previewDrawable instanceof Animatable animation) animation.stop();
             previewDrawable = vector.newDrawable(activity);
@@ -471,7 +549,7 @@ public final class VectorDrawableEditor {
             showAlert(confirm);
             return;
         }
-        final String xml = document.toXml();
+        final String xml = xmlSource == null ? document.toXml() : xmlSource.getText().toString();
         try {
             RingerVectorXml vector = RingerVectorXml.parse(xml, activity);
             if (target.getCheckedRadioButtonId() == 3) {

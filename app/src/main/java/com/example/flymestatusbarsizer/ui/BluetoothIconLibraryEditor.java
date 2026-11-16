@@ -3,7 +3,6 @@ package com.example.flymestatusbarsizer.ui;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.res.ColorStateList;
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.Animatable;
 import android.graphics.drawable.ColorDrawable;
@@ -25,7 +24,6 @@ import com.example.flymestatusbarsizer.R;
 import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.feature.statusbar.BluetoothIconLibrary;
 import com.example.flymestatusbarsizer.feature.statusbar.BluetoothIconState;
-import com.example.flymestatusbarsizer.feature.statusbar.RingerVectorXml;
 
 import java.util.function.Consumer;
 import java.util.UUID;
@@ -37,6 +35,7 @@ public final class BluetoothIconLibraryEditor {
     private LinearLayout packList;
     private LinearLayout stateList;
     private String editingPack;
+    private TextView enablePack;
 
     private BluetoothIconLibraryEditor(MainActivity activity, Runnable onChanged) {
         this.activity = activity;
@@ -111,6 +110,14 @@ public final class BluetoothIconLibraryEditor {
             TextView name = text(pack.name() + (selected ? "  ✓" : ""), 15);
             row.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
             activity.setTapClickListener(row, v -> persist(library.withSelection(pack.id())));
+            if (!pack.builtIn()) {
+                TextView edit = text("编辑", 14);
+                edit.setGravity(Gravity.CENTER);
+                edit.setTextColor(activity.primaryColor());
+                edit.setContentDescription("编辑" + pack.name());
+                activity.setTapClickListener(edit, v -> showPack(pack));
+                row.addView(edit, new LinearLayout.LayoutParams(activity.dp(56), activity.dp(48)));
+            }
             TextView more = text("⋮", 24);
             more.setGravity(Gravity.CENTER);
             more.setContentDescription(pack.name() + "，更多操作");
@@ -124,11 +131,11 @@ public final class BluetoothIconLibraryEditor {
 
     private void menu(BluetoothIconLibrary.Pack pack) {
         String[] items = pack.builtIn() ? new String[]{"查看", "复制并编辑"}
-                : new String[]{"编辑", "复制并编辑", "重命名", "删除"};
+                : new String[]{"复制并编辑", "重命名", "删除"};
         AlertDialog dialog = new AlertDialog.Builder(activity).setTitle(pack.name())
                 .setItems(items, (d, index) -> {
                     switch (items[index]) {
-                        case "查看", "编辑" -> showPack(pack);
+                        case "查看" -> showPack(pack);
                         case "复制并编辑" -> namePack(pack, true, this::showPack);
                         case "重命名" -> namePack(pack, false, ignored -> {});
                         case "删除" -> {
@@ -176,19 +183,28 @@ public final class BluetoothIconLibraryEditor {
         editingPack = pack.id();
         Dialog dialog = new Dialog(activity);
         LinearLayout root = page(dialog, pack.name());
+        enablePack = text("", 14);
+        enablePack.setGravity(Gravity.CENTER);
+        enablePack.setTextColor(activity.primaryColor());
+        activity.setTapClickListener(enablePack, v -> persist(library.withSelection(pack.id())));
+        ((LinearLayout) root.getChildAt(0)).addView(enablePack,
+                new LinearLayout.LayoutParams(activity.dp(80), activity.dp(48)));
         ScrollView scroll = new ScrollView(activity);
         stateList = column();
         stateList.setPadding(activity.dp(16), activity.dp(8), activity.dp(16), activity.dp(24));
         renderStates();
         scroll.addView(stateList);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        dialog.setOnDismissListener(ignored -> { stateList = null; editingPack = null; });
+        dialog.setOnDismissListener(ignored -> { stateList = null; editingPack = null; enablePack = null; });
         showPage(dialog, root);
     }
 
     private void renderStates() {
         stateList.removeAllViews();
         BluetoothIconLibrary.Pack pack = library.pack(editingPack);
+        boolean selected = library.selectedId().equals(pack.id());
+        enablePack.setText(selected ? "使用中" : "启用");
+        enablePack.setEnabled(!selected);
         for (BluetoothIconState state : BluetoothIconState.values()) {
             LinearLayout row = new LinearLayout(activity);
             row.setGravity(Gravity.CENTER_VERTICAL);
@@ -200,67 +216,13 @@ public final class BluetoothIconLibraryEditor {
                 TextView arrow = text("›", 25);
                 arrow.setGravity(Gravity.CENTER);
                 row.addView(arrow, new LinearLayout.LayoutParams(activity.dp(28), -2));
-                activity.setTapClickListener(row, v -> editState(pack.id(), state));
+                activity.setTapClickListener(row, v -> new VectorDrawableEditor(activity).show(
+                        pack.icons().get(state).xml(), pack.name() + " · " + state.title,
+                        (xml, vector) -> persist(library.withPack(library.pack(pack.id()).withIcon(state,
+                                new BluetoothIconLibrary.Icon(xml, vector))))));
             }
             stateList.addView(row);
         }
-    }
-
-    private void editState(String packId, BluetoothIconState state) {
-        Dialog dialog = new Dialog(activity);
-        LinearLayout root = page(dialog, state.title);
-        ScrollView scroll = new ScrollView(activity);
-        LinearLayout content = column();
-        content.setPadding(activity.dp(20), activity.dp(8), activity.dp(20), activity.dp(16));
-        LinearLayout preview = new LinearLayout(activity);
-        preview.setGravity(Gravity.CENTER);
-        content.addView(preview, new LinearLayout.LayoutParams(-1, activity.dp(108)));
-        EditText xml = input("粘贴 Android Vector XML", true);
-        xml.setTypeface(Typeface.MONOSPACE);
-        xml.setTextSize(12);
-        xml.setMinLines(12);
-        xml.setGravity(Gravity.TOP | Gravity.START);
-        xml.setText(library.pack(packId).icons().get(state).xml());
-        content.addView(xml);
-        Runnable showPreview = () -> {
-            try {
-                RingerVectorXml vector = RingerVectorXml.parse(xml.getText().toString(), activity);
-                Drawable light = vector.newDrawable(activity);
-                Drawable dark = vector.newDrawable(activity);
-                preview.removeAllViews();
-                for (boolean darkBackground : new boolean[]{false, true}) {
-                    LinearLayout tile = new LinearLayout(activity);
-                    tile.setGravity(Gravity.CENTER);
-                    tile.setBackground(activity.roundRect(darkBackground ? 0xFF202124 : 0xFFF4F5F6, 8));
-                    tile.addView(image(darkBackground ? dark : light, darkBackground ? Color.WHITE : Color.BLACK),
-                            new LinearLayout.LayoutParams(activity.dp(72), activity.dp(72)));
-                    preview.addView(tile, new LinearLayout.LayoutParams(0, -1, 1));
-                }
-                xml.setError(null);
-            } catch (IllegalArgumentException invalid) {
-                preview.removeAllViews();
-                xml.setError(invalid.getMessage());
-            }
-        };
-        content.addView(button("生成预览", showPreview), new LinearLayout.LayoutParams(-1, activity.dp(48)));
-        showPreview.run();
-        scroll.addView(content);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        root.addView(button("保存", () -> {
-            try {
-                String source = xml.getText().toString();
-                RingerVectorXml vector = RingerVectorXml.parse(source, activity);
-                vector.newDrawable(activity);
-                persist(library.withPack(library.pack(packId).withIcon(state,
-                        new BluetoothIconLibrary.Icon(source, vector))));
-                dialog.dismiss();
-                activity.showToast("已保存");
-            } catch (IllegalArgumentException invalid) {
-                xml.setError(invalid.getMessage());
-                xml.requestFocus();
-            }
-        }), new LinearLayout.LayoutParams(-1, activity.dp(48)));
-        showPage(dialog, root);
     }
 
     private void showAlert(AlertDialog dialog) {
