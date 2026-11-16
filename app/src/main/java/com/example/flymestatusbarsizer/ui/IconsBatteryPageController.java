@@ -62,7 +62,7 @@ public final class IconsBatteryPageController {
     private static void addVectorDrawableEditorCard(MainActivity activity, LinearLayout root) {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
-        VectorDrawableEditor.addSettingsRow(activity, content);
+        VectorIconLibraryController.addSettingsRow(activity, content);
         root.addView(activity.buildSectionCard("矢量图标编辑器",
                 "解析 Android Vector Drawable 代码，修改属性并保存到图标库。", content),
                 PageViewUtils.matchWrapWithTop(activity, 8));

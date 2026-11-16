@@ -218,8 +218,12 @@ public final class BluetoothIconLibraryEditor {
                 row.addView(arrow, new LinearLayout.LayoutParams(activity.dp(28), -2));
                 activity.setTapClickListener(row, v -> new VectorDrawableEditor(activity).show(
                         pack.icons().get(state).xml(), pack.name() + " · " + state.title,
-                        (xml, vector) -> persist(library.withPack(library.pack(pack.id()).withIcon(state,
-                                new BluetoothIconLibrary.Icon(xml, vector))))));
+                        (xml, vector, onSaved) -> {
+                            persist(library.withPack(library.pack(pack.id()).withIcon(state,
+                                    new BluetoothIconLibrary.Icon(xml, vector))));
+                            onSaved.run();
+                            activity.showToast("已保存");
+                        }, null));
             }
             stateList.addView(row);
         }
