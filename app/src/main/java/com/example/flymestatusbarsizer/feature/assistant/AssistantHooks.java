@@ -142,6 +142,7 @@ public final class AssistantHooks {
     }
 
     public static void refresh() {
+        AssistantGestureHooks.refreshPanels();
         AssistantClient.refresh();
         if (controller != null) controller.refresh();
     }

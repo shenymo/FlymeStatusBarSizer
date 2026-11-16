@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.MessageQueue;
 import android.view.HapticFeedbackConstants;
 import android.view.InputDevice;
 import android.view.KeyEvent;
@@ -39,6 +40,21 @@ final class AssistantGestureHooks {
         Method cancel = AssistantReflection.method(type, "cancelGesture", MotionEvent.class);
         Method pilfer = AssistantReflection.method(type, "pilferPointers");
         Method sendEvent = AssistantReflection.method(type, "sendEvent", int.class, int.class);
+        module.intercept(AssistantReflection.method(type, "onNavBarAttached"), chain -> {
+            Object result = chain.proceed();
+            synchronized (GESTURES) {
+                Gesture gesture = GESTURES.get(chain.getThisObject());
+                if (gesture != null) gesture.handler.post(gesture.syncPanels);
+            }
+            return result;
+        });
+        module.intercept(AssistantReflection.method(type, "onNavBarDetached"), chain -> {
+            synchronized (GESTURES) {
+                Gesture gesture = GESTURES.get(chain.getThisObject());
+                if (gesture != null) gesture.releasePanels();
+            }
+            return chain.proceed();
+        });
         for (Constructor<?> constructor : type.getDeclaredConstructors()) {
             constructor.setAccessible(true);
             module.intercept(constructor, chain -> {
@@ -104,6 +120,15 @@ final class AssistantGestureHooks {
             if (action == MotionEvent.ACTION_MOVE) gesture.updateAnimationProgress();
             return result;
         });
+    }
+
+    static void refreshPanels() {
+        synchronized (GESTURES) {
+            for (Gesture gesture : GESTURES.values()) {
+                gesture.handler.removeCallbacks(gesture.syncPanels);
+                gesture.handler.post(gesture.syncPanels);
+            }
+        }
     }
 
     private static void registerCornerReceiver(Context context) {
@@ -176,6 +201,11 @@ final class AssistantGestureHooks {
         final AssistantGestureActionOverlay actionOverlay;
         final AssistantGestureZoneOverlay zoneOverlay;
         final Method sendEvent;
+        final Runnable syncPanels = this::syncPanels;
+        private final MessageQueue.IdleHandler prewarmPanels = this::prewarmPanels;
+        private boolean prewarmPending;
+        private boolean prepareTaskSwitcher;
+        private boolean prepareAppLauncher;
 
         Gesture(Object owner, Context context, Method cancel, Method pilfer,
                 Method sendEvent, SideGestureActions.Action globalAssistant) {
@@ -191,6 +221,60 @@ final class AssistantGestureHooks {
             this.actionOverlay = new AssistantGestureActionOverlay(context);
             this.zoneOverlay = new AssistantGestureZoneOverlay(context);
             registerCornerReceiver(context);
+            handler.post(syncPanels);
+        }
+
+        void syncPanels() {
+            Object target = owner.get();
+            ModuleConfig config = ModuleConfig.load(context);
+            if (target == null || !ReflectUtils.getBooleanField(target, "mIsAttached", false)
+                    || ReflectUtils.getIntField(target, "mDisplayId", -1) != 0
+                    || !config.enabled || !config.assistantGestureEnabled) {
+                releasePanels();
+                return;
+            }
+            prepareTaskSwitcher = usesPanel(config, SettingsStore.SIDE_GESTURE_ACTION_TASK_SWITCHER);
+            prepareAppLauncher = usesPanel(config, SettingsStore.SIDE_GESTURE_ACTION_APP_LAUNCHER);
+            if (!prepareTaskSwitcher) taskSwitcher.release();
+            if (!prepareAppLauncher) appLauncher.release();
+            if (!prewarmPending && (prepareTaskSwitcher || prepareAppLauncher)) {
+                prewarmPending = true;
+                Looper.getMainLooper().getQueue().addIdleHandler(prewarmPanels);
+            }
+        }
+
+        private boolean prewarmPanels() {
+            prewarmPending = false;
+            if (prepareTaskSwitcher) taskSwitcher.prepare();
+            if (prepareAppLauncher) appLauncher.prepare();
+            return false;
+        }
+
+        private boolean usesPanel(ModuleConfig config, int actionId) {
+            int[][] actions = config.sideGestureMode == SettingsStore.SIDE_GESTURE_MODE_FAN
+                    ? config.sideGestureFanActions : config.sideGestureActions;
+            int tiers = config.sideGestureMode == SettingsStore.SIDE_GESTURE_MODE_FAN ? actions.length
+                    : !config.assistantGestureDistanceSplitEnabled ? 1
+                    : config.assistantGestureFarEnabled ? 3 : 2;
+            for (int tier = 0; tier < tiers; tier++) {
+                for (int action : actions[tier]) if (action == actionId) return true;
+            }
+            if (config.windowModeSideGestureEnabled) {
+                for (int[] tier : config.cornerGestureActions) {
+                    for (int action : tier) if (action == actionId) return true;
+                }
+            }
+            return false;
+        }
+
+        void releasePanels() {
+            handler.removeCallbacks(syncPanels);
+            Looper.getMainLooper().getQueue().removeIdleHandler(prewarmPanels);
+            prewarmPending = false;
+            prepareTaskSwitcher = false;
+            prepareAppLauncher = false;
+            taskSwitcher.release();
+            appLauncher.release();
         }
 
         void begin(MotionEvent event) {

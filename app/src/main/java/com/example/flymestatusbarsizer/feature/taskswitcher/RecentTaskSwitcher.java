@@ -37,11 +37,13 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.flymestatusbarsizer.R;
 import com.example.flymestatusbarsizer.feature.assistant.AssistantPanelBlur;
+import com.example.flymestatusbarsizer.feature.assistant.AppLauncherPanel;
 import com.example.flymestatusbarsizer.feature.assistant.SideGestureActions;
 import com.example.flymestatusbarsizer.feature.onehanded.OneStepTaskAccess;
 import com.example.flymestatusbarsizer.feature.tasks.RecentTaskCard;
@@ -98,7 +100,7 @@ public final class RecentTaskSwitcher {
     }
 
     private static final class TaskEntry {
-        final RecentTaskCard card;
+        RecentTaskCard card;
         String label;
         Drawable icon;
         boolean metadataLoaded;
@@ -127,7 +129,17 @@ public final class RecentTaskSwitcher {
 
     public static SideGestureActions.Action action(Context context) {
         return new SideGestureActions.Action() {
-            private final Popup popup = new Popup(context);
+            private Popup popup;
+
+            @Override public void prepare() {
+                if (popup == null) popup = new Popup(context);
+                popup.prepare();
+            }
+
+            @Override public void release() {
+                if (popup != null) popup.release();
+                popup = null;
+            }
 
             @Override public boolean isReady() {
                 return context != null && context.getSystemService(Context.WINDOW_SERVICE) != null;
@@ -139,6 +151,7 @@ public final class RecentTaskSwitcher {
 
             @Override public void execute(boolean fromLeft, float anchorY, Runnable onSuccess) {
                 if (isReady()) {
+                    if (popup == null) popup = new Popup(context);
                     popup.show(fromLeft, anchorY);
                     if (onSuccess != null) onSuccess.run();
                 }
@@ -168,16 +181,21 @@ public final class RecentTaskSwitcher {
         private final LinearLayout panel;
         private final AssistantPanelBlur panelBlur;
         private final RecyclerView rows;
+        private final RecyclerView.ItemAnimator rowAnimator;
         private final FrameLayout listContainer;
         private final ProgressBar loadingView;
         private final TextView emptyView;
         private final TextView closeAllButton;
         private boolean attached;
+        private boolean visible;
+        private WindowManager.LayoutParams windowParams;
         private boolean closing;
         private boolean closingAll;
         private PendingTaskRemoval pendingTaskRemoval;
-        private boolean loading = true;
-        private boolean secondaryLoading;
+        private boolean loading;
+        private boolean hasSnapshot;
+        private boolean rowsDirty;
+        private List<RecentTaskCard> pendingCards;
         private int taskLoadId;
         private final Map<Integer, Drawable.ConstantState> moduleIconStates = new HashMap<>();
         private final TaskAdapter adapter = new TaskAdapter();
@@ -190,7 +208,8 @@ public final class RecentTaskSwitcher {
                 @Override public void onChange(boolean selfChange) {
                     lockedApps.clear();
                     lockedApps.addAll(FlymeRecentLockState.read(Popup.this.context));
-                    if (isCurrent() && !loading) renderRows();
+                    if (isCurrent()) renderRows();
+                    else rowsDirty = true;
                 }
             };
             darkMode = (context.getResources().getConfiguration().uiMode
@@ -214,6 +233,7 @@ public final class RecentTaskSwitcher {
                 }
             };
             root.setBackgroundColor(Color.TRANSPARENT);
+            root.setVisibility(View.GONE);
             root.setFocusableInTouchMode(true);
             root.setOnClickListener(view -> close());
             root.setOnTouchListener((view, event) -> {
@@ -227,6 +247,7 @@ public final class RecentTaskSwitcher {
             panel.setBackground(panelBackground());
             panel.setElevation(dp(7));
             panel.setOnClickListener(view -> { });
+            panel.setVisibility(View.INVISIBLE);
             panelBlur = new AssistantPanelBlur(panel,
                     context.getResources().getDisplayMetrics().density);
             int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
@@ -242,7 +263,9 @@ public final class RecentTaskSwitcher {
             rows = new RecyclerView(context);
             rows.setLayoutManager(new LinearLayoutManager(context));
             rows.setAdapter(adapter);
-            rows.getItemAnimator().setMoveDuration(120L);
+            rowAnimator = rows.getItemAnimator();
+            rowAnimator.setMoveDuration(120L);
+            rows.setItemAnimator(null);
             rows.setHasFixedSize(true);
             rows.setItemViewCacheSize(4);
             rows.setVerticalScrollBarEnabled(false);
@@ -300,50 +323,86 @@ public final class RecentTaskSwitcher {
             updateListState();
         }
 
-        void show(boolean fromLeft, float anchorY) {
-            this.fromLeft = fromLeft;
-            this.anchorY = anchorY;
+        void prepare() {
+            if (attached) return;
             updatePanelLayout();
-            updateDarkMode(context.getResources().getConfiguration());
-            synchronized (RecentTaskSwitcher.class) {
-                if (active != null && active != this) active.close();
-                active = this;
-            }
-            closeAllButton.setEnabled(!closingAll);
-            if (attached) {
-                closing = false;
-                panel.animate().cancel();
-                alignToGestureAnchor();
-                animateIn();
-                loadTasksAsync();
-                return;
-            }
-            WindowManager.LayoutParams params = buildLayoutParams();
+            if (attachWindow()) loadTasksAsync();
+        }
+
+        private boolean attachWindow() {
+            if (attached) return true;
+            windowParams = buildLayoutParams();
+            windowParams.alpha = 0f;
+            windowParams.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                    | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
             Throwable lastError = null;
             for (int type : WINDOW_TYPES) {
-                params.type = type;
+                windowParams.type = type;
                 try {
-                    windowManager.addView(root, params);
+                    windowManager.addView(root, windowParams);
                     attached = true;
-                    closing = false;
                     context.getContentResolver().registerContentObserver(
                             Settings.System.getUriFor(FlymeRecentLockState.SETTING), false, lockObserver);
                     context.registerReceiver(configurationReceiver,
                             new IntentFilter(Intent.ACTION_CONFIGURATION_CHANGED));
-                    root.requestFocus();
-                    panel.post(() -> {
-                        alignToGestureAnchor();
-                        animateIn();
-                    });
-                    loadTasksAsync();
-                    return;
+                    return true;
                 } catch (Throwable error) {
                     lastError = error;
                     try { windowManager.removeViewImmediate(root); } catch (Throwable ignoredAgain) { }
                 }
             }
             if (lastError != null) Log.w(TAG, "Cannot attach recent task switcher popup", lastError);
-            synchronized (RecentTaskSwitcher.class) { if (active == this) active = null; }
+            return false;
+        }
+
+        void show(boolean fromLeft, float anchorY) {
+            AppLauncherPanel.dismissActivePopup();
+            boolean sideChanged = this.fromLeft != fromLeft;
+            this.fromLeft = fromLeft;
+            this.anchorY = anchorY;
+            if (!attachWindow()) return;
+            synchronized (RecentTaskSwitcher.class) {
+                if (active != null && active != this) active.closeImmediately();
+                active = this;
+            }
+            panel.animate().withEndAction(null).cancel();
+            closing = false;
+            visible = true;
+            windowParams.alpha = 1f;
+            windowParams.flags &= ~(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                    | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
+            windowManager.updateViewLayout(root, windowParams);
+            updatePanelLayout();
+            updateDarkMode(context.getResources().getConfiguration());
+            applyPendingTasks();
+            if (sideChanged || rowsDirty) renderRows();
+            rows.stopScroll();
+            ((LinearLayoutManager) rows.getLayoutManager()).scrollToPositionWithOffset(0, 0);
+            rows.setItemAnimator(rowAnimator);
+            closeAllButton.setEnabled(!closingAll);
+            panel.setVisibility(View.VISIBLE);
+            root.setVisibility(View.VISIBLE);
+            root.requestFocus();
+            panel.removeCallbacks(showAnimation);
+            panel.post(showAnimation);
+            loadTasksAsync();
+            updateListState();
+        }
+
+        private final Runnable showAnimation = () -> {
+            if (!isCurrent()) return;
+            alignToGestureAnchor();
+            animateIn();
+        };
+
+        private void prepareLayout() {
+            if (visible) return;
+            int width = context.getResources().getDisplayMetrics().widthPixels;
+            int height = context.getResources().getDisplayMetrics().heightPixels;
+            root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+            root.layout(0, 0, width, height);
+            rowAnimator.endAnimations();
         }
 
         private void updatePanelLayout() {
@@ -408,18 +467,87 @@ public final class RecentTaskSwitcher {
         }
 
         private void loadTasksAsync() {
+            if (loading || pendingTaskRemoval != null || closingAll) return;
             int loadId = ++taskLoadId;
             loading = true;
-            secondaryLoading = false;
-            entries.clear();
-            adapter.notifyDataSetChanged();
-            updateListState();
+            if (visible) updateListState();
             WORKER.execute(() -> {
-                List<RecentTaskCard> cards = new ArrayList<>();
-                try { cards.addAll(getTaskAccess(context).currentUserRecentTasks()); }
-                catch (Exception ignored) { }
-                MAIN.post(() -> showFirstBatch(cards, loadId));
+                List<RecentTaskCard> cards;
+                try {
+                    OneStepTaskAccess access = getTaskAccess(context);
+                    cards = access.currentUserRecentTasks();
+                    cards.addAll(access.secondaryTasks(cards));
+                    for (int i = 0; i < Math.min(9, cards.size()); i++)
+                        appMetadata(context, cards.get(i));
+                } catch (Exception error) {
+                    MAIN.post(() -> {
+                        if (loadId != taskLoadId) return;
+                        loading = false;
+                        if (visible) updateListState();
+                    });
+                    return;
+                }
+                MAIN.post(() -> {
+                    if (!attached || loadId != taskLoadId) return;
+                    loading = false;
+                    pendingCards = cards;
+                    if (pendingTaskRemoval != null || closingAll) return;
+                    if (isCurrent() || !hasSnapshot) {
+                        applyPendingTasks();
+                        if (visible) updateListState();
+                        else prepareLayout();
+                    }
+                });
             });
+        }
+
+        private void applyPendingTasks() {
+            if (pendingCards == null || pendingTaskRemoval != null || closingAll) return;
+            List<TaskEntry> previous = new ArrayList<>(entries);
+            List<TaskEntry> next = new ArrayList<>(pendingCards.size());
+            for (RecentTaskCard card : pendingCards) {
+                TaskEntry entry = null;
+                for (TaskEntry old : previous) {
+                    if (old.card.sameTask(card) && old.card.component.equals(card.component)
+                            && old.card.description.equals(card.description)
+                            && old.card.lockPackageName.equals(card.lockPackageName)) {
+                        entry = old;
+                        entry.card = card;
+                        break;
+                    }
+                }
+                if (entry == null) {
+                    entry = new TaskEntry(card);
+                    AppMetadata metadata;
+                    synchronized (APP_METADATA) {
+                        metadata = APP_METADATA.get(card.userId + ":"
+                                + card.component.flattenToShortString());
+                    }
+                    if (metadata != null) {
+                        entry.label = metadata.label;
+                        entry.icon = metadata.icon;
+                        entry.metadataLoaded = true;
+                    }
+                }
+                next.add(entry);
+            }
+            DiffUtil.DiffResult changes = DiffUtil.calculateDiff(new DiffUtil.Callback() {
+                @Override public int getOldListSize() { return previous.size(); }
+                @Override public int getNewListSize() { return next.size(); }
+                @Override public boolean areItemsTheSame(int oldIndex, int newIndex) {
+                    RecentTaskCard old = previous.get(oldIndex).card;
+                    RecentTaskCard current = next.get(newIndex).card;
+                    return old.userId == current.userId && old.taskId == current.taskId;
+                }
+                @Override public boolean areContentsTheSame(int oldIndex, int newIndex) {
+                    return previous.get(oldIndex) == next.get(newIndex);
+                }
+            });
+            entries.clear();
+            entries.addAll(next);
+            pendingCards = null;
+            hasSnapshot = true;
+            changes.dispatchUpdatesTo(adapter);
         }
 
         private static OneStepTaskAccess getTaskAccess(Context context) throws ReflectiveOperationException {
@@ -463,22 +591,20 @@ public final class RecentTaskSwitcher {
 
         private boolean isCurrent() {
             synchronized (RecentTaskSwitcher.class) {
-                return active == this && attached && !closing;
+                return active == this && attached && visible && !closing;
             }
         }
 
         private void renderRows() {
+            rowsDirty = false;
             adapter.notifyDataSetChanged();
             updateListState();
         }
 
-        private void renderRows(boolean animateRows) {
-            renderRows();
-        }
-
         private void updateListState() {
-            loadingView.setVisibility(loading && entries.isEmpty() ? View.VISIBLE : View.GONE);
-            emptyView.setVisibility(!loading && entries.isEmpty() ? View.VISIBLE : View.GONE);
+            loadingView.setVisibility(visible && loading && !hasSnapshot ? View.VISIBLE : View.GONE);
+            emptyView.setVisibility((hasSnapshot || !loading) && entries.isEmpty()
+                    ? View.VISIBLE : View.GONE);
             rows.setVisibility(entries.isEmpty() ? View.INVISIBLE : View.VISIBLE);
         }
 
@@ -583,10 +709,23 @@ public final class RecentTaskSwitcher {
 
             @Override public void onBindViewHolder(TaskViewHolder holder, int position) {
                 TaskEntry entry = entries.get(position);
+                if (!entry.metadataLoaded) {
+                    AppMetadata cached;
+                    synchronized (APP_METADATA) {
+                        cached = APP_METADATA.get(entry.card.userId + ":"
+                                + entry.card.component.flattenToShortString());
+                    }
+                    if (cached != null) {
+                        entry.label = cached.label;
+                        entry.icon = cached.icon;
+                        entry.metadataLoaded = true;
+                    }
+                }
                 holder.entry = entry;
                 holder.row.setAlpha(1f);
                 holder.row.setTranslationX(0f);
                 holder.row.setEnabled(true);
+                holder.miniWindow.setEnabled(true);
                 holder.name.setText(entry.label);
                 holder.row.setBackground(new RippleDrawable(
                         ColorStateList.valueOf(paletteColor(0x22287a78, 0x2877c6c1)), null, null));
@@ -637,17 +776,17 @@ public final class RecentTaskSwitcher {
         private void requestMetadata(TaskEntry entry) {
             if (!isCurrent() || entry.metadataLoaded || entry.metadataLoading) return;
             entry.metadataLoading = true;
-            int loadId = taskLoadId;
             WORKER.execute(() -> {
                 AppMetadata metadata = appMetadata(context, entry.card);
                 MAIN.post(() -> {
-                    if (!isCurrent() || loadId != taskLoadId || !entries.contains(entry)) return;
                     entry.metadataLoading = false;
+                    if (!attached || !entries.contains(entry)) return;
                     entry.metadataLoaded = true;
                     entry.label = metadata.label;
                     entry.icon = metadata.icon;
                     int index = entries.indexOf(entry);
-                    if (index >= 0) adapter.notifyItemChanged(index);
+                    if (isCurrent() && index >= 0) adapter.notifyItemChanged(index);
+                    else rowsDirty = true;
                 });
             });
         }
@@ -800,6 +939,9 @@ public final class RecentTaskSwitcher {
             }
             PendingTaskRemoval pending = new PendingTaskRemoval(target, row, entryIndex);
             pendingTaskRemoval = pending;
+            taskLoadId++;
+            loading = false;
+            pendingCards = null;
             row.setEnabled(false);
             row.animate().alpha(0f).translationX(fromLeft ? -dp(6) : dp(6))
                     .setDuration(140L)
@@ -830,7 +972,12 @@ public final class RecentTaskSwitcher {
                 boolean taskFailed = failed;
                 boolean reload = needsReload;
                 MAIN.post(() -> {
-                    if (!isCurrent() || pendingTaskRemoval != pending) return;
+                    if (!attached) return;
+                    if (!isCurrent() || pendingTaskRemoval != pending) {
+                        if (pendingTaskRemoval == pending) pendingTaskRemoval = null;
+                        loadTasksAsync();
+                        return;
+                    }
                     pending.failed = taskFailed;
                     pending.reload = reload;
                     pending.resultReady = true;
@@ -854,6 +1001,7 @@ public final class RecentTaskSwitcher {
                 loadTasksAsync();
             } else {
                 adapter.notifyItemRemoved(pending.entryIndex);
+                applyPendingTasks();
                 updateListState();
             }
         }
@@ -885,6 +1033,9 @@ public final class RecentTaskSwitcher {
             if (closingAll || pendingTaskRemoval != null) return;
             closingAll = true;
             closeAllButton.setEnabled(false);
+            taskLoadId++;
+            loading = false;
+            pendingCards = null;
             WORKER.execute(() -> {
                 boolean failed;
                 try {
@@ -897,61 +1048,21 @@ public final class RecentTaskSwitcher {
                 boolean cleanupFailed = failed;
                 MAIN.post(() -> {
                     closingAll = false;
-                    if (!isCurrent()) return;
-                    closeAllButton.setEnabled(true);
+                    if (!attached) return;
+                    if (isCurrent()) closeAllButton.setEnabled(true);
                     loadTasksAsync();
-                    if (cleanupFailed) {
+                    if (cleanupFailed && isCurrent()) {
                         Toast.makeText(context, "全部任务关闭失败", Toast.LENGTH_SHORT).show();
                     }
                 });
             });
         }
 
-        private void showFirstBatch(List<RecentTaskCard> loaded, int loadId) {
-            if (!isCurrent() || loadId != taskLoadId) return;
-            appendEntries(loaded);
-            loading = loaded.isEmpty();
-            updateListState();
-            loadSecondaryTasks(loadId);
-        }
-
-        private void loadSecondaryTasks(int loadId) {
-            if (secondaryLoading || !isCurrent() || loadId != taskLoadId) return;
-            secondaryLoading = true;
-            List<RecentTaskCard> existing = new ArrayList<>();
-            for (TaskEntry entry : entries) existing.add(entry.card);
-            WORKER.execute(() -> {
-                List<RecentTaskCard> loaded = new ArrayList<>();
-                try {
-                    loaded.addAll(getTaskAccess(context).secondaryTasks(existing));
-                } catch (Exception ignored) { }
-                MAIN.post(() -> {
-                    if (!isCurrent() || loadId != taskLoadId) return;
-                    secondaryLoading = false;
-                    appendEntries(loaded);
-                    loading = false;
-                    updateListState();
-                });
-            });
-        }
-
-        private void appendEntries(List<RecentTaskCard> cards) {
-            if (cards == null || cards.isEmpty()) return;
-            int start = entries.size();
-            for (RecentTaskCard card : cards) {
-                boolean duplicate = false;
-                for (TaskEntry entry : entries) {
-                    if (entry.card.sameTask(card)) { duplicate = true; break; }
-                }
-                if (!duplicate) entries.add(new TaskEntry(card));
-            }
-            if (entries.size() > start) adapter.notifyItemRangeInserted(start, entries.size() - start);
-        }
-
         private void close() {
-            if (!attached || closing) return;
+            if (!visible || closing) return;
             closing = true;
-            panel.animate().cancel();
+            panel.removeCallbacks(showAnimation);
+            panel.animate().withEndAction(null).cancel();
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
             panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), anchorY - panel.getTop())));
             panel.animate().scaleX(0.08f).scaleY(0.28f).alpha(0.9f)
@@ -961,31 +1072,63 @@ public final class RecentTaskSwitcher {
         }
 
         private void closeImmediately() {
-            if (!attached) {
-                synchronized (RecentTaskSwitcher.class) { if (active == this) active = null; }
-                return;
-            }
-            closing = true;
-            panel.animate().cancel();
-            finishClose();
+            panel.removeCallbacks(showAnimation);
+            panel.animate().withEndAction(null).cancel();
+            if (attached) finishClose();
         }
 
         private void finishClose() {
-            if (!attached) {
-                closing = false;
-                synchronized (RecentTaskSwitcher.class) { if (active == this) active = null; }
-                return;
+            visible = false;
+            closing = false;
+            panel.removeCallbacks(showAnimation);
+            panel.animate().withEndAction(null).cancel();
+            rows.stopScroll();
+            root.cancelPendingInputEvents();
+            rowAnimator.endAnimations();
+            rows.setItemAnimator(null);
+            for (int i = 0; i < rows.getChildCount(); i++) {
+                TaskViewHolder holder = (TaskViewHolder) rows.getChildViewHolder(rows.getChildAt(i));
+                holder.row.animate().withEndAction(null).cancel();
+                holder.actionButton.animate().cancel();
+                holder.miniWindow.animate().cancel();
+                holder.row.setAlpha(1f);
+                holder.row.setTranslationX(0f);
+                holder.row.setEnabled(true);
+                holder.miniWindow.setEnabled(true);
+                holder.actionButton.setScaleX(1f);
+                holder.actionButton.setScaleY(1f);
+                holder.miniWindow.setScaleX(1f);
+                holder.miniWindow.setScaleY(1f);
             }
+            closeAllButton.animate().cancel();
+            closeAllButton.setScaleX(1f);
+            closeAllButton.setScaleY(1f);
+            pendingTaskRemoval = null;
+            loadingView.setVisibility(View.GONE);
             panelBlur.stop();
-            context.getContentResolver().unregisterContentObserver(lockObserver);
-            context.unregisterReceiver(configurationReceiver);
+            panel.setVisibility(View.INVISIBLE);
+            root.setVisibility(View.GONE);
+            root.clearFocus();
+            windowParams.alpha = 0f;
+            windowParams.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                    | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+            windowManager.updateViewLayout(root, windowParams);
+            synchronized (RecentTaskSwitcher.class) { if (active == this) active = null; }
+        }
+
+        private void release() {
+            closeImmediately();
+            taskLoadId++;
+            loading = false;
+            panelBlur.stop();
             if (attached) {
-                try { windowManager.removeViewImmediate(root); }
-                catch (Throwable ignored) { }
+                context.getContentResolver().unregisterContentObserver(lockObserver);
+                context.unregisterReceiver(configurationReceiver);
+                windowManager.removeViewImmediate(root);
                 attached = false;
             }
-            closing = false;
-            synchronized (RecentTaskSwitcher.class) { if (active == this) active = null; }
+            entries.clear();
+            pendingCards = null;
         }
 
         private GradientDrawable background(int color, float radius, int stroke) {

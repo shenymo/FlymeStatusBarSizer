@@ -12,6 +12,8 @@ import android.content.pm.PackageManager;
 import android.content.pm.ShortcutInfo;
 import android.content.res.Configuration;
 import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.Drawable;
@@ -25,6 +27,7 @@ import android.os.Looper;
 import android.os.Process;
 import android.os.UserHandle;
 import android.util.Log;
+import android.util.LruCache;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
@@ -60,7 +63,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /** Compact app search panel opened by a side gesture. */
-final class AppLauncherPanel {
+public final class AppLauncherPanel {
     private static final int[] WINDOW_TYPES = {2041, 2017, 2040};
     private static final String TAG = "FlymeAppLauncher";
     private static final int FLAG_MATCH_PINNED_BY_ANY_LAUNCHER = 1 << 10;
@@ -68,6 +71,7 @@ final class AppLauncherPanel {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final long LONG_PRESS_MS = 800L;
     private static final long CACHE_REFRESH_DELAY_MS = 300L;
+    private static final int ICON_CACHE_BYTES = 4 * 1024 * 1024;
     private static ExecutorService worker(String name) {
         return Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(runnable, name);
@@ -83,7 +87,9 @@ final class AppLauncherPanel {
     private static final Object CACHE_LOCK = new Object();
     private static volatile List<AppEntry> cachedApps;
     private static final List<Popup> pendingPopups = new ArrayList<>();
-    private static boolean receiverRegistered;
+    private static int receiverUsers;
+    private static BroadcastReceiver packageReceiver;
+    private static Context packageReceiverContext;
     private static LauncherApps.Callback launcherAppsCallback;
     private static final Runnable REFRESH_ACTIVE_POPUP = AppLauncherPanel::refreshActivePopup;
     private static boolean indexLoading;
@@ -93,10 +99,18 @@ final class AppLauncherPanel {
     private AppLauncherPanel() { }
 
     static SideGestureActions.Action action(Context context) {
-        ensurePackageReceiver(context);
-        warmupApps(context);
         return new SideGestureActions.Action() {
-            private final Popup popup = new Popup(context);
+            private Popup popup;
+
+            @Override public void prepare() {
+                if (popup == null) popup = new Popup(context);
+                popup.prepare();
+            }
+
+            @Override public void release() {
+                if (popup != null) popup.release();
+                popup = null;
+            }
 
             @Override public boolean isReady() {
                 return context != null && context.getSystemService(Context.WINDOW_SERVICE) != null;
@@ -108,6 +122,7 @@ final class AppLauncherPanel {
 
             @Override public void execute(boolean fromLeft, float anchorY, Runnable onSuccess) {
                 if (isReady()) {
+                    if (popup == null) popup = new Popup(context);
                     popup.show(fromLeft, anchorY);
                     if (onSuccess != null) onSuccess.run();
                 }
@@ -117,10 +132,11 @@ final class AppLauncherPanel {
 
     private static void ensurePackageReceiver(Context context) {
         synchronized (CACHE_LOCK) {
-            if (receiverRegistered) return;
+            if (receiverUsers++ > 0) return;
             Context appContext = context.getApplicationContext();
             if (appContext != null) context = appContext;
-            BroadcastReceiver receiver = new BroadcastReceiver() {
+            packageReceiverContext = context;
+            packageReceiver = new BroadcastReceiver() {
                 @Override public void onReceive(Context receiverContext, Intent intent) {
                     invalidateCache();
                 }
@@ -131,9 +147,9 @@ final class AppLauncherPanel {
             filter.addAction(Intent.ACTION_PACKAGE_REPLACED);
             filter.addDataScheme("package");
             if (Build.VERSION.SDK_INT >= 33) {
-                context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED);
+                context.registerReceiver(packageReceiver, filter, Context.RECEIVER_EXPORTED);
             } else {
-                context.registerReceiver(receiver, filter);
+                context.registerReceiver(packageReceiver, filter);
             }
             LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
             if (launcherApps != null) {
@@ -162,8 +178,23 @@ final class AppLauncherPanel {
                 };
                 launcherApps.registerCallback(launcherAppsCallback, MAIN);
             }
-            receiverRegistered = true;
         }
+    }
+
+    private static void releasePackageReceiver() {
+        synchronized (CACHE_LOCK) {
+            if (--receiverUsers > 0) return;
+            packageReceiverContext.unregisterReceiver(packageReceiver);
+            LauncherApps launcherApps = packageReceiverContext.getSystemService(LauncherApps.class);
+            if (launcherApps != null && launcherAppsCallback != null)
+                launcherApps.unregisterCallback(launcherAppsCallback);
+            packageReceiver = null;
+            packageReceiverContext = null;
+            launcherAppsCallback = null;
+            cachedApps = null;
+            cacheGeneration++;
+        }
+        MAIN.removeCallbacks(REFRESH_ACTIVE_POPUP);
     }
 
     private static void invalidateCache() {
@@ -184,17 +215,13 @@ final class AppLauncherPanel {
         }
     }
 
-    private static void warmupApps(Context context) {
-        Popup.requestApps(context, null, 0);
-    }
-
     static void refreshActivePopup(Configuration configuration) {
         Popup popup;
         synchronized (AppLauncherPanel.class) { popup = active; }
         if (popup != null) popup.updateDarkMode(configuration);
     }
 
-    static void dismissActivePopup() {
+    public static void dismissActivePopup() {
         Popup popup;
         synchronized (AppLauncherPanel.class) { popup = active; }
         if (popup != null) popup.closeImmediately();
@@ -332,7 +359,11 @@ final class AppLauncherPanel {
         private final List<TextView> keyboardKeys = new ArrayList<>();
         private final List<String> query = new ArrayList<>();
         private final List<AppEntry> entries = new ArrayList<>();
-        private final Map<AppEntry, Drawable> iconCache = new HashMap<>();
+        private final LruCache<AppEntry, Bitmap> iconCache = new LruCache<>(ICON_CACHE_BYTES) {
+            @Override protected int sizeOf(AppEntry entry, Bitmap icon) {
+                return icon.getAllocationByteCount();
+            }
+        };
         private final Set<AppEntry> iconsLoading = new HashSet<>();
         private final Object searchLock = new Object();
         private SearchRequest pendingSearch;
@@ -341,6 +372,8 @@ final class AppLauncherPanel {
         private long iconCacheGeneration = -1;
         private boolean darkMode;
         private boolean attached;
+        private boolean visible;
+        private WindowManager.LayoutParams windowParams;
         private boolean closing;
         private boolean loading;
         private boolean indexRequested;
@@ -352,6 +385,7 @@ final class AppLauncherPanel {
         private boolean holdCanceled;
         Popup(Context context) {
             this.context = context;
+            ensurePackageReceiver(context);
             darkMode = isNightMode(context.getResources().getConfiguration());
             windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
 
@@ -370,6 +404,7 @@ final class AppLauncherPanel {
                 }
             };
             root.setBackgroundColor(Color.TRANSPARENT);
+            root.setVisibility(View.GONE);
             root.setFocusableInTouchMode(true);
             root.setOnTouchListener((view, event) -> {
                 if (event.getActionMasked() == MotionEvent.ACTION_OUTSIDE
@@ -383,6 +418,7 @@ final class AppLauncherPanel {
             panel.setBackground(panelBackground());
             panel.setElevation(dp(7));
             panel.setOnClickListener(view -> { });
+            panel.setVisibility(View.INVISIBLE);
             int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
             int width = Math.min(dp(193), Math.max(dp(165), screenWidth - dp(22)));
             FrameLayout.LayoutParams panelParams = new FrameLayout.LayoutParams(width,
@@ -439,49 +475,83 @@ final class AppLauncherPanel {
             panel.addView(keyboard, new LinearLayout.LayoutParams(-1, dp(108)));
         }
 
-        void show(boolean fromLeft, float anchorY) {
-            this.fromLeft = fromLeft;
-            this.anchorY = anchorY;
+        void prepare() {
+            if (attached) return;
             updatePanelLayout();
-            updateDarkMode(context.getResources().getConfiguration());
-            synchronized (AppLauncherPanel.class) {
-                if (active != null && active != this) active.close();
-                active = this;
-            }
-            query.clear();
-            queryGeneration++;
-            warmupApps(context);
-            updateSearch();
+            if (!attachWindow()) return;
             ensureAppsLoaded();
-            if (attached) {
-                closing = false;
-                panel.animate().cancel();
-                alignToGestureAnchor();
-                animateIn();
-                return;
-            }
-            WindowManager.LayoutParams params = buildLayoutParams();
+            int width = context.getResources().getDisplayMetrics().widthPixels;
+            int height = context.getResources().getDisplayMetrics().heightPixels;
+            root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+            root.layout(0, 0, width, height);
+        }
+
+        private boolean attachWindow() {
+            if (attached) return true;
+            windowParams = buildLayoutParams();
+            windowParams.alpha = 0f;
+            windowParams.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                    | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
             Throwable lastError = null;
             for (int type : WINDOW_TYPES) {
-                params.type = type;
+                windowParams.type = type;
                 try {
-                    windowManager.addView(root, params);
+                    windowManager.addView(root, windowParams);
                     attached = true;
-                    closing = false;
-                    root.requestFocus();
-                    panel.post(() -> {
-                        alignToGestureAnchor();
-                        animateIn();
-                        panel.postOnAnimation(panelBlur::start);
-                    });
-                    return;
+                    return true;
                 } catch (Throwable error) {
                     lastError = error;
                     try { windowManager.removeViewImmediate(root); } catch (Throwable ignoredAgain) { }
                 }
             }
             if (lastError != null) Log.w(TAG, "Cannot attach app launcher popup", lastError);
-            synchronized (AppLauncherPanel.class) { if (active == this) active = null; }
+            return false;
+        }
+
+        void show(boolean fromLeft, float anchorY) {
+            com.example.flymestatusbarsizer.feature.taskswitcher.RecentTaskSwitcher.dismissActivePopup();
+            this.fromLeft = fromLeft;
+            this.anchorY = anchorY;
+            if (!attachWindow()) return;
+            synchronized (AppLauncherPanel.class) {
+                if (active != null && active != this) active.closeImmediately();
+                active = this;
+            }
+            panel.animate().withEndAction(null).cancel();
+            closing = false;
+            visible = true;
+            windowParams.alpha = 1f;
+            windowParams.flags &= ~(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                    | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
+            windowManager.updateViewLayout(root, windowParams);
+            updatePanelLayout();
+            updateDarkMode(context.getResources().getConfiguration());
+            query.clear();
+            queryGeneration++;
+            updateSearch();
+            ensureAppsLoaded();
+            scheduleSearch();
+            panel.setVisibility(View.VISIBLE);
+            root.setVisibility(View.VISIBLE);
+            root.requestFocus();
+            panel.removeCallbacks(showAnimation);
+            panel.post(showAnimation);
+        }
+
+        private final Runnable showAnimation = this::showPanel;
+        private final Runnable startBlur = this::startPanelBlur;
+
+        private void showPanel() {
+            if (!isCurrent()) return;
+            alignToGestureAnchor();
+            animateIn();
+            panel.removeCallbacks(startBlur);
+            panel.postOnAnimation(startBlur);
+        }
+
+        private void startPanelBlur() {
+            if (isCurrent()) panelBlur.start();
         }
 
         private void updatePanelLayout() {
@@ -529,23 +599,28 @@ final class AppLauncherPanel {
             indexRequested = true;
             loading = true;
             int requestId = ++loadRequestId;
-            showMessage("正在准备应用");
+            if (visible && !query.isEmpty()) showMessage("正在准备应用");
             requestApps(context, this, requestId);
         }
 
         private void setApps(List<AppEntry> loaded, int requestId, long generation) {
+            if (!attached || requestId != loadRequestId) return;
             synchronized (CACHE_LOCK) {
-                if (generation != cacheGeneration) return;
+                if (generation != cacheGeneration) {
+                    loading = false;
+                    indexRequested = false;
+                    if (isCurrent()) ensureAppsLoaded();
+                    return;
+                }
             }
-            if (!isCurrent() || requestId != loadRequestId) return;
             if (iconCacheGeneration != generation) {
-                iconCache.clear();
+                iconCache.evictAll();
                 iconCacheGeneration = generation;
             }
             entries.clear();
             entries.addAll(loaded);
             loading = false;
-            scheduleSearch();
+            if (isCurrent()) scheduleSearch();
         }
 
         private static void requestApps(Context context, Popup popup, int requestId) {
@@ -671,7 +746,7 @@ final class AppLauncherPanel {
 
         private void refreshAfterPackageChange() {
             entries.clear();
-            iconCache.clear();
+            iconCache.evictAll();
             iconsLoading.clear();
             indexRequested = false;
             loading = false;
@@ -740,10 +815,9 @@ final class AppLauncherPanel {
         }
 
         private void bindIcon(ImageView image, AppEntry entry) {
-            Drawable cached = iconCache.get(entry);
+            Bitmap cached = iconCache.get(entry);
             if (cached != null) {
-                image.setImageDrawable(cached.getConstantState() == null ? cached
-                        : cached.getConstantState().newDrawable(context.getResources()).mutate());
+                image.setImageBitmap(cached);
                 return;
             }
             image.setImageDrawable(null);
@@ -751,6 +825,15 @@ final class AppLauncherPanel {
             long requestedGeneration = iconCacheGeneration;
             ICON_WORKER.execute(() -> {
                 Drawable icon = entry.loadIcon(context);
+                Bitmap bitmap = null;
+                if (icon != null) {
+                    int size = dp(34);
+                    bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+                    bitmap.setDensity(context.getResources().getDisplayMetrics().densityDpi);
+                    icon.setBounds(0, 0, size, size);
+                    icon.draw(new Canvas(bitmap));
+                }
+                Bitmap loaded = bitmap;
                 MAIN.post(() -> {
                     iconsLoading.remove(entry);
                     boolean currentGeneration;
@@ -758,10 +841,10 @@ final class AppLauncherPanel {
                         currentGeneration = requestedGeneration == iconCacheGeneration
                                 && requestedGeneration == cacheGeneration;
                     }
-                    if (icon != null && currentGeneration) {
-                        iconCache.put(entry, icon);
+                    if (loaded != null && currentGeneration) {
+                        iconCache.put(entry, loaded);
                         int position = adapter.indexOf(entry);
-                        if (position >= 0) adapter.notifyItemChanged(position);
+                        if (isCurrent() && position >= 0) adapter.notifyItemChanged(position);
                     }
                 });
             });
@@ -888,7 +971,14 @@ final class AppLauncherPanel {
         private void cancelHold() {
             if (holdRunnable != null) MAIN.removeCallbacks(holdRunnable);
             if (holdIcon != null) holdIcon.animate().cancel();
-            if (holdIcon != null) holdIcon.animate().scaleX(1f).scaleY(1f).setDuration(100L).start();
+            if (holdIcon != null) {
+                if (isCurrent()) {
+                    holdIcon.animate().scaleX(1f).scaleY(1f).setDuration(100L).start();
+                } else {
+                    holdIcon.setScaleX(1f);
+                    holdIcon.setScaleY(1f);
+                }
+            }
             holdRunnable = null;
             holdView = null;
             holdIcon = null;
@@ -940,6 +1030,9 @@ final class AppLauncherPanel {
         }
 
         private void ensureAppsLoaded() {
+            synchronized (CACHE_LOCK) {
+                if (!loading && iconCacheGeneration != cacheGeneration) indexRequested = false;
+            }
             if (!indexRequested) loadAppsAsync();
         }
 
@@ -985,13 +1078,14 @@ final class AppLauncherPanel {
         }
 
         private void close() {
-            if (!attached || closing) return;
+            if (!visible || closing) return;
             closing = true;
-            loading = false;
-            indexRequested = false;
-            loadRequestId++;
+            queryGeneration++;
+            synchronized (searchLock) { pendingSearch = null; }
             cancelHold();
-            panel.animate().cancel();
+            panel.removeCallbacks(showAnimation);
+            panel.removeCallbacks(startBlur);
+            panel.animate().withEndAction(null).cancel();
             panel.setPivotX(fromLeft ? 0f : panel.getWidth());
             panel.setPivotY(Math.max(0f, Math.min(panel.getHeight(), anchorY - panel.getTop())));
             panel.animate().scaleX(0.08f).scaleY(0.28f).alpha(0.9f)
@@ -1001,35 +1095,64 @@ final class AppLauncherPanel {
         }
 
         private void closeImmediately() {
-            loading = false;
-            indexRequested = false;
-            loadRequestId++;
-            if (!attached) {
-                synchronized (AppLauncherPanel.class) { if (active == this) active = null; }
-                return;
-            }
-            closing = true;
-            cancelHold();
-            panel.animate().cancel();
-            finishClose();
+            panel.removeCallbacks(showAnimation);
+            panel.removeCallbacks(startBlur);
+            panel.animate().withEndAction(null).cancel();
+            if (attached) finishClose();
         }
 
         private void finishClose() {
-            if (!attached) {
-                closing = false;
-                synchronized (AppLauncherPanel.class) { if (active == this) active = null; }
-                return;
+            visible = false;
+            closing = false;
+            queryGeneration++;
+            synchronized (searchLock) { pendingSearch = null; }
+            cancelHold();
+            panel.removeCallbacks(showAnimation);
+            panel.removeCallbacks(startBlur);
+            panel.animate().withEndAction(null).cancel();
+            resultGrid.stopScroll();
+            root.cancelPendingInputEvents();
+            for (int i = 0; i < resultGrid.getChildCount(); i++) {
+                AppHolder holder = (AppHolder) resultGrid.getChildViewHolder(resultGrid.getChildAt(i));
+                holder.icon.animate().cancel();
+                holder.icon.setScaleX(1f);
+                holder.icon.setScaleY(1f);
+            }
+            for (TextView key : keyboardKeys) {
+                key.animate().cancel();
+                key.setScaleX(1f);
+                key.setScaleY(1f);
             }
             panelBlur.stop();
-            try { windowManager.removeViewImmediate(root); } catch (Throwable ignored) { }
-            attached = false;
-            closing = false;
-            synchronized (CACHE_LOCK) { pendingPopups.remove(this); }
+            panel.setVisibility(View.INVISIBLE);
+            root.setVisibility(View.GONE);
+            root.clearFocus();
+            windowParams.alpha = 0f;
+            windowParams.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                    | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+            windowManager.updateViewLayout(root, windowParams);
             synchronized (AppLauncherPanel.class) { if (active == this) active = null; }
         }
 
+        private void release() {
+            closeImmediately();
+            loadRequestId++;
+            loading = false;
+            panelBlur.stop();
+            synchronized (CACHE_LOCK) { pendingPopups.remove(this); }
+            if (attached) {
+                windowManager.removeViewImmediate(root);
+                attached = false;
+            }
+            iconCache.evictAll();
+            entries.clear();
+            releasePackageReceiver();
+        }
+
         private boolean isCurrent() {
-            synchronized (AppLauncherPanel.class) { return active == this && attached && !closing; }
+            synchronized (AppLauncherPanel.class) {
+                return active == this && attached && visible && !closing;
+            }
         }
 
         private boolean isNightMode(Configuration configuration) {

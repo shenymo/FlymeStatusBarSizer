@@ -26,6 +26,8 @@ public final class SideGestureActions {
             "com.fiyme.statusbarsizer.action.CORNER_GESTURE";
     public interface Action {
         boolean isReady();
+        default void prepare() { }
+        default void release() { }
         void execute(boolean fromLeft, Runnable onSuccess);
         default void execute(boolean fromLeft, float anchorY, Runnable onSuccess) {
             execute(fromLeft, onSuccess);
