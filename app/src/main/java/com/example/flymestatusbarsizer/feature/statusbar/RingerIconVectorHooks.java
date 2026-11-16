@@ -124,7 +124,8 @@ public final class RingerIconVectorHooks {
     private static void applyTint(ImageView view, int color) {
         ICON_VIEWS.put(view, color);
         Drawable drawable = view.getDrawable();
-        if (drawable instanceof RingerVectorXml.VectorIcon) {
+        if (drawable instanceof RingerVectorXml.VectorIcon
+                || drawable instanceof RingerVectorXml.NativeIcon) {
             // A previous native color filter would take precedence over the new tint.
             drawable.clearColorFilter();
             drawable.setTintList(ColorStateList.valueOf(color));

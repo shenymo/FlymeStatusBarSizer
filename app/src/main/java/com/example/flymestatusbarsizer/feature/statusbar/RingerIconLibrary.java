@@ -1,6 +1,7 @@
 package com.example.flymestatusbarsizer.feature.statusbar;
 
 import android.content.SharedPreferences;
+import android.content.Context;
 import android.util.LruCache;
 
 import com.example.flymestatusbarsizer.config.SettingsStore;
@@ -41,8 +42,13 @@ public final class RingerIconLibrary {
     }
 
     public static RingerIconLibrary load(SharedPreferences prefs, boolean silent) {
+        return load(prefs, silent, null);
+    }
+
+    public static RingerIconLibrary load(SharedPreferences prefs, boolean silent, Context context) {
         String raw = SettingsStore.readString(prefs, key(silent), "");
-        RingerIconLibrary cached = CACHE.get(raw);
+        String cacheKey = (context == null ? "" : context.getPackageName()) + "\n" + raw;
+        RingerIconLibrary cached = CACHE.get(cacheKey);
         if (cached != null) return cached;
         ArrayList<Entry> entries = new ArrayList<>();
         String selected = "";
@@ -58,7 +64,7 @@ public final class RingerIconLibrary {
                     RingerVectorXml vector = null;
                     String error = null;
                     try {
-                        vector = RingerVectorXml.parse(xml);
+                        vector = RingerVectorXml.parse(xml, context);
                     } catch (IllegalArgumentException invalid) {
                         error = invalid.getMessage();
                     }
@@ -70,11 +76,11 @@ public final class RingerIconLibrary {
             }
         }
         entries.add(0, new Entry(TRIANGLE_ID, "示例：三角形", TRIANGLE_XML,
-                RingerVectorXml.parse(TRIANGLE_XML), null));
+                RingerVectorXml.parse(TRIANGLE_XML, context), null));
         String selectedId = selected;
         if (entries.stream().noneMatch(entry -> entry.id.equals(selectedId) && entry.vector != null)) selected = "";
         RingerIconLibrary library = new RingerIconLibrary(entries, selected);
-        CACHE.put(raw, library);
+        CACHE.put(cacheKey, library);
         return library;
     }
 

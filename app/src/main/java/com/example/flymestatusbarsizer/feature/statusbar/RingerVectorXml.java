@@ -14,6 +14,7 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.Animatable;
 import android.util.LruCache;
 import android.util.Xml;
 
@@ -21,9 +22,11 @@ import androidx.core.graphics.PathParser;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
+import org.xmlpull.v1.XmlSerializer;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.io.StringWriter;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,17 +37,31 @@ public final class RingerVectorXml {
     private static final LruCache<String, RingerVectorXml> CACHE = new LruCache<>(32);
     private final Group root;
     private final float width, height, alpha;
+    private final String xml;
 
-    private RingerVectorXml(Group root, float width, float height, float alpha) {
+    private RingerVectorXml(Group root, float width, float height, float alpha, String xml) {
         this.root = root;
         this.width = width;
         this.height = height;
         this.alpha = alpha;
+        this.xml = xml;
     }
 
     public static RingerVectorXml parse(String xml) {
-        RingerVectorXml cached = CACHE.get(xml);
+        return parse(xml, null);
+    }
+
+    public static RingerVectorXml parse(String xml, Context context) {
+        String cacheKey = (context == null ? "" : context.getPackageName()) + "\n" + xml;
+        RingerVectorXml cached = CACHE.get(cacheKey);
         if (cached != null) return cached;
+        if (xml.contains("<animated-vector") || xml.contains("<aapt:attr")
+                || xml.contains("=\"@") || xml.contains("=\"?")) {
+            validateNativeXml(xml);
+            RingerVectorXml nativeDocument = new RingerVectorXml(null, 24, 24, 1, xml);
+            CACHE.put(cacheKey, nativeDocument);
+            return nativeDocument;
+        }
         try {
             XmlPullParser parser = Xml.newPullParser();
             parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true);
@@ -69,10 +86,6 @@ public final class RingerVectorXml {
                         if (!ANDROID.equals(parser.getAttributeNamespace(i)) || !allowed.contains(name)) {
                             throw new IllegalArgumentException("不支持属性：" + name);
                         }
-                        String value = parser.getAttributeValue(i).trim();
-                        if (value.startsWith("@") || value.startsWith("?")) {
-                            throw new IllegalArgumentException(name + " 不能引用外部资源，请直接填写数值");
-                        }
                     }
                     if (root == null) {
                         if (!"vector".equals(tag) || parser.getDepth() != 1) throw new IllegalArgumentException("根标签必须是 vector");
@@ -81,6 +94,7 @@ public final class RingerVectorXml {
                         if (width <= 0 || height <= 0) throw new IllegalArgumentException("viewportWidth 和 viewportHeight 必须大于 0");
                         for (String dimension : new String[]{"width", "height"}) {
                             String value = attr(parser, dimension, "");
+                            if (value.startsWith("@") || value.startsWith("?")) continue;
                             if (!value.matches("[+]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:dp|dip|px)")) throw new IllegalArgumentException(dimension + " 需填写正数及 dp 或 px 单位");
                             float size = Float.parseFloat(value.replaceAll("[a-z]", ""));
                             if (!Float.isFinite(size) || size <= 0) throw new IllegalArgumentException(dimension + " 必须大于 0");
@@ -94,7 +108,6 @@ public final class RingerVectorXml {
                         root = new Group(new Matrix());
                         groups.push(root);
                     } else if (groups.isEmpty() || "vector".equals(tag)
-                           
                             || parser.getDepth() != groups.size() + 1) {
                         throw new IllegalArgumentException("标签嵌套有误：" + tag);
                     } else if ("group".equals(tag)) {
@@ -164,8 +177,8 @@ public final class RingerVectorXml {
                 }
             }
             if (root == null || paths == 0) throw new IllegalArgumentException("请提供包含 path 的完整 vector XML");
-            RingerVectorXml result = new RingerVectorXml(root, width, height, alpha);
-            CACHE.put(xml, result);
+            RingerVectorXml result = new RingerVectorXml(root, width, height, alpha, xml);
+            CACHE.put(cacheKey, result);
             return result;
         } catch (XmlPullParserException | IOException error) {
             throw new IllegalArgumentException("XML 格式错误：" + error.getMessage(), error);
@@ -181,7 +194,9 @@ public final class RingerVectorXml {
     }
 
     private static float number(XmlPullParser parser, String name, float fallback) {
-        float value = Float.parseFloat(attr(parser, name, Float.toString(fallback)));
+        String raw = attr(parser, name, Float.toString(fallback));
+        if (raw.startsWith("@") || raw.startsWith("?")) return fallback;
+        float value = Float.parseFloat(raw);
         if (!Float.isFinite(value)) throw new IllegalArgumentException(name + " 必须为有限数值");
         return value;
     }
@@ -195,6 +210,7 @@ public final class RingerVectorXml {
     private static int color(XmlPullParser parser, String name, int fallback) {
         String value = attr(parser, name, "");
         if (value.isEmpty()) return fallback;
+        if (value.startsWith("@") || value.startsWith("?")) return fallback;
         if (!value.matches("#[0-9a-fA-F]{3,8}")) throw new IllegalArgumentException(name + " 需填写 #RGB、#ARGB、#RRGGBB 或 #AARRGGBB");
         if (value.length() == 4 || value.length() == 5) {
             StringBuilder expanded = new StringBuilder("#");
@@ -202,6 +218,26 @@ public final class RingerVectorXml {
             value = expanded.toString();
         }
         return Color.parseColor(value);
+    }
+
+    private static void validateNativeXml(String xml) {
+        try {
+            XmlPullParser parser = Xml.newPullParser();
+            parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true);
+            parser.setInput(new StringReader(xml));
+            String root = null;
+            for (int event = parser.next(); event != XmlPullParser.END_DOCUMENT; event = parser.next()) {
+                if (event == XmlPullParser.START_TAG && root == null) root = parser.getName();
+                if (event == XmlPullParser.TEXT && !parser.isWhitespace()) {
+                    throw new IllegalArgumentException("矢量标签中不能包含文本");
+                }
+            }
+            if (!"vector".equals(root) && !"animated-vector".equals(root)) {
+                throw new IllegalArgumentException("根标签必须是 vector 或 animated-vector");
+            }
+        } catch (XmlPullParserException | IOException error) {
+            throw new IllegalArgumentException("XML 格式错误：" + error.getMessage(), error);
+        }
     }
 
     private interface Node {
@@ -277,6 +313,10 @@ public final class RingerVectorXml {
     public float getViewportHeight() { return height; }
 
     public void unionDrawingBounds(RectF bounds) {
+        if (root == null) {
+            bounds.union(0, 0, width, height);
+            return;
+        }
         if (alpha == 0) return;
         Path outline = root.outline();
         Path viewport = new Path();
@@ -288,6 +328,7 @@ public final class RingerVectorXml {
     }
 
     public void drawRaw(Canvas canvas, Paint paint, int color) {
+        if (root == null) return;
         paint.setColorFilter(null);
         paint.setColor(color);
         int save = canvas.save();
@@ -297,7 +338,109 @@ public final class RingerVectorXml {
     }
 
     public Drawable newDrawable(Context context) {
+        if (root == null) {
+            try {
+                XmlPullParser parser = Xml.newPullParser();
+                parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true);
+                parser.setInput(new StringReader(resolveResourceIds(xml, context)));
+                Drawable drawable = Drawable.createFromXml(context.getResources(), parser, context.getTheme());
+                return new NativeIcon(drawable, IconMetrics.resolveSignalBoxHeight(context, 1f));
+            } catch (XmlPullParserException | IOException | RuntimeException error) {
+                throw new IllegalArgumentException("系统无法解析矢量资源：" + error.getMessage(), error);
+            }
+        }
         return new VectorIcon(IconMetrics.resolveSignalBoxHeight(context, 1f));
+    }
+
+    private static String resolveResourceIds(String xml, Context context) throws XmlPullParserException, IOException {
+        XmlPullParser parser = Xml.newPullParser();
+        parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true);
+        parser.setInput(new StringReader(xml));
+        XmlSerializer serializer = Xml.newSerializer();
+        StringWriter output = new StringWriter();
+        serializer.setOutput(output);
+        serializer.startDocument(null, null);
+        for (int event = parser.getEventType(); event != XmlPullParser.END_DOCUMENT; event = parser.next()) {
+            switch (event) {
+                case XmlPullParser.START_TAG -> {
+                    for (int i = 0; i < parser.getNamespaceCount(parser.getDepth()); i++) {
+                        serializer.setPrefix(parser.getNamespacePrefix(i), parser.getNamespaceUri(i));
+                    }
+                    serializer.startTag(parser.getNamespace(), parser.getName());
+                    for (int i = 0; i < parser.getAttributeCount(); i++) {
+                        String value = parser.getAttributeValue(i);
+                        if (value.startsWith("@") || value.startsWith("?")) {
+                            String reference = value.substring(1);
+                            String packageName = context.getPackageName();
+                            int colon = reference.indexOf(':');
+                            if (colon > 0) {
+                                packageName = reference.substring(0, colon);
+                                reference = reference.substring(colon + 1);
+                            }
+                            int slash = reference.indexOf('/');
+                            if (slash > 0) {
+                                int id = context.getResources().getIdentifier(reference.substring(slash + 1),
+                                        reference.substring(0, slash), packageName);
+                                if (id == 0) throw new IllegalArgumentException("找不到资源引用：" + value);
+                                value = (value.startsWith("?") ? "?" : "@")
+                                        + "0x" + Integer.toHexString(id);
+                            }
+                        }
+                        serializer.attribute(parser.getAttributeNamespace(i), parser.getAttributeName(i), value);
+                    }
+                }
+                case XmlPullParser.END_TAG -> serializer.endTag(parser.getNamespace(), parser.getName());
+                case XmlPullParser.TEXT -> serializer.text(parser.getText());
+                case XmlPullParser.CDSECT -> serializer.cdsect(parser.getText());
+                case XmlPullParser.COMMENT -> serializer.comment(parser.getText());
+                case XmlPullParser.PROCESSING_INSTRUCTION -> serializer.processingInstruction(parser.getText());
+                case XmlPullParser.DOCDECL -> serializer.docdecl(parser.getText());
+                default -> { }
+            }
+        }
+        serializer.endDocument();
+        return output.toString();
+    }
+
+    static final class NativeIcon extends Drawable implements Animatable, Drawable.Callback {
+        private final Drawable delegate;
+        private final int size;
+
+        NativeIcon(Drawable delegate, int size) {
+            this.delegate = delegate.mutate();
+            this.size = size;
+            this.delegate.setCallback(this);
+        }
+
+        @Override public void draw(Canvas canvas) {
+            delegate.setBounds(getBounds());
+            delegate.draw(canvas);
+        }
+        @Override protected void onBoundsChange(android.graphics.Rect bounds) { delegate.setBounds(bounds); }
+        @Override public void setAlpha(int alpha) { delegate.setAlpha(alpha); invalidateSelf(); }
+        @Override public int getAlpha() { return delegate.getAlpha(); }
+        @Override public void setColorFilter(ColorFilter filter) { delegate.setColorFilter(filter); invalidateSelf(); }
+        @Override public int getOpacity() { return delegate.getOpacity(); }
+        @Override public int getIntrinsicWidth() { return size; }
+        @Override public int getIntrinsicHeight() { return size; }
+        @Override public boolean isStateful() { return delegate.isStateful(); }
+        @Override protected boolean onStateChange(int[] state) { boolean changed = delegate.setState(state); if (changed) invalidateSelf(); return changed; }
+        @Override public void setTintList(ColorStateList tint) { delegate.setTintList(tint); invalidateSelf(); }
+        @Override public void setTintMode(PorterDuff.Mode mode) { delegate.setTintMode(mode); invalidateSelf(); }
+        @Override public boolean setVisible(boolean visible, boolean restart) {
+            boolean changed = super.setVisible(visible, restart) | delegate.setVisible(visible, restart);
+            if (delegate instanceof Animatable animation) {
+                if (visible && (restart || !animation.isRunning())) animation.start();
+                else if (!visible) animation.stop();
+            }
+            return changed;
+        }
+        @Override public void start() { if (delegate instanceof Animatable animation) animation.start(); }
+        @Override public void stop() { if (delegate instanceof Animatable animation) animation.stop(); }
+        @Override public boolean isRunning() { return delegate instanceof Animatable animation && animation.isRunning(); }
+        @Override public void invalidateDrawable(Drawable who) { invalidateSelf(); }
+        @Override public void scheduleDrawable(Drawable who, Runnable what, long when) { scheduleSelf(what, when); }
+        @Override public void unscheduleDrawable(Drawable who, Runnable what) { unscheduleSelf(what); }
     }
 
     final class VectorIcon extends Drawable {

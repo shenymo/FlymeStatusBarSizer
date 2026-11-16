@@ -28,7 +28,10 @@ public final class VectorDrawableDocument {
     }
 
     private static final Map<String, List<AttributeSpec>> SPECS = specs();
-    private static final String[] TAGS = {"vector", "group", "path", "clip-path"};
+    private static final String AAPT = "http://schemas.android.com/apk/res-auto";
+    private static final String[] TAGS = {"vector", "animated-vector", "group", "path", "clip-path",
+            "target", "objectAnimator", "set", "propertyValuesHolder", "keyframe", "aapt:attr",
+            "gradient", "item"};
     private final Node root;
 
     private VectorDrawableDocument(Node root) {
@@ -57,7 +60,7 @@ public final class VectorDrawableDocument {
             for (int event = parser.next(); event != XmlPullParser.END_DOCUMENT;
                     event = parser.next()) {
                 if (event == XmlPullParser.START_TAG) {
-                    String tag = parser.getName();
+                    String tag = qualifiedTag(parser);
                     if (!isSupportedTag(tag)) {
                         throw new IllegalArgumentException("不支持标签：" + tag);
                     }
@@ -67,22 +70,21 @@ public final class VectorDrawableDocument {
                     if (parser.getDepth() > 1 && root == null) {
                         throw new IllegalArgumentException("根标签必须是 vector");
                     }
-                    if (root == null && !"vector".equals(tag)) {
-                        throw new IllegalArgumentException("根标签必须是 vector");
+                    if (root == null && !"vector".equals(tag) && !"animated-vector".equals(tag)) {
+                        throw new IllegalArgumentException("根标签必须是 vector 或 animated-vector");
                     }
                     Node node = new Node(tag);
                     List<AttributeSpec> allowed = specsFor(tag);
                     for (int i = 0; i < parser.getAttributeCount(); i++) {
                         String name = parser.getAttributeName(i);
-                        if (!ANDROID.equals(parser.getAttributeNamespace(i))
-                                || allowed.stream().noneMatch(spec -> spec.name().equals(name))) {
+                        String namespace = parser.getAttributeNamespace(i);
+                        boolean known = allowed.stream().anyMatch(spec -> spec.name().equals(name));
+                        if (!known && !ANDROID.equals(namespace) && !AAPT.equals(namespace)
+                                && !namespace.isEmpty()) {
                             throw new IllegalArgumentException("不支持属性：" + name);
                         }
                         String value = parser.getAttributeValue(i).trim();
-                        if (value.startsWith("@") || value.startsWith("?")) {
-                            throw new IllegalArgumentException(name + " 不能引用外部资源，请直接填写数值");
-                        }
-                        node.attributes.put(name, value);
+                        node.attributes.put(AAPT.equals(namespace) ? "aapt:" + name : name, value);
                     }
                     if (root == null) {
                         root = node;
@@ -96,18 +98,19 @@ public final class VectorDrawableDocument {
                     stack.push(node);
                     if ("path".equals(tag) || "clip-path".equals(tag)) paths++;
                 } else if (event == XmlPullParser.END_TAG) {
-                    if (stack.isEmpty() || !stack.pop().tag.equals(parser.getName())) {
+                    if (stack.isEmpty() || !stack.pop().tag.equals(qualifiedTag(parser))) {
                         throw new IllegalArgumentException("标签嵌套有误：" + parser.getName());
                     }
                 } else if (event == XmlPullParser.TEXT && !parser.isWhitespace()) {
                     throw new IllegalArgumentException("矢量标签中不能包含文本");
                 }
             }
-            if (root == null || !stack.isEmpty() || paths == 0) {
+            if (root == null || !stack.isEmpty()
+                    || (paths == 0 && !"animated-vector".equals(root.tag))) {
                 throw new IllegalArgumentException("请提供包含 path 的完整 vector XML");
             }
-            if (!"vector".equals(root.tag)) {
-                throw new IllegalArgumentException("根标签必须是 vector");
+            if (!"vector".equals(root.tag) && !"animated-vector".equals(root.tag)) {
+                throw new IllegalArgumentException("根标签必须是 vector 或 animated-vector");
             }
             VectorDrawableDocument document = new VectorDrawableDocument(root);
             RingerVectorXml.parse(document.toXml());
@@ -125,10 +128,20 @@ public final class VectorDrawableDocument {
 
     private static void appendNode(StringBuilder out, Node node, int depth, boolean root) {
         indent(out, depth).append('<').append(node.tag);
-        if (root) out.append(" xmlns:android=\"").append(ANDROID).append('"');
+        if (root) {
+            out.append(" xmlns:android=\"").append(ANDROID).append('"');
+            if (containsAapt(node)) out.append(" xmlns:aapt=\"").append(AAPT).append('"');
+        }
         for (Map.Entry<String, String> attribute : node.attributes.entrySet()) {
-            out.append(" android:").append(attribute.getKey()).append("=\"")
+            String name = attribute.getKey();
+            if ("aapt:attr".equals(node.tag) && "name".equals(name)) {
+                out.append(" name=\"").append(escape(attribute.getValue())).append('"');
+            } else if (name.contains(":")) {
+                out.append(' ').append(name).append("=\"").append(escape(attribute.getValue())).append('"');
+            } else {
+                out.append(" android:").append(name).append("=\"")
                     .append(escape(attribute.getValue())).append('"');
+            }
         }
         if (node.children.isEmpty()) {
             out.append(" />\n");
@@ -154,6 +167,17 @@ public final class VectorDrawableDocument {
         return false;
     }
 
+    private static String qualifiedTag(XmlPullParser parser) {
+        String prefix = parser.getPrefix();
+        return prefix == null || prefix.isEmpty() ? parser.getName() : prefix + ":" + parser.getName();
+    }
+
+    private static boolean containsAapt(Node node) {
+        if (node.tag.startsWith("aapt:")) return true;
+        for (Node child : node.children) if (containsAapt(child)) return true;
+        return false;
+    }
+
     private static Map<String, List<AttributeSpec>> specs() {
         LinkedHashMap<String, List<AttributeSpec>> result = new LinkedHashMap<>();
         result.put("vector", List.of(
@@ -167,6 +191,8 @@ public final class VectorDrawableDocument {
                 new AttributeSpec("tintMode", "颜色混合模式", Kind.ENUM, "src_in",
                         new String[]{"src_in", "src_over", "src_atop", "multiply", "screen", "add"}),
                 new AttributeSpec("autoMirrored", "自动镜像", Kind.BOOLEAN, "false")));
+        result.put("animated-vector", List.of(
+                new AttributeSpec("drawable", "矢量资源", Kind.TEXT, "")));
         result.put("group", List.of(
                 new AttributeSpec("name", "名称", Kind.TEXT, "图层组"),
                 new AttributeSpec("rotation", "旋转角度", Kind.NUMBER, "0"),
@@ -182,6 +208,41 @@ public final class VectorDrawableDocument {
                 new AttributeSpec("pathData", "路径数据", Kind.TEXT, "M0,0L1,0L1,1Z"),
                 new AttributeSpec("fillType", "填充规则", Kind.ENUM, "nonZero",
                         new String[]{"nonZero", "evenOdd"})));
+        result.put("aapt:attr", List.of(new AttributeSpec("name", "目标属性", Kind.TEXT, "android:fillColor")));
+        result.put("gradient", List.of(
+                new AttributeSpec("type", "渐变类型", Kind.ENUM, "linear", new String[]{"linear", "radial", "sweep"}),
+                new AttributeSpec("startX", "起点 X", Kind.NUMBER, "0"),
+                new AttributeSpec("startY", "起点 Y", Kind.NUMBER, "0"),
+                new AttributeSpec("endX", "终点 X", Kind.NUMBER, "0"),
+                new AttributeSpec("endY", "终点 Y", Kind.NUMBER, "0"),
+                new AttributeSpec("centerX", "中心 X", Kind.NUMBER, "0"),
+                new AttributeSpec("centerY", "中心 Y", Kind.NUMBER, "0"),
+                new AttributeSpec("gradientRadius", "渐变半径", Kind.NUMBER, "0"),
+                new AttributeSpec("tileMode", "平铺模式", Kind.ENUM, "clamp", new String[]{"clamp", "repeat", "mirror"}),
+                new AttributeSpec("startColor", "起始颜色", Kind.COLOR, "#FFFFFFFF"),
+                new AttributeSpec("centerColor", "中心颜色", Kind.COLOR, "#FFFFFFFF"),
+                new AttributeSpec("endColor", "结束颜色", Kind.COLOR, "#00000000")));
+        result.put("item", List.of(
+                new AttributeSpec("color", "颜色", Kind.COLOR, "#FFFFFFFF"),
+                new AttributeSpec("offset", "偏移", Kind.NUMBER, "0")));
+        result.put("target", List.of(
+                new AttributeSpec("name", "目标名称", Kind.TEXT, ""),
+                new AttributeSpec("animation", "动画资源", Kind.TEXT, "")));
+        result.put("objectAnimator", List.of(
+                new AttributeSpec("propertyName", "属性名称", Kind.TEXT, "alpha"),
+                new AttributeSpec("duration", "持续时间", Kind.NUMBER, "300"),
+                new AttributeSpec("startOffset", "开始延迟", Kind.NUMBER, "0"),
+                new AttributeSpec("repeatCount", "重复次数", Kind.NUMBER, "0"),
+                new AttributeSpec("repeatMode", "重复模式", Kind.ENUM, "restart", new String[]{"restart", "reverse"}),
+                new AttributeSpec("valueFrom", "起始值", Kind.TEXT, "0"),
+                new AttributeSpec("valueTo", "结束值", Kind.TEXT, "1"),
+                new AttributeSpec("interpolator", "插值器", Kind.TEXT, "@android:interpolator/linear")));
+        result.put("set", List.of(new AttributeSpec("ordering", "播放顺序", Kind.ENUM, "together", new String[]{"together", "sequentially"})));
+        result.put("propertyValuesHolder", List.of(new AttributeSpec("propertyName", "属性名称", Kind.TEXT, "alpha")));
+        result.put("keyframe", List.of(
+                new AttributeSpec("fraction", "关键帧比例", Kind.NUMBER, "0"),
+                new AttributeSpec("value", "关键帧值", Kind.TEXT, "0"),
+                new AttributeSpec("interpolator", "插值器", Kind.TEXT, "@android:interpolator/linear")));
         return Collections.unmodifiableMap(result);
     }
 

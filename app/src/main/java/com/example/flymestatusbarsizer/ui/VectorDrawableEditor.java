@@ -9,6 +9,8 @@ import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Animatable;
+import android.graphics.drawable.Drawable;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
@@ -52,6 +54,7 @@ public final class VectorDrawableEditor {
     private ImageView preview;
     private TextView previewError;
     private EditText previewSource;
+    private Drawable previewDrawable;
     private boolean darkPreview;
     private int previewSize = 96;
     private final Runnable previewRunnable = () -> refreshPreview(previewSource);
@@ -87,7 +90,8 @@ public final class VectorDrawableEditor {
         ClipboardManager clipboard = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
         if (clipboard != null && clipboard.hasPrimaryClip()) {
             CharSequence text = clipboard.getPrimaryClip().getItemAt(0).coerceToText(activity);
-            if (text != null && text.toString().contains("<vector")) input.setText(text);
+            if (text != null && (text.toString().contains("<vector")
+                    || text.toString().contains("<animated-vector"))) input.setText(text);
         }
         ScrollView scroll = new ScrollView(activity);
         scroll.addView(input);
@@ -144,6 +148,8 @@ public final class VectorDrawableEditor {
         addTool(previewTools, "深色", () -> setPreview(true));
         addTool(previewTools, "正常", () -> setPreviewSize(48));
         addTool(previewTools, "放大", () -> setPreviewSize(96));
+        addTool(previewTools, "播放", () -> playPreview(false));
+        addTool(previewTools, "重播", () -> playPreview(true));
         previewPanel.addView(previewTools);
         previewError = text(activity, "", 12);
         previewError.setTextColor(0xFFD32F2F);
@@ -333,8 +339,11 @@ public final class VectorDrawableEditor {
     private void refreshPreview(EditText source) {
         try {
             String xml = document.toXml();
-            RingerVectorXml vector = RingerVectorXml.parse(xml);
-            preview.setImageDrawable(vector.newDrawable(activity));
+            RingerVectorXml vector = RingerVectorXml.parse(xml, activity);
+            if (previewDrawable instanceof Animatable animation) animation.stop();
+            previewDrawable = vector.newDrawable(activity);
+            preview.setImageDrawable(previewDrawable);
+            if (previewDrawable instanceof Animatable animation) animation.start();
             preview.setImageTintList(ColorStateList.valueOf(darkPreview ? Color.WHITE : Color.BLACK));
             preview.getLayoutParams().width = activity.dp(previewSize);
             preview.getLayoutParams().height = activity.dp(previewSize);
@@ -426,7 +435,7 @@ public final class VectorDrawableEditor {
         }
         final String xml = document.toXml();
         try {
-            RingerVectorXml vector = RingerVectorXml.parse(xml);
+            RingerVectorXml vector = RingerVectorXml.parse(xml, activity);
             if (target.getCheckedRadioButtonId() == 3) {
                 BatteryIconLibrary library = BatteryIconLibrary.load(activity.prefs());
                 int position = Math.max(0, entrySpinner.getSelectedItemPosition());
@@ -499,7 +508,17 @@ public final class VectorDrawableEditor {
             case "vector" -> "画布基础";
             case "group" -> "图层组";
             case "path" -> "路径图层";
-            default -> "裁剪路径";
+            case "clip-path" -> "裁剪路径";
+            case "animated-vector" -> "动画矢量";
+            case "target" -> "动画目标";
+            case "objectAnimator" -> "属性动画";
+            case "set" -> "动画集合";
+            case "propertyValuesHolder" -> "属性值集合";
+            case "keyframe" -> "关键帧";
+            case "aapt:attr" -> "渐变属性";
+            case "gradient" -> "渐变";
+            case "item" -> "渐变色标";
+            default -> node.tag();
         };
         return name == null || name.isBlank() ? base : base + " · " + name;
     }
@@ -513,6 +532,13 @@ public final class VectorDrawableEditor {
     private void setPreviewSize(int size) {
         previewSize = size;
         refreshPreview(null);
+    }
+
+    private void playPreview(boolean restart) {
+        if (previewDrawable instanceof Animatable animation) {
+            if (restart) animation.stop();
+            animation.start();
+        }
     }
 
     private void addTool(LinearLayout parent, String label, Runnable action) {
