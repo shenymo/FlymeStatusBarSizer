@@ -6,7 +6,6 @@
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="@color/flyme_primary"
-        android:strokeAlpha="0.5"
         android:strokeWidth="1.7"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"

@@ -634,7 +634,6 @@ public final class RecentTaskSwitcher {
                 row.setMinimumHeight(dp(ROW_HEIGHT_DP));
                 row.setBackground(new RippleDrawable(
                         ColorStateList.valueOf(paletteColor(0x22287a78, 0x2877c6c1)), null, null));
-                name.setTextColor(paletteColor(0xff222222, 0xfff1f3f4));
                 name.setTextSize(12);
                 name.setSingleLine(true);
                 name.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -671,7 +670,6 @@ public final class RecentTaskSwitcher {
                 miniWindow.setBackground(new RippleDrawable(
                         ColorStateList.valueOf(paletteColor(0x18000000, 0x20ffffff)), null, null));
                 miniWindow.setTooltipText("以小窗打开");
-                setModuleIcon(miniWindow, R.drawable.ic_task_window, android.R.drawable.ic_menu_view);
                 miniWindowSlot.setMinimumWidth(0);
                 miniWindowSlot.setMinimumHeight(0);
                 miniWindowSlot.addView(miniWindow,
@@ -727,6 +725,7 @@ public final class RecentTaskSwitcher {
                 holder.row.setEnabled(true);
                 holder.miniWindow.setEnabled(true);
                 holder.name.setText(entry.label);
+                holder.name.setTextColor(paletteColor(0xff222222, 0xfff1f3f4));
                 holder.row.setBackground(new RippleDrawable(
                         ColorStateList.valueOf(paletteColor(0x22287a78, 0x2877c6c1)), null, null));
                 holder.actionButton.setBackground(new RippleDrawable(
@@ -737,6 +736,7 @@ public final class RecentTaskSwitcher {
                 holder.icon.setImageDrawable(entry.icon == null
                         ? context.getDrawable(android.R.drawable.sym_def_app_icon) : entry.icon);
                 setActionIcon(holder.actionButton, isLocked(entry.card));
+                setModuleIcon(holder.miniWindow, R.drawable.ic_task_window, android.R.drawable.ic_menu_view);
                 holder.miniWindow.setContentDescription("以小窗打开" + entry.label);
                 if (!holder.arranged || holder.arrangedFromLeft != fromLeft) {
                     holder.arranged = true;
@@ -826,8 +826,8 @@ public final class RecentTaskSwitcher {
                 view.setImageDrawable(iconState.newDrawable().mutate());
             } else {
                 view.setImageResource(fallback);
-                view.setColorFilter(accentColor());
             }
+            view.setImageTintList(ColorStateList.valueOf(paletteColor(0xff444b50, 0xffe2e7eb)));
         }
 
         private int paletteColor(int light, int dark) {
