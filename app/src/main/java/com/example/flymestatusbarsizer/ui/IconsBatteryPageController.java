@@ -37,7 +37,7 @@ public final class IconsBatteryPageController {
                 SettingsStore.DEFAULT_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED,
                 (button, enabled) -> states.setVisibility(enabled ? View.VISIBLE : View.GONE));
         content.addView(states);
-        root.addView(activity.buildSectionCard("蓝牙状态栏图标", null, content),
+        root.addView(activity.buildSectionCard("蓝牙图标", null, content),
                 PageViewUtils.matchWrapWithTop(activity, 8));
     }
 

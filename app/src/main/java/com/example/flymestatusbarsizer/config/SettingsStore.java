@@ -44,6 +44,7 @@ public final class SettingsStore {
     public static final String KEY_STATUS_BAR_SILENT_ICON_LIBRARY = "status_bar_silent_icon_library";
     public static final String KEY_STATUS_BAR_VIBRATE_ICON_LIBRARY = "status_bar_vibrate_icon_library";
     public static final String KEY_STATUS_BAR_BLUETOOTH_ICON_LIBRARY = "status_bar_bluetooth_icon_library";
+    public static final String KEY_STATUS_BAR_BLUETOOTH_ICON_PACKS = "status_bar_bluetooth_icon_packs";
     public static final String KEY_ICON_LIBRARY_DEVICE_ID = "icon_library_device_id";
     public static final String KEY_HIDE_IDLE_CAMERA_CUTOUT = "hide_idle_camera_cutout";
     public static final String KEY_BATTERY_CODE_DRAW_ENABLED = "battery_code_draw_enabled";
@@ -1152,6 +1153,7 @@ public final class SettingsStore {
             KEY_STATUS_BAR_SILENT_ICON_LIBRARY,
             KEY_STATUS_BAR_VIBRATE_ICON_LIBRARY,
             KEY_STATUS_BAR_BLUETOOTH_ICON_LIBRARY,
+            KEY_STATUS_BAR_BLUETOOTH_ICON_PACKS,
             KEY_ASSISTANT_BACKGROUND_IMAGE,
             KEY_ANIP_BUNDLE_TARGET,
             KEY_SHARE_TARGET_PROFILES,

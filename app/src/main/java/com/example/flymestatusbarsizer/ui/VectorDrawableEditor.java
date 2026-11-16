@@ -35,6 +35,7 @@ import com.example.flymestatusbarsizer.feature.battery.BatteryIconLibrary;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconPack;
 import com.example.flymestatusbarsizer.feature.statusbar.RingerIconLibrary;
 import com.example.flymestatusbarsizer.feature.statusbar.BluetoothIconLibrary;
+import com.example.flymestatusbarsizer.feature.statusbar.BluetoothIconState;
 import com.example.flymestatusbarsizer.feature.statusbar.RingerVectorXml;
 import com.example.flymestatusbarsizer.feature.statusbar.VectorDrawableDocument;
 import com.example.flymestatusbarsizer.feature.statusbar.VectorDrawableDocument.AttributeSpec;
@@ -364,7 +365,7 @@ public final class VectorDrawableEditor {
         RadioButton vibrate = radio("震动图标库", 1);
         RadioButton silent = radio("静音图标库", 2);
         RadioButton battery = radio("电池图标库", 3);
-        RadioButton bluetooth = radio("蓝牙图标库", 4);
+        RadioButton bluetooth = radio("蓝牙图标包", 4);
         target.addView(vibrate); target.addView(silent); target.addView(battery);
         target.addView(bluetooth); target.check(1);
         content.addView(target);
@@ -383,10 +384,25 @@ public final class VectorDrawableEditor {
         layerSpinner.setVisibility(View.GONE);
         List<RingerIconLibrary.Entry> ringerEntries = new ArrayList<>();
         List<BatteryIconLibrary.Entry> batteryEntries = new ArrayList<>();
-        List<BluetoothIconLibrary.Entry> bluetoothEntries = new ArrayList<>();
+        List<BluetoothIconLibrary.Pack> bluetoothPacks = new ArrayList<>();
+        String[] states = new String[BluetoothIconState.values().length];
+        for (BluetoothIconState state : BluetoothIconState.values()) states[state.ordinal()] = state.title;
+        Spinner bluetoothState = spinner(states);
+        content.addView(bluetoothState);
+        TextView addBluetoothPack = text(activity, "添加图标包", 14);
+        addBluetoothPack.setGravity(Gravity.CENTER);
+        addBluetoothPack.setMinHeight(activity.dp(48));
+        addBluetoothPack.setTextColor(activity.primaryColor());
+        content.addView(addBluetoothPack);
         Runnable refreshOptions = () -> {
             boolean isBattery = target.getCheckedRadioButtonId() == 3;
+            boolean isBluetooth = target.getCheckedRadioButtonId() == 4;
             layerSpinner.setVisibility(isBattery ? View.VISIBLE : View.GONE);
+            bluetoothState.setVisibility(isBluetooth ? View.VISIBLE : View.GONE);
+            mode.setVisibility(isBluetooth ? View.GONE : View.VISIBLE);
+            name.setVisibility(isBluetooth ? View.GONE : View.VISIBLE);
+            entrySpinner.setVisibility(isBattery || isBluetooth || mode.getCheckedRadioButtonId() == 11
+                    ? View.VISIBLE : View.GONE);
             ArrayList<String> labels = new ArrayList<>();
             if (isBattery) {
                 batteryEntries.clear();
@@ -394,10 +410,10 @@ public final class VectorDrawableEditor {
                     batteryEntries.add(item); labels.add(item.pack().name);
                 }
             } else if (target.getCheckedRadioButtonId() == 4) {
-                bluetoothEntries.clear();
-                for (BluetoothIconLibrary.Entry item : BluetoothIconLibrary.load(activity.prefs(), activity).entries()) {
-                    if (!item.builtIn()) {
-                        bluetoothEntries.add(item); labels.add(item.name());
+                bluetoothPacks.clear();
+                for (BluetoothIconLibrary.Pack pack : BluetoothIconLibrary.load(activity.prefs(), activity).packs()) {
+                    if (!pack.builtIn()) {
+                        bluetoothPacks.add(pack); labels.add(pack.name());
                     }
                 }
             } else {
@@ -409,41 +425,49 @@ public final class VectorDrawableEditor {
                     }
                 }
             }
-            if (labels.isEmpty()) labels.add(isBattery ? "请选择电池图标包" : "没有可覆盖图标");
+            addBluetoothPack.setVisibility(isBluetooth && bluetoothPacks.isEmpty() ? View.VISIBLE : View.GONE);
+            if (labels.isEmpty()) labels.add(isBluetooth ? "请先添加图标包"
+                    : isBattery ? "请选择电池图标包" : "没有可覆盖图标");
             setSpinnerItems(entrySpinner, labels);
-            replace.setEnabled(!labels.isEmpty() && !(labels.size() == 1
+            replace.setEnabled(isBluetooth ? !bluetoothPacks.isEmpty() : !labels.isEmpty() && !(labels.size() == 1
                     && (labels.get(0).startsWith("没有") || labels.get(0).startsWith("请选择"))));
             if (!replace.isEnabled() && mode.getCheckedRadioButtonId() == 11) mode.check(10);
         };
+        activity.setTapClickListener(addBluetoothPack, v -> BluetoothIconLibraryEditor.createPack(activity, pack -> {
+            refreshOptions.run();
+            for (int i = 0; i < bluetoothPacks.size(); i++) {
+                if (bluetoothPacks.get(i).id().equals(pack.id())) entrySpinner.setSelection(i);
+            }
+        }));
         target.setOnCheckedChangeListener((group, checkedId) -> refreshOptions.run());
-        mode.setOnCheckedChangeListener((group, checkedId) -> {
-            boolean replacing = checkedId == 11;
-            entrySpinner.setVisibility(replacing || target.getCheckedRadioButtonId() == 3 ? View.VISIBLE : View.GONE);
-            if (!replacing && target.getCheckedRadioButtonId() != 3) entrySpinner.setVisibility(View.GONE);
-        });
+        mode.setOnCheckedChangeListener((group, checkedId) -> refreshOptions.run());
         refreshOptions.run();
         AlertDialog dialog = new AlertDialog.Builder(activity).setTitle("保存到图标库")
                 .setView(content).setNegativeButton("取消", null).setPositiveButton("保存", null).create();
         showAlert(dialog);
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> saveDocument(
                 dialog, target, mode, name, entrySpinner, layerSpinner, ringerEntries,
-                batteryEntries, bluetoothEntries, false));
+                batteryEntries, bluetoothPacks, bluetoothState, false));
     }
 
     private void saveDocument(AlertDialog dialog, RadioGroup target, RadioGroup mode, EditText name,
             Spinner entrySpinner, Spinner layerSpinner, List<RingerIconLibrary.Entry> ringerEntries,
             List<BatteryIconLibrary.Entry> batteryEntries,
-            List<BluetoothIconLibrary.Entry> bluetoothEntries, boolean confirmed) {
+            List<BluetoothIconLibrary.Pack> bluetoothPacks, Spinner bluetoothState, boolean confirmed) {
         String title = name.getText().toString().trim();
-        if (title.isEmpty()) { name.setError("请输入图标名称"); return; }
-        boolean replacing = mode.getCheckedRadioButtonId() == 11;
+        boolean isBluetooth = target.getCheckedRadioButtonId() == 4;
+        if (!isBluetooth && title.isEmpty()) { name.setError("请输入图标名称"); return; }
+        if (isBluetooth && bluetoothPacks.isEmpty()) { activity.showToast("请先添加图标包"); return; }
+        boolean replacing = isBluetooth || mode.getCheckedRadioButtonId() == 11;
         if (replacing && !confirmed) {
             AlertDialog confirm = new AlertDialog.Builder(activity).setTitle("确认覆盖？")
-                    .setMessage("保存后会替换所选图标的内容。")
+                    .setMessage(isBluetooth ? "替换「" + bluetoothPacks.get(entrySpinner.getSelectedItemPosition()).name()
+                            + "」中的「" + BluetoothIconState.values()[bluetoothState.getSelectedItemPosition()].title + "」图标？"
+                            : "保存后会替换所选图标的内容。")
                     .setNegativeButton("取消", null)
                     .setPositiveButton("覆盖", (d, which) -> saveDocument(dialog, target, mode, name,
                             entrySpinner, layerSpinner, ringerEntries, batteryEntries,
-                            bluetoothEntries, true)).create();
+                            bluetoothPacks, bluetoothState, true)).create();
             showAlert(confirm);
             return;
         }
@@ -467,20 +491,11 @@ public final class VectorDrawableEditor {
                 persistBattery(new BatteryIconLibrary(entries, library.selected));
             } else if (target.getCheckedRadioButtonId() == 4) {
                 BluetoothIconLibrary library = BluetoothIconLibrary.load(activity.prefs(), activity);
-                BluetoothIconLibrary.Entry base = replacing
-                        ? bluetoothEntries.get(entrySpinner.getSelectedItemPosition()) : null;
-                String id = base == null ? UUID.randomUUID().toString() : base.id();
-                if (library.entries().stream().anyMatch(item -> !item.id().equals(id)
-                        && item.name().equals(title))) {
-                    throw new IllegalArgumentException("同名图标已存在，请换一个名称");
-                }
+                BluetoothIconLibrary.Pack pack = library.pack(bluetoothPacks.get(entrySpinner.getSelectedItemPosition()).id());
+                BluetoothIconState state = BluetoothIconState.values()[bluetoothState.getSelectedItemPosition()];
                 vector.newDrawable(activity);
-                ArrayList<BluetoothIconLibrary.Entry> entries = new ArrayList<>(library.entries());
-                BluetoothIconLibrary.Entry saved = new BluetoothIconLibrary.Entry(id, title, xml, vector, null);
-                if (base == null) entries.add(saved);
-                else entries.set(entries.indexOf(base), saved);
-                activity.prefs().edit().putString(SettingsStore.KEY_STATUS_BAR_BLUETOOTH_ICON_LIBRARY,
-                        library.withEntries(entries).encode()).apply();
+                activity.prefs().edit().putString(SettingsStore.KEY_STATUS_BAR_BLUETOOTH_ICON_PACKS,
+                        library.withPack(pack.withIcon(state, new BluetoothIconLibrary.Icon(xml, vector))).encode()).apply();
                 SettingsStore.notifyChanged(activity);
             } else {
                 boolean silentTarget = target.getCheckedRadioButtonId() == 2;
@@ -500,9 +515,10 @@ public final class VectorDrawableEditor {
             }
             dialog.dismiss();
             if (editorDialog != null) editorDialog.dismiss();
-            activity.showToast("已保存到图标库");
+            activity.showToast(isBluetooth ? "已保存到图标包" : "已保存到图标库");
         } catch (IllegalArgumentException | JSONException error) {
-            name.setError(error.getMessage());
+            if (isBluetooth) activity.showToast(error.getMessage());
+            else name.setError(error.getMessage());
         }
     }
 

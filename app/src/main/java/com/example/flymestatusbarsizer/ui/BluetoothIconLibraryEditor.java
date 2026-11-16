@@ -9,6 +9,7 @@ import android.graphics.drawable.Animatable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
@@ -26,15 +27,16 @@ import com.example.flymestatusbarsizer.feature.statusbar.BluetoothIconLibrary;
 import com.example.flymestatusbarsizer.feature.statusbar.BluetoothIconState;
 import com.example.flymestatusbarsizer.feature.statusbar.RingerVectorXml;
 
-import java.util.ArrayList;
+import java.util.function.Consumer;
 import java.util.UUID;
 
 public final class BluetoothIconLibraryEditor {
     private final MainActivity activity;
     private final Runnable onChanged;
     private BluetoothIconLibrary library;
-    private LinearLayout libraryList;
+    private LinearLayout packList;
     private LinearLayout stateList;
+    private String editingPack;
 
     private BluetoothIconLibraryEditor(MainActivity activity, Runnable onChanged) {
         this.activity = activity;
@@ -53,6 +55,13 @@ public final class BluetoothIconLibraryEditor {
         row.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         ImageView preview = new ImageView(activity);
         row.addView(preview, new LinearLayout.LayoutParams(activity.dp(36), activity.dp(36)));
+        TextView name = new TextView(activity);
+        name.setTextColor(activity.subtextColor());
+        name.setTextSize(13);
+        name.setMaxWidth(activity.dp(140));
+        name.setMaxLines(1);
+        name.setEllipsize(TextUtils.TruncateAt.END);
+        row.addView(name);
         TextView arrow = new TextView(activity);
         arrow.setText("›");
         arrow.setTextColor(activity.subtextColor());
@@ -62,159 +71,156 @@ public final class BluetoothIconLibraryEditor {
             BluetoothIconLibrary current = BluetoothIconLibrary.load(activity.prefs(), activity);
             preview.setImageDrawable(current.newDrawable(activity, BluetoothIconState.CONNECTED));
             preview.setImageTintList(ColorStateList.valueOf(activity.textColor()));
+            name.setText(current.selectedPack().name());
         };
         refresh.run();
-        activity.setTapClickListener(row, v -> new BluetoothIconLibraryEditor(activity, refresh).showPack());
+        activity.setTapClickListener(row, v -> new BluetoothIconLibraryEditor(activity, refresh).show());
         root.addView(row);
     }
 
-    private void showPack() {
+    public static void createPack(MainActivity activity, Consumer<BluetoothIconLibrary.Pack> onCreated) {
+        BluetoothIconLibraryEditor editor = new BluetoothIconLibraryEditor(activity, () -> {});
+        editor.namePack(BluetoothIconLibrary.defaults().selectedPack(), true, onCreated);
+    }
+
+    private void show() {
         Dialog dialog = new Dialog(activity);
         LinearLayout root = page(dialog, "蓝牙图标包");
-        TextView manage = button("图标库", this::showLibrary);
-        root.addView(manage, new LinearLayout.LayoutParams(-1, activity.dp(48)));
+        root.addView(button("添加图标包", () -> namePack(BluetoothIconLibrary.defaults().selectedPack(),
+                true, this::showPack)), new LinearLayout.LayoutParams(-1, activity.dp(48)));
+        ScrollView scroll = new ScrollView(activity);
+        packList = column();
+        packList.setPadding(activity.dp(16), activity.dp(8), activity.dp(16), activity.dp(24));
+        renderPacks();
+        scroll.addView(packList);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        showPage(dialog, root);
+    }
+
+    private void renderPacks() {
+        packList.removeAllViews();
+        for (BluetoothIconLibrary.Pack pack : library.packs()) {
+            boolean selected = library.selectedId().equals(pack.id());
+            LinearLayout row = new LinearLayout(activity);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(activity.dp(8), activity.dp(6), 0, activity.dp(6));
+            row.setBackground(activity.roundRect(selected ? activity.primaryContainerColor()
+                    : activity.surfaceSoftColor(), 8));
+            row.addView(image(pack.newDrawable(activity, BluetoothIconState.CONNECTED), activity.textColor()),
+                    new LinearLayout.LayoutParams(activity.dp(44), activity.dp(48)));
+            TextView name = text(pack.name() + (selected ? "  ✓" : ""), 15);
+            row.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+            activity.setTapClickListener(row, v -> persist(library.withSelection(pack.id())));
+            TextView more = text("⋮", 24);
+            more.setGravity(Gravity.CENTER);
+            more.setContentDescription(pack.name() + "，更多操作");
+            activity.setTapClickListener(more, v -> menu(pack));
+            row.addView(more, new LinearLayout.LayoutParams(activity.dp(48), activity.dp(48)));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+            params.bottomMargin = activity.dp(8);
+            packList.addView(row, params);
+        }
+    }
+
+    private void menu(BluetoothIconLibrary.Pack pack) {
+        String[] items = pack.builtIn() ? new String[]{"查看", "复制并编辑"}
+                : new String[]{"编辑", "复制并编辑", "重命名", "删除"};
+        AlertDialog dialog = new AlertDialog.Builder(activity).setTitle(pack.name())
+                .setItems(items, (d, index) -> {
+                    switch (items[index]) {
+                        case "查看", "编辑" -> showPack(pack);
+                        case "复制并编辑" -> namePack(pack, true, this::showPack);
+                        case "重命名" -> namePack(pack, false, ignored -> {});
+                        case "删除" -> {
+                            if (library.selectedId().equals(pack.id())) {
+                                showAlert(new AlertDialog.Builder(activity).setTitle("删除图标包？")
+                                        .setMessage("删除后使用内置图标包。")
+                                        .setNegativeButton("取消", null)
+                                        .setPositiveButton("删除", (a, b) -> persist(library.withoutPack(pack.id()))).create());
+                            } else persist(library.withoutPack(pack.id()));
+                        }
+                    }
+                }).create();
+        showAlert(dialog);
+    }
+
+    private void namePack(BluetoothIconLibrary.Pack source, boolean copy,
+            Consumer<BluetoothIconLibrary.Pack> onSaved) {
+        EditText name = input("图标包名称", false);
+        String base = copy ? source.builtIn() ? "自定义图标包" : source.name() + " 副本" : source.name();
+        String suggestion = base;
+        if (copy) {
+            for (int suffix = 2; nameExists(suggestion, ""); suffix++) suggestion = base + " " + suffix;
+        }
+        name.setText(suggestion);
+        AlertDialog dialog = new AlertDialog.Builder(activity).setTitle(copy ? "添加图标包" : "重命名图标包")
+                .setView(name).setNegativeButton("取消", null).setPositiveButton("保存", null).create();
+        showAlert(dialog);
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String title = name.getText().toString().trim();
+            if (title.isEmpty()) { name.setError("请输入图标包名称"); return; }
+            String id = copy ? UUID.randomUUID().toString() : source.id();
+            if (nameExists(title, id)) { name.setError("同名图标包已存在"); return; }
+            BluetoothIconLibrary.Pack pack = new BluetoothIconLibrary.Pack(id, title, source.icons());
+            persist(library.withPack(pack));
+            dialog.dismiss();
+            onSaved.accept(pack);
+        });
+    }
+
+    private boolean nameExists(String name, String ownId) {
+        return library.packs().stream().anyMatch(pack -> !pack.id().equals(ownId) && pack.name().equals(name));
+    }
+
+    private void showPack(BluetoothIconLibrary.Pack pack) {
+        editingPack = pack.id();
+        Dialog dialog = new Dialog(activity);
+        LinearLayout root = page(dialog, pack.name());
         ScrollView scroll = new ScrollView(activity);
         stateList = column();
         stateList.setPadding(activity.dp(16), activity.dp(8), activity.dp(16), activity.dp(24));
         renderStates();
         scroll.addView(stateList);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        dialog.setOnDismissListener(ignored -> { stateList = null; editingPack = null; });
         showPage(dialog, root);
     }
 
     private void renderStates() {
         stateList.removeAllViews();
+        BluetoothIconLibrary.Pack pack = library.pack(editingPack);
         for (BluetoothIconState state : BluetoothIconState.values()) {
-            BluetoothIconLibrary.Entry entry = library.selectedEntry(state);
             LinearLayout row = new LinearLayout(activity);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setMinimumHeight(activity.dp(60));
-            TextView title = text(state.title, 15);
-            row.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
-            ImageView preview = image(library.newDrawable(activity, state), activity.textColor());
-            row.addView(preview, new LinearLayout.LayoutParams(activity.dp(36), activity.dp(36)));
-            TextView name = text(entry.name() + "  ›", 13);
-            name.setTextColor(activity.subtextColor());
-            name.setMaxWidth(activity.dp(140));
-            name.setMaxLines(2);
-            row.addView(name);
-            activity.setTapClickListener(row, v -> showSelection(state));
+            row.addView(text(state.title, 15), new LinearLayout.LayoutParams(0, -2, 1));
+            row.addView(image(pack.newDrawable(activity, state), activity.textColor()),
+                    new LinearLayout.LayoutParams(activity.dp(40), activity.dp(40)));
+            if (!pack.builtIn()) {
+                TextView arrow = text("›", 25);
+                arrow.setGravity(Gravity.CENTER);
+                row.addView(arrow, new LinearLayout.LayoutParams(activity.dp(28), -2));
+                activity.setTapClickListener(row, v -> editState(pack.id(), state));
+            }
             stateList.addView(row);
         }
     }
 
-    private void showSelection(BluetoothIconState state) {
+    private void editState(String packId, BluetoothIconState state) {
         Dialog dialog = new Dialog(activity);
         LinearLayout root = page(dialog, state.title);
-        ScrollView scroll = new ScrollView(activity);
-        LinearLayout choices = column();
-        choices.setPadding(activity.dp(16), activity.dp(8), activity.dp(16), activity.dp(24));
-        for (BluetoothIconLibrary.Entry entry : library.entries()) {
-            LinearLayout row = entryRow(entry);
-            if (library.selectedId(state).equals(entry.id())) {
-                row.setBackground(activity.roundRect(activity.primaryContainerColor(), 8));
-                row.addView(text("✓", 20), new LinearLayout.LayoutParams(activity.dp(28), -2));
-            }
-            row.setEnabled(entry.vector() != null);
-            activity.setTapClickListener(row, v -> {
-                if (entry.vector() == null) return;
-                try {
-                    entry.vector().newDrawable(activity);
-                    persist(library.withSelection(state, entry.id()));
-                    dialog.dismiss();
-                } catch (IllegalArgumentException invalid) {
-                    activity.showToast(invalid.getMessage());
-                }
-            });
-            choices.addView(row);
-        }
-        scroll.addView(choices);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        showPage(dialog, root);
-    }
-
-    private void showLibrary() {
-        Dialog dialog = new Dialog(activity);
-        LinearLayout root = page(dialog, "蓝牙图标库");
-        root.addView(button("新增图标", () -> edit(null)),
-                new LinearLayout.LayoutParams(-1, activity.dp(48)));
-        ScrollView scroll = new ScrollView(activity);
-        libraryList = column();
-        libraryList.setPadding(activity.dp(16), activity.dp(8), activity.dp(16), activity.dp(24));
-        renderLibrary();
-        scroll.addView(libraryList);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        dialog.setOnDismissListener(ignored -> libraryList = null);
-        showPage(dialog, root);
-    }
-
-    private void renderLibrary() {
-        libraryList.removeAllViews();
-        for (BluetoothIconLibrary.Entry entry : library.entries()) {
-            LinearLayout row = entryRow(entry);
-            TextView more = text("⋮", 24);
-            more.setGravity(Gravity.CENTER);
-            more.setContentDescription(entry.name() + "，更多操作");
-            row.addView(more, new LinearLayout.LayoutParams(activity.dp(48), activity.dp(48)));
-            Runnable menu = () -> {
-                AlertDialog options = new AlertDialog.Builder(activity).setTitle(entry.name())
-                        .setItems(entry.builtIn() ? new String[]{"复制并修改"}
-                                : new String[]{"修改代码", "删除"}, (d, which) -> {
-                            if (which == 0) edit(entry);
-                            else {
-                                ArrayList<BluetoothIconLibrary.Entry> entries = new ArrayList<>(library.entries());
-                                entries.removeIf(item -> item.id().equals(entry.id()));
-                                persist(library.withEntries(entries));
-                            }
-                        }).create();
-                options.show();
-                activity.styleDialog(options);
-                activity.attachDialogButtonHaptics(options);
-            };
-            activity.setTapClickListener(more, v -> menu.run());
-            activity.setTapClickListener(row, v -> edit(entry));
-            libraryList.addView(row);
-        }
-    }
-
-    private LinearLayout entryRow(BluetoothIconLibrary.Entry entry) {
-        LinearLayout row = new LinearLayout(activity);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(activity.dp(10), activity.dp(8), activity.dp(8), activity.dp(8));
-        row.setMinimumHeight(activity.dp(64));
-        Drawable icon;
-        try {
-            icon = entry.vector() == null ? null : entry.vector().newDrawable(activity);
-        } catch (IllegalArgumentException invalid) {
-            icon = null;
-        }
-        row.addView(image(icon, activity.textColor()),
-                new LinearLayout.LayoutParams(activity.dp(40), activity.dp(40)));
-        TextView name = text(entry.name() + (icon == null ? "\nXML 无法解析" : ""), 15);
-        name.setPadding(activity.dp(10), 0, 0, 0);
-        row.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
-        return row;
-    }
-
-    private void edit(BluetoothIconLibrary.Entry original) {
-        Dialog dialog = new Dialog(activity);
-        LinearLayout root = page(dialog, original == null ? "新增图标"
-                : original.builtIn() ? "复制图标" : "修改图标");
         ScrollView scroll = new ScrollView(activity);
         LinearLayout content = column();
         content.setPadding(activity.dp(20), activity.dp(8), activity.dp(20), activity.dp(16));
         LinearLayout preview = new LinearLayout(activity);
         preview.setGravity(Gravity.CENTER);
         content.addView(preview, new LinearLayout.LayoutParams(-1, activity.dp(108)));
-        EditText name = input("图标名称", false);
-        if (original != null) name.setText(original.name() + (original.builtIn() ? " 副本" : ""));
-        content.addView(name);
         EditText xml = input("粘贴 Android Vector XML", true);
         xml.setTypeface(Typeface.MONOSPACE);
         xml.setTextSize(12);
         xml.setMinLines(12);
         xml.setGravity(Gravity.TOP | Gravity.START);
-        if (original != null) xml.setText(original.xml());
+        xml.setText(library.pack(packId).icons().get(state).xml());
         content.addView(xml);
         Runnable showPreview = () -> {
             try {
@@ -232,40 +238,35 @@ public final class BluetoothIconLibraryEditor {
                 }
                 xml.setError(null);
             } catch (IllegalArgumentException invalid) {
+                preview.removeAllViews();
                 xml.setError(invalid.getMessage());
             }
         };
         content.addView(button("生成预览", showPreview), new LinearLayout.LayoutParams(-1, activity.dp(48)));
-        if (original != null) showPreview.run();
+        showPreview.run();
         scroll.addView(content);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        root.addView(button("保存到图标库", () -> {
-            String title = name.getText().toString().trim();
-            if (title.isEmpty()) { name.setError("请输入图标名称"); return; }
-            boolean replacing = original != null && !original.builtIn();
-            String id = replacing ? original.id() : UUID.randomUUID().toString();
-            if (library.entries().stream().anyMatch(entry -> !entry.id().equals(id)
-                    && entry.name().equals(title))) {
-                name.setError("同名图标已存在");
-                return;
-            }
+        root.addView(button("保存", () -> {
             try {
                 String source = xml.getText().toString();
                 RingerVectorXml vector = RingerVectorXml.parse(source, activity);
                 vector.newDrawable(activity);
-                BluetoothIconLibrary.Entry entry = new BluetoothIconLibrary.Entry(id, title, source, vector, null);
-                ArrayList<BluetoothIconLibrary.Entry> entries = new ArrayList<>(library.entries());
-                if (replacing) entries.set(entries.indexOf(original), entry);
-                else entries.add(entry);
-                persist(library.withEntries(entries));
+                persist(library.withPack(library.pack(packId).withIcon(state,
+                        new BluetoothIconLibrary.Icon(source, vector))));
                 dialog.dismiss();
-                activity.showToast("已保存到图标库");
+                activity.showToast("已保存");
             } catch (IllegalArgumentException invalid) {
                 xml.setError(invalid.getMessage());
                 xml.requestFocus();
             }
         }), new LinearLayout.LayoutParams(-1, activity.dp(48)));
         showPage(dialog, root);
+    }
+
+    private void showAlert(AlertDialog dialog) {
+        dialog.show();
+        activity.styleDialog(dialog);
+        activity.attachDialogButtonHaptics(dialog);
     }
 
     private ImageView image(Drawable drawable, int color) {
@@ -283,11 +284,11 @@ public final class BluetoothIconLibraryEditor {
 
     private void persist(BluetoothIconLibrary updated) {
         library = updated;
-        activity.prefs().edit().putString(SettingsStore.KEY_STATUS_BAR_BLUETOOTH_ICON_LIBRARY,
+        activity.prefs().edit().putString(SettingsStore.KEY_STATUS_BAR_BLUETOOTH_ICON_PACKS,
                 library.encode()).apply();
         SettingsStore.notifyChanged(activity);
         if (stateList != null) renderStates();
-        if (libraryList != null) renderLibrary();
+        if (packList != null) renderPacks();
         onChanged.run();
     }
 
@@ -343,6 +344,8 @@ public final class BluetoothIconLibraryEditor {
         header.addView(back, new LinearLayout.LayoutParams(activity.dp(48), activity.dp(56)));
         TextView heading = text(title, 20);
         heading.setTypeface(null, Typeface.BOLD);
+        heading.setSingleLine(true);
+        heading.setEllipsize(TextUtils.TruncateAt.END);
         header.addView(heading, new LinearLayout.LayoutParams(0, -2, 1));
         root.addView(header);
         return root;
