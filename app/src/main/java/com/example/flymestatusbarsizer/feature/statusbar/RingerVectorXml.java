@@ -18,6 +18,9 @@ import android.graphics.drawable.Animatable;
 import android.util.LruCache;
 import android.util.Xml;
 
+import androidx.vectordrawable.graphics.drawable.AnimatedVectorDrawableCompat;
+import androidx.vectordrawable.graphics.drawable.VectorDrawableCompat;
+
 import androidx.core.graphics.PathParser;
 
 import org.xmlpull.v1.XmlPullParser;
@@ -343,7 +346,17 @@ public final class RingerVectorXml {
                 XmlPullParser parser = Xml.newPullParser();
                 parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true);
                 parser.setInput(new StringReader(resolveResourceIds(xml, context)));
-                Drawable drawable = Drawable.createFromXml(context.getResources(), parser, context.getTheme());
+                int event;
+                do {
+                    event = parser.next();
+                } while (event != XmlPullParser.START_TAG && event != XmlPullParser.END_DOCUMENT);
+                Drawable drawable = switch (parser.getName()) {
+                    case "animated-vector" -> AnimatedVectorDrawableCompat.createFromXmlInner(
+                            context, context.getResources(), parser, Xml.asAttributeSet(parser), null);
+                    case "vector" -> VectorDrawableCompat.createFromXmlInner(
+                            context.getResources(), parser, Xml.asAttributeSet(parser), null);
+                    default -> throw new IllegalArgumentException("根标签必须是 vector 或 animated-vector");
+                };
                 return new NativeIcon(drawable, IconMetrics.resolveSignalBoxHeight(context, 1f));
             } catch (XmlPullParserException | IOException | RuntimeException error) {
                 throw new IllegalArgumentException("系统无法解析矢量资源：" + error.getMessage(), error);

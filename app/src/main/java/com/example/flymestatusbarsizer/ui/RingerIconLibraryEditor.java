@@ -72,8 +72,15 @@ public final class RingerIconLibraryEditor {
             Runnable refresh = () -> {
                 Entry entry = RingerIconLibrary.load(activity.prefs(), silent).selectedEntry();
                 name.setText(entry == null ? "内置矢量图标  ›" : entry.name() + "  ›");
-                preview.setImageDrawable(entry == null ? RingerIconVectorHooks.builtInPreview(activity, silent)
-                        : entry.vector().newDrawable(activity));
+                Drawable drawable = RingerIconVectorHooks.builtInPreview(activity, silent);
+                if (entry != null && entry.vector() != null) {
+                    try {
+                        drawable = entry.vector().newDrawable(activity);
+                    } catch (IllegalArgumentException invalid) {
+                        name.setText("内置矢量图标  ›");
+                    }
+                }
+                preview.setImageDrawable(drawable);
                 preview.setImageTintList(ColorStateList.valueOf(activity.textColor()));
             };
             refresh.run();
@@ -337,7 +344,13 @@ public final class RingerIconLibraryEditor {
             tile.setBackground(activity.roundRect(dark ? 0xFF202124 : 0xFFF4F5F6, 8));
             for (int size : new int[]{22, 88}) {
                 ImageView image = new ImageView(activity);
-                image.setImageDrawable(vector.newDrawable(activity));
+                Drawable drawable;
+                try {
+                    drawable = vector.newDrawable(activity);
+                } catch (IllegalArgumentException invalid) {
+                    drawable = RingerIconVectorHooks.builtInPreview(activity, silent);
+                }
+                image.setImageDrawable(drawable);
                 image.setImageTintList(ColorStateList.valueOf(dark ? Color.WHITE : Color.BLACK));
                 image.setContentDescription((dark ? "深色" : "浅色") + "背景，" + (size == 22 ? "正常尺寸" : "放大预览"));
                 tile.addView(image, new LinearLayout.LayoutParams(activity.dp(size), activity.dp(size)));
@@ -396,7 +409,12 @@ public final class RingerIconLibraryEditor {
 
     private Drawable drawable(Entry entry) {
         if (entry == null) return RingerIconVectorHooks.builtInPreview(activity, silent);
-        return entry.vector() == null ? activity.getDrawable(R.drawable.ic_settings_tune) : entry.vector().newDrawable(activity);
+        if (entry.vector() == null) return activity.getDrawable(R.drawable.ic_settings_tune);
+        try {
+            return entry.vector().newDrawable(activity);
+        } catch (IllegalArgumentException invalid) {
+            return RingerIconVectorHooks.builtInPreview(activity, silent);
+        }
     }
 
     private LinearLayout column() {

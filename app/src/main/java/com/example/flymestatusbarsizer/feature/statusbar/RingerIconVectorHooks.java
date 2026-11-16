@@ -62,7 +62,13 @@ public final class RingerIconVectorHooks {
 
                 Context context = (Context) chain.getArg(0);
                 RingerVectorXml custom = "mute".equals(slot) ? config.silentIconVector : config.vibrateIconVector;
-                if (custom != null) return custom.newDrawable(context);
+                if (custom != null) {
+                    try {
+                        return custom.newDrawable(context);
+                    } catch (IllegalArgumentException invalid) {
+                        Log.w(TAG, "Ignoring unsupported custom ringer icon", invalid);
+                    }
+                }
                 int drawableId;
                 if ("mute".equals(slot)) {
                     if (silentDrawableId == 0) {
