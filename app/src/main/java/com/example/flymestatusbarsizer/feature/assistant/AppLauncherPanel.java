@@ -353,6 +353,7 @@ public final class AppLauncherPanel {
         private final LinearLayout panel;
         private final AssistantPanelBlur panelBlur;
         private final EditText search;
+        private final TextView clearSearch;
         private final TextView resultMessage;
         private final RecyclerView resultGrid;
         private final AppAdapter adapter;
@@ -431,7 +432,7 @@ public final class AppLauncherPanel {
             search = new EditText(context);
             search.setSingleLine(true);
             search.setTextSize(12);
-            search.setHint("输入应用首字母");
+            search.setHint("搜首字母 · 长按开小窗");
             search.setTextColor(paletteColor(0xff202426, 0xfff2f4f5));
             search.setHintTextColor(paletteColor(0xff7d8589, 0xffaeb6ba));
             search.setPadding(dp(8), 0, dp(8), 0);
@@ -446,7 +447,19 @@ public final class AppLauncherPanel {
                 updateSearch();
                 scheduleSearch();
             });
-            panel.addView(search, new LinearLayout.LayoutParams(-1, dp(32)));
+            FrameLayout searchArea = new FrameLayout(context);
+            searchArea.addView(search, new FrameLayout.LayoutParams(-1, -1));
+            clearSearch = new TextView(context);
+            clearSearch.setText("×");
+            clearSearch.setTextSize(20);
+            clearSearch.setGravity(Gravity.CENTER);
+            clearSearch.setTextColor(paletteColor(0xff7d8589, 0xffaeb6ba));
+            clearSearch.setContentDescription("清空搜索");
+            clearSearch.setVisibility(View.GONE);
+            clearSearch.setOnClickListener(view -> search.performClick());
+            searchArea.addView(clearSearch,
+                    new FrameLayout.LayoutParams(dp(32), -1, Gravity.RIGHT));
+            panel.addView(searchArea, new LinearLayout.LayoutParams(-1, dp(32)));
 
             FrameLayout resultArea = new FrameLayout(context);
             resultMessage = new TextView(context);
@@ -884,6 +897,7 @@ public final class AppLauncherPanel {
             }
 
             @Override public void onViewRecycled(AppHolder holder) {
+                if (holdView == holder.cell) cancelHold();
                 holder.cell.setOnTouchListener(null);
                 holder.icon.setTag(null);
                 holder.icon.setImageDrawable(null);
@@ -893,6 +907,7 @@ public final class AppLauncherPanel {
             @Override public int getItemCount() { return values.size(); }
 
             void setEntries(List<AppEntry> next) {
+                cancelHold();
                 values.clear();
                 values.addAll(next);
                 showMessage(values.isEmpty() ? "未找到匹配应用" : null);
@@ -931,6 +946,9 @@ public final class AppLauncherPanel {
                     holdRunnable = () -> {
                         if (holdView != view || closing) return;
                         holdTriggered = true;
+                        view.setBackground(background(paletteColor(0x303b82f6, 0x507aaeff),
+                                dp(8), paletteColor(0xff3b82f6, 0xffa3c7ff)));
+                        updateSearch();
                         HapticFeedbackUtils.perform(context, view, HapticFeedbackConstants.LONG_PRESS);
                     };
                     icon.animate().scaleX(0.8f).scaleY(0.8f).setDuration(LONG_PRESS_MS).start();
@@ -969,7 +987,13 @@ public final class AppLauncherPanel {
         }
 
         private void cancelHold() {
+            holdCanceled = true;
             if (holdRunnable != null) MAIN.removeCallbacks(holdRunnable);
+            if (holdTriggered) {
+                holdView.setBackground(null);
+                holdTriggered = false;
+                updateSearch();
+            }
             if (holdIcon != null) holdIcon.animate().cancel();
             if (holdIcon != null) {
                 if (isCurrent()) {
@@ -1021,6 +1045,13 @@ public final class AppLauncherPanel {
         }
 
         private void updateSearch() {
+            boolean showClear = !holdTriggered && !query.isEmpty();
+            clearSearch.setVisibility(showClear ? View.VISIBLE : View.GONE);
+            search.setPadding(dp(8), 0, dp(showClear ? 32 : 8), 0);
+            if (holdTriggered) {
+                search.setText("松手以小窗打开");
+                return;
+            }
             StringBuilder text = new StringBuilder();
             for (String key : query) {
                 if (text.length() > 0) text.append(' ');
@@ -1162,10 +1193,13 @@ public final class AppLauncherPanel {
         private void updateDarkMode(Configuration configuration) {
             boolean next = isNightMode(configuration);
             if (darkMode == next) return;
+            cancelHold();
             darkMode = next;
             panel.setBackground(panelBackground());
             search.setTextColor(paletteColor(0xff202426, 0xfff2f4f5));
             search.setHintTextColor(paletteColor(0xff7d8589, 0xffaeb6ba));
+            search.setBackground(background(paletteColor(0x12000000, 0x1cffffff), dp(7), Color.TRANSPARENT));
+            clearSearch.setTextColor(paletteColor(0xff7d8589, 0xffaeb6ba));
             for (TextView key : keyboardKeys) {
                 key.setTextColor(paletteColor(0xff273134, 0xffe4e9ea));
                 key.setBackground(background(
