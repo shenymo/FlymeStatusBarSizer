@@ -398,87 +398,16 @@ public final class BatteryIconLibraryEditor {
         layerParams.setMargins(0, activity.dp(8), 0, activity.dp(8));
         xmlSection.addView(layers, layerParams);
         String[] layerNames = {"外壳", "电芯", "空电量", "充电", "快充"};
-        ArrayList<EditText> xmlFields = new ArrayList<>();
-        for (int index = 0; index < XML_KEYS.length; index++) {
-            String key = XML_KEYS[index];
-            int position = index;
-            LinearLayout card = column();
-            card.setPadding(activity.dp(2), activity.dp(2), activity.dp(2), activity.dp(4));
-            card.setSelected(index == 0);
-            card.setBackground(activity.roundRect(index == 0
-                    ? activity.primaryContainerColor() : activity.surfaceColor(), 8));
-            card.setContentDescription(layerNames[index] + " XML" + (index >= 2 ? "，可选" : ""));
-            LayerPreviewView preview = new LayerPreviewView(activity);
-            card.addView(preview, new LinearLayout.LayoutParams(-1, activity.dp(72)));
-            TextView label = text(layerNames[index], 11);
-            label.setGravity(Gravity.CENTER);
-            label.setSingleLine(true);
-            label.setAutoSizeTextTypeUniformWithConfiguration(9, 11, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
-            label.setTextColor(index == 0 ? activity.primaryColor() : activity.textColor());
-            card.addView(label, new LinearLayout.LayoutParams(-1, activity.dp(24)));
-            LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(0, -2, 1);
-            cardParams.setMargins(activity.dp(2), 0, activity.dp(2), 0);
-            layers.addView(card, cardParams);
-            EditText xml = input("XML", true);
-            xml.setContentDescription(card.getContentDescription());
-            xml.setTypeface(Typeface.MONOSPACE);
-            xml.setTextSize(12);
-            xml.setMinLines(6);
-            xml.setGravity(Gravity.TOP | Gravity.START);
-            xml.setPadding(activity.dp(8), activity.dp(8), activity.dp(8), activity.dp(8));
-            xml.setBackground(activity.roundRect(activity.surfaceColor(), 8));
-            xml.setText(source.optString(key, ""));
-            xml.setVisibility(View.GONE);
-            fields.put(key, xml);
-            xmlFields.add(xml);
-            xmlSection.addView(xml, new LinearLayout.LayoutParams(-1, -2));
-            activity.setTapClickListener(card, v -> {
-                for (int i = 0; i < xmlFields.size(); i++) {
-                    boolean selected = i == position;
-                    xmlFields.get(i).setVisibility(selected ? View.VISIBLE : View.GONE);
-                    View item = layers.getChildAt(i);
-                    item.setSelected(selected);
-                    item.setBackground(activity.roundRect(selected
-                            ? activity.primaryContainerColor() : activity.surfaceColor(), 8));
-                    ((TextView) ((LinearLayout) item).getChildAt(1)).setTextColor(selected
-                            ? activity.primaryColor() : activity.textColor());
-                }
-            });
-            Runnable refreshLayer = () -> {
-                String value = xml.getText().toString().trim();
-                preview.vector = null;
-                preview.message = null;
-                xml.setError(null);
-                if (value.isEmpty()) {
-                    preview.message = position >= 2 ? "未设置" : "未填写";
-                    if (position < 2) xml.setError("请填写" + layerNames[position] + " XML");
-                } else {
-                    try {
-                        preview.vector = RingerVectorXml.parse(value);
-                    } catch (IllegalArgumentException invalid) {
-                        preview.message = "XML 有误";
-                        xml.setError(invalid.getMessage());
-                    }
-                }
-                preview.invalidate();
-            };
-            xml.addTextChangedListener(new TextWatcher() {
-                public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
-                public void onTextChanged(CharSequence s, int start, int before, int count) { }
-                public void afterTextChanged(Editable value) {
-                    xml.removeCallbacks(refreshLayer);
-                    xml.postDelayed(refreshLayer, 300);
-                }
-            });
-            refreshLayer.run();
-        }
-        xmlFields.get(0).setVisibility(View.VISIBLE);
+        LinkedHashMap<String, String> layerXml = new LinkedHashMap<>();
+        for (String key : XML_KEYS) layerXml.put(key, source.optString(key, ""));
+        RingerVectorXml[] layerVectors = {template.shell, template.fill, template.background,
+                template.charging, template.quickCharging};
         TextView error = text("", 13);
         error.setTextColor(0xFFD32F2F);
         error.setVisibility(View.GONE);
         content.addView(error);
         Consumer<Boolean> refreshPreview = showErrors -> {
-            BatteryIconPack pack = readForm(fields, direction, id, error, showErrors);
+            BatteryIconPack pack = readForm(fields, layerXml, direction, id, error, showErrors);
             if (pack == null) return;
             for (Map.Entry<String, SeekBar> control : styleSliders.entrySet()) {
                 float value = switch (control.getKey()) {
@@ -499,6 +428,52 @@ public final class BatteryIconLibraryEditor {
             light.invalidate();
             dark.invalidate();
         };
+        for (int index = 0; index < XML_KEYS.length; index++) {
+            String key = XML_KEYS[index];
+            String layerName = layerNames[index];
+            LinearLayout card = column();
+            card.setPadding(activity.dp(2), activity.dp(2), activity.dp(2), activity.dp(4));
+            card.setBackground(activity.roundRect(activity.surfaceColor(), 8));
+            card.setContentDescription(layerName + "图层，点击编辑" + (index >= 2 ? "，长按可清空" : ""));
+            LayerPreviewView preview = new LayerPreviewView(activity);
+            preview.vector = layerXml.get(key).isBlank() ? null : layerVectors[index];
+            preview.message = preview.vector == null ? "未设置" : null;
+            card.addView(preview, new LinearLayout.LayoutParams(-1, activity.dp(72)));
+            TextView label = text(layerName, 11);
+            label.setGravity(Gravity.CENTER);
+            label.setSingleLine(true);
+            label.setAutoSizeTextTypeUniformWithConfiguration(9, 11, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
+            card.addView(label, new LinearLayout.LayoutParams(-1, activity.dp(24)));
+            LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(0, -2, 1);
+            cardParams.setMargins(activity.dp(2), 0, activity.dp(2), 0);
+            layers.addView(card, cardParams);
+            activity.setTapClickListener(card, v -> new VectorDrawableEditor(activity).show(
+                    layerXml.get(key), layerName + "图层",
+                    (xml, vector, onSaved) -> {
+                        layerXml.put(key, xml);
+                        preview.vector = vector;
+                        preview.message = null;
+                        preview.invalidate();
+                        onSaved.run();
+                        refreshPreview.accept(true);
+                        activity.showToast("图层已更新");
+                    }, null));
+            if (index >= 2) {
+                card.setTooltipText("长按清空图层");
+                card.setOnLongClickListener(v -> {
+                    activity.performTapHaptic(v);
+                    showAlert(new AlertDialog.Builder(activity).setTitle(layerName + "图层")
+                            .setItems(new String[]{"清空图层"}, (d, which) -> {
+                                layerXml.put(key, "");
+                                preview.vector = null;
+                                preview.message = "未设置";
+                                preview.invalidate();
+                                refreshPreview.accept(true);
+                            }).create());
+                    return true;
+                });
+            }
+        }
         for (Map.Entry<String, SeekBar> control : styleSliders.entrySet()) {
             EditText field = fields.get(control.getKey());
             float factor = control.getKey().equals("textAlpha") ? 100f : 10f;
@@ -537,7 +512,7 @@ public final class BatteryIconLibraryEditor {
         save.setGravity(Gravity.CENTER);
         save.setTextColor(activity.primaryColor());
         activity.setTapClickListener(save, v -> {
-            BatteryIconPack pack = readForm(fields, direction, id, error, true);
+            BatteryIconPack pack = readForm(fields, layerXml, direction, id, error, true);
             if (pack == null) return;
             ArrayList<Entry> entries = new ArrayList<>(library.entries);
             entries.removeIf(entry -> entry.id().equals(id));
@@ -564,14 +539,17 @@ public final class BatteryIconLibraryEditor {
         return section;
     }
 
-    private BatteryIconPack readForm(Map<String, EditText> fields, Spinner direction, String id, TextView error,
-            boolean showErrors) {
+    private BatteryIconPack readForm(Map<String, EditText> fields, Map<String, String> layerXml,
+            Spinner direction, String id, TextView error, boolean showErrors) {
         try {
             JSONObject object = new JSONObject().put("version", 2).put("fillDirection", DIRECTIONS[direction.getSelectedItemPosition()]);
             for (Map.Entry<String, EditText> field : fields.entrySet()) {
                 String key = field.getKey(), value = field.getValue().getText().toString().trim();
-                if (key.equals("name") || key.endsWith("Xml")) object.put(key, value);
+                if (key.equals("name")) object.put(key, value);
                 else object.put(key, Double.parseDouble(value));
+            }
+            for (Map.Entry<String, String> layer : layerXml.entrySet()) {
+                object.put(layer.getKey(), layer.getValue());
             }
             BatteryIconPack pack = BatteryIconPack.parse(object.toString());
             if (nameExists(pack.name, id)) throw new IllegalArgumentException("同名图标包已存在，请修改名称");
