@@ -2267,21 +2267,9 @@ public class FlymeStatusBarSizer extends XposedModule {
     }
 
     private static Integer readBatteryTintColor(Object target) {
-        int color = ReflectUtils.getIntField(target, "mFilterColor", 0);
-        if (Color.alpha(color) != 0) {
-            return color;
-        }
-        color = ReflectUtils.getIntField(target, "mIconTint", 0);
-        if (Color.alpha(color) != 0) {
-            return color;
-        }
-        color = ReflectUtils.getIntField(target, "mLightModeFillColor", 0);
-        if (Color.alpha(color) != 0) {
-            return color;
-        }
-        color = ReflectUtils.getIntField(target, "mDarkModeFillColor", 0);
-        if (Color.alpha(color) != 0) {
-            return color;
+        for (String name : new String[]{"mFilterColor", "mIconTint", "mLightModeFillColor", "mDarkModeFillColor"}) {
+            Object color = ReflectUtils.getField(target, name);
+            if (color instanceof Integer) return (Integer) color;
         }
         return null;
     }

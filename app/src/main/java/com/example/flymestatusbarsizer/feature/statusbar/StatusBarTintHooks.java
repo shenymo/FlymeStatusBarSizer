@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer.feature.statusbar;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
+import com.example.flymestatusbarsizer.config.SettingsStore;
 import com.example.flymestatusbarsizer.util.ReflectUtils;
 
 import android.animation.ArgbEvaluator;
@@ -158,7 +159,7 @@ public final class StatusBarTintHooks {
                 if (!tintActive || !enabled()) return chain.proceed();
                 PANEL_TINTS.putIfAbsent(chain.getThisObject(), null);
                 return dispatcher == null ? chain.proceed()
-                        : chain.proceed(new Object[]{nativeAreas, nativeIntensity, nativeTint});
+                        : chain.proceed(new Object[]{nativeAreas, nativeIntensity, systemColor(nativeTint)});
             });
             hook(module, loader, type, QS.equals(type) ? "onViewDetached" : "onDetachedFromWindow", chain -> {
                 PANEL_TINTS.remove(chain.getThisObject());
@@ -180,11 +181,10 @@ public final class StatusBarTintHooks {
                 int panelScene = bool(target, "mIsBelongToClassicPanel")
                         ? (currentScene == 3 ? 3 : 2) : 3;
                 int selected = mode(currentScene == panelScene ? panelScene : -1);
-                int tint = selected == 0 ? (Integer) chain.getArg(0) : color(selected);
+                int tint = selected == 0 ? systemColor((Integer) chain.getArg(0)) : color(selected);
                 Integer previous = PANEL_TINTS.get(target);
                 if (previous != null && previous == tint) return null;
-                Object result = selected == 0 ? chain.proceed()
-                        : chain.proceed(new Object[]{color(selected)});
+                Object result = chain.proceed(new Object[]{tint});
                 // The first callback during attachment arrives before the icon manager exists.
                 if (field(target, "mIconManager") != null) PANEL_TINTS.put(target, tint);
                 return result;
@@ -198,13 +198,20 @@ public final class StatusBarTintHooks {
             int currentScene = scene();
             int selected = mode(currentScene == 2 || currentScene == 3 ? currentScene :
                     currentScene == 4 ? 4 : -1);
-            if (selected == 0) return chain.proceed();
+            Object nativeResult = null;
+            if (selected == 0) {
+                nativeResult = chain.proceed();
+                if (ModuleConfig.load(null).statusBarSystemColorOpacityTenthPercent
+                        == SettingsStore.DEFAULT_STATUS_BAR_SYSTEM_COLOR_OPACITY_TENTH_PERCENT) {
+                    return nativeResult;
+                }
+            }
             try {
                 applyLockColor(view, manager, selected);
-                return null;
+                return nativeResult;
             } catch (ReflectiveOperationException error) {
                 Log.w(TAG, "Lockscreen tint unavailable", error);
-                return chain.proceed();
+                return selected == 0 ? nativeResult : chain.proceed();
             }
         });
         watch(module, loader, "com.android.systemui.shade.NotificationPanelViewController",
@@ -287,7 +294,17 @@ public final class StatusBarTintHooks {
 
     private static boolean enabled() {
         ModuleConfig config = ModuleConfig.load(null);
-        return config.enabled && config.statusBarTintEnabled;
+        return config.enabled && (config.statusBarTintEnabled
+                || config.statusBarSystemColorOpacityTenthPercent
+                != SettingsStore.DEFAULT_STATUS_BAR_SYSTEM_COLOR_OPACITY_TENTH_PERCENT);
+    }
+
+    private static int systemColor(int color) {
+        ModuleConfig config = ModuleConfig.load(null);
+        if (!config.enabled || config.statusBarSystemColorOpacityTenthPercent
+                == SettingsStore.DEFAULT_STATUS_BAR_SYSTEM_COLOR_OPACITY_TENTH_PERCENT) return color;
+        int alpha = Math.round(config.statusBarSystemColorOpacityTenthPercent * 255f / 1000f);
+        return (color & 0x00ffffff) | (alpha << 24);
     }
 
     private static boolean syncEnabled() {
@@ -384,7 +401,7 @@ public final class StatusBarTintHooks {
         int selected = mode(currentScene);
         ArrayList<Rect> areas = selected == 0 ? nativeAreas : EMPTY_AREAS;
         float intensity = selected == 0 ? nativeIntensity : selected == 1 ? 1f : 0f;
-        int tint = selected == 0 ? nativeTint : color(selected);
+        int tint = selected == 0 ? systemColor(nativeTint) : color(selected);
         int contrast = selected == 0 ? nativeContrast : color(selected == 1 ? 2 : 1);
         boolean nativeChanged = panelNativeTint != nativeTint || panelNativeAreas != nativeAreas;
         panelNativeTint = nativeTint;
@@ -396,7 +413,7 @@ public final class StatusBarTintHooks {
                 for (Object target : new ArrayList<>(PANEL_TINTS.keySet())) {
                     ReflectUtils.invokeMethod(target, "onDarkChanged",
                             new Class<?>[]{ArrayList.class, float.class, int.class},
-                            nativeAreas, nativeIntensity, nativeTint);
+                            nativeAreas, nativeIntensity, systemColor(nativeTint));
                 }
             }
             return;
@@ -461,13 +478,17 @@ public final class StatusBarTintHooks {
                 ? "mDarkModeIconColorSingleTone"
                 : "mLightModeIconColorSingleTone";
         Object colorValue = ReflectUtils.getField(current, fieldName);
-        return colorValue instanceof Integer ? ((Integer) colorValue).intValue() : publishedIconTint;
+        return colorValue instanceof Integer ? systemColor((Integer) colorValue) : publishedIconTint;
     }
 
     private static void applyLockColor(View view, Object manager, int mode) throws ReflectiveOperationException {
-        int tint = color(mode);
-        int contrast = color(mode == 1 ? 2 : 1);
+        int tint = mode == 0 ? systemColor((Integer) field(manager, "mColor")) : color(mode);
+        int contrast = mode == 0 ? (Integer) field(manager, "mForegroundColor") : color(mode == 1 ? 2 : 1);
         float intensity = mode == 1 ? 1f : 0f;
+        if (mode == 0) {
+            Object change = ReflectUtils.invokeNoArg(field(view, "mDarkChange"), "getValue");
+            intensity = (Float) field(change, "darkIntensity");
+        }
         ArrayList<?> areas = (ArrayList<?>) field(view, "mEmptyTintRect");
         Class<?> changeType = Class.forName(PHONE + "SysuiDarkIconDispatcher$DarkChange", false,
                 view.getClass().getClassLoader());

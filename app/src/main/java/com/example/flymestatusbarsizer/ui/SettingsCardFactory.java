@@ -1441,10 +1441,13 @@ public final class SettingsCardFactory {
                 SettingsStore.KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
                 SettingsStore.DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT, 50, 200, "%");
         content.addView(batterySizingOptions, PageViewUtils.matchWrap());
+        activity.addDivider(content);
+        activity.addApplySliderRow(content, "系统颜色不透明度",
+                "默认 90.2%。数值越大越不透明，100% 可去掉系统颜色这一层的透明效果。仅作用于跟随系统的配色，图标自身的不透明度仍会叠加。",
+                SettingsStore.KEY_STATUS_BAR_SYSTEM_COLOR_OPACITY_TENTH_PERCENT,
+                SettingsStore.DEFAULT_STATUS_BAR_SYSTEM_COLOR_OPACITY_TENTH_PERCENT, 0, 1000, "%", 10);
         updateBatteryOptionsVisibility();
-        return activity.buildSectionCard("图标大小",
-                "调整右上角状态图标，以及模块接管后的电池和移动网络图标。通知图标、隐私权限图标和隐私圆点不在此处调整。",
-                content);
+        return activity.buildSectionCard("图标外观", null, content);
     }
 
     private LinearLayout buildMBackActionPage() {

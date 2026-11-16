@@ -35,6 +35,8 @@ public final class SettingsStore {
     public static final String KEY_COLOR_PICKER_PALETTE = "color_picker_palette";
     public static final String KEY_ENABLED = "enabled";
     public static final String KEY_STATUS_BAR_TINT_ENABLED = "status_bar_tint_enabled";
+    public static final String KEY_STATUS_BAR_SYSTEM_COLOR_OPACITY_TENTH_PERCENT =
+            "status_bar_system_color_opacity_tenth_percent";
     public static final String KEY_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED =
             "status_bar_ringer_vector_icons_enabled";
     public static final boolean DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED = false;
@@ -640,6 +642,7 @@ public final class SettingsStore {
     public static final String KEY_TELEPHONY_DEBUG_SLOT2_SIGNAL_LEVEL = "telephony_debug_slot2_signal_level";
     public static final boolean DEFAULT_ENABLED = false;
     public static final boolean DEFAULT_STATUS_BAR_TINT_ENABLED = false;
+    public static final int DEFAULT_STATUS_BAR_SYSTEM_COLOR_OPACITY_TENTH_PERCENT = 902;
     public static final boolean DEFAULT_HIDE_IDLE_CAMERA_CUTOUT = false;
     public static final boolean DEFAULT_BATTERY_CODE_DRAW_ENABLED = false;
     public static final boolean DEFAULT_CAMERA_CIRCLE_BATTERY_ENABLED = false;
@@ -946,6 +949,7 @@ public final class SettingsStore {
             KEY_CAMERA_CIRCLE_BATTERY_X_OFFSET_DP,
             KEY_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP,
             KEY_STATUS_BAR_ICON_SCALE_PERCENT,
+            KEY_STATUS_BAR_SYSTEM_COLOR_OPACITY_TENTH_PERCENT,
             KEY_BATTERY_INNER_TEXT_SCALE_PERCENT,
             KEY_BATTERY_ICON_Y_OFFSET_DP,
             KEY_BATTERY_BOLT_Y_OFFSET_DP,
@@ -1577,6 +1581,8 @@ public final class SettingsStore {
                 return DEFAULT_CAMERA_CIRCLE_BATTERY_Y_OFFSET_DP;
             case KEY_STATUS_BAR_ICON_SCALE_PERCENT:
                 return DEFAULT_STATUS_BAR_ICON_SCALE_PERCENT;
+            case KEY_STATUS_BAR_SYSTEM_COLOR_OPACITY_TENTH_PERCENT:
+                return DEFAULT_STATUS_BAR_SYSTEM_COLOR_OPACITY_TENTH_PERCENT;
             case KEY_BATTERY_INNER_TEXT_SCALE_PERCENT:
                 return DEFAULT_BATTERY_INNER_TEXT_SCALE_PERCENT;
             case KEY_BATTERY_ICON_Y_OFFSET_DP:

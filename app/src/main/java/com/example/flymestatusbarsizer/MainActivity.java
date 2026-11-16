@@ -1965,6 +1965,12 @@ public class MainActivity extends Activity {
         addApplySliderRowInternal(root, titleText, subtitleText, key, defaultValue, min, max, suffix, false);
     }
 
+    public void addApplySliderRow(LinearLayout root, String titleText, String subtitleText, String key,
+            int defaultValue, int min, int max, String suffix, int valueScale) {
+        addApplySliderRowInternal(root, titleText, subtitleText, key, defaultValue, min, max,
+                suffix, false, valueScale);
+    }
+
     public void addApplyInsetSliderRow(LinearLayout root, String titleText, String subtitleText,
             String key, int defaultValue, int min, int max) {
         addApplySliderRowInternal(root, titleText, subtitleText, key, defaultValue, min, max, "", true);
@@ -1972,6 +1978,12 @@ public class MainActivity extends Activity {
 
     void addApplySliderRowInternal(LinearLayout root, String titleText, String subtitleText, String key,
             int defaultValue, int min, int max, String suffix, boolean insetValue) {
+        addApplySliderRowInternal(root, titleText, subtitleText, key, defaultValue, min, max,
+                suffix, insetValue, 1);
+    }
+
+    private void addApplySliderRowInternal(LinearLayout root, String titleText, String subtitleText, String key,
+            int defaultValue, int min, int max, String suffix, boolean insetValue, int valueScale) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.VERTICAL);
 
@@ -1995,7 +2007,7 @@ public class MainActivity extends Activity {
         valueView.setMinHeight(dp(36));
         valueView.setGravity(Gravity.CENTER);
         int clamped = getPendingIntSliderValue(key, defaultValue, min, max);
-        valueView.setText(formatSliderDisplayValue(clamped, suffix, insetValue));
+        valueView.setText(formatSliderDisplayValue(clamped, suffix, insetValue, valueScale));
         LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -2009,7 +2021,7 @@ public class MainActivity extends Activity {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 int value = min + progress;
-                valueView.setText(formatSliderDisplayValue(value, suffix, insetValue));
+                valueView.setText(formatSliderDisplayValue(value, suffix, insetValue, valueScale));
                 if (fromUser) {
                     performSliderHaptic(seekBar);
                     updatePendingIntSliderValue(key, value, min, max);
@@ -2025,17 +2037,20 @@ public class MainActivity extends Activity {
                 updatePendingIntSliderValue(key, min + seekBar.getProgress(), min, max);
             }
         });
-        setTapClickListener(valueView, v -> showIntInputDialog(
-                titleText,
-                min + seekBar.getProgress(),
-                min,
-                max,
-                insetValue ? "" : suffix,
-                value -> {
-                    updatePendingIntSliderValue(key, value, min, max);
-                    valueView.setText(formatSliderDisplayValue(value, suffix, insetValue));
-                    seekBar.setProgress(value - min);
-                }));
+        setTapClickListener(valueView, v -> {
+            IntValueConsumer onValue = value -> {
+                updatePendingIntSliderValue(key, value, min, max);
+                valueView.setText(formatSliderDisplayValue(value, suffix, insetValue, valueScale));
+                seekBar.setProgress(value - min);
+            };
+            if (valueScale == 1) {
+                showIntInputDialog(titleText, min + seekBar.getProgress(), min, max,
+                        insetValue ? "" : suffix, onValue);
+            } else {
+                showDecimalInputDialog(titleText, min + seekBar.getProgress(), min, max,
+                        valueScale, suffix, onValue);
+            }
+        });
 
         TextView applyButton = filledButton("应用", colorPrimary, Color.WHITE);
         setTapClickListener(applyButton,
@@ -2887,6 +2902,11 @@ public class MainActivity extends Activity {
 
     void showDecimalInputDialog(String titleText, int currentValue,
             int min, int max, int scale, IntValueConsumer consumer) {
+        showDecimalInputDialog(titleText, currentValue, min, max, scale, "dp", consumer);
+    }
+
+    private void showDecimalInputDialog(String titleText, int currentValue,
+            int min, int max, int scale, String suffix, IntValueConsumer consumer) {
         EditText input = new EditText(this);
         input.setText(String.format(Locale.US, scale == 100 ? "%.2f" : "%.1f",
                 currentValue / (float) scale));
@@ -2903,9 +2923,9 @@ public class MainActivity extends Activity {
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(titleText)
                 .setMessage("\u8f93\u5165\u8303\u56f4 "
-                        + formatDpValue(min, scale)
+                        + String.format(Locale.US, "%s%s", min / (float) scale, suffix)
                         + " ~ "
-                        + formatDpValue(max, scale))
+                        + String.format(Locale.US, "%s%s", max / (float) scale, suffix))
                 .setView(input)
                 .setNegativeButton("\u53d6\u6d88", null)
                 .setPositiveButton("\u786e\u5b9a", (dialogInterface, which) -> {
@@ -2919,7 +2939,7 @@ public class MainActivity extends Activity {
                         int clamped = Math.max(min, Math.min(max, value));
                         consumer.accept(clamped);
                     } catch (NumberFormatException ignored) {
-                        showToast(scale == 100 ? "请输入 0.01dp 精度的数值" : "请输入 0.1dp 精度的数值");
+                        showToast("请输入 " + (scale == 100 ? "0.01" : "0.1") + suffix + " 精度的数值");
                     }
                 })
                 .show();
@@ -3051,7 +3071,8 @@ public class MainActivity extends Activity {
         return scaled.intValueExact();
     }
 
-    private String formatSliderDisplayValue(int value, String suffix, boolean insetValue) {
+    private String formatSliderDisplayValue(int value, String suffix, boolean insetValue, int valueScale) {
+        if (valueScale != 1) return String.format(Locale.US, "%.1f%s", value / (float) valueScale, suffix);
         return insetValue ? formatInsetValue(value) : formatValue(value, suffix);
     }
 

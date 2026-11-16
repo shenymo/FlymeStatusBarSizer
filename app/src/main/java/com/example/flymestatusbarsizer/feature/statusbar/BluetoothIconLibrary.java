@@ -98,9 +98,20 @@ public final class BluetoothIconLibrary {
     public static BluetoothIconLibrary defaults() { return DEFAULTS; }
 
     private static BluetoothIconLibrary createDefaults() {
+        RectF content = new RectF();
+        for (String xml : DEFAULT_XMLS) {
+            RingerVectorXml.parse(xml).unionDrawingBounds(content);
+        }
+        float scale = 24f / content.height();
+        String group = "<group android:scaleX=\"" + scale + "\" android:scaleY=\"" + scale
+                + "\" android:translateX=\"" + (12f - content.centerX() * scale)
+                + "\" android:translateY=\"" + (12f - content.centerY() * scale) + "\">";
         EnumMap<BluetoothIconState, Icon> icons = new EnumMap<>(BluetoothIconState.class);
         for (BluetoothIconState state : BluetoothIconState.values()) {
             String xml = DEFAULT_XMLS[state.ordinal()];
+            int start = xml.indexOf('>') + 1;
+            xml = xml.substring(0, start) + group
+                    + xml.substring(start).replace("</vector>", "</group></vector>");
             icons.put(state, new Icon(xml, RingerVectorXml.parse(xml)));
         }
         return new BluetoothIconLibrary(List.of(new Pack(DEFAULT_PACK, "内置图标包", icons)), DEFAULT_PACK);

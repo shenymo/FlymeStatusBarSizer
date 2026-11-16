@@ -44,6 +44,8 @@ public final class ModuleConfig {
     public ShareTargetProfiles shareTargetProfiles = new ShareTargetProfiles();
     public ShareTargetRules shareTargetRules = ShareTargetRules.EMPTY;
     public boolean statusBarTintEnabled = SettingsStore.DEFAULT_STATUS_BAR_TINT_ENABLED;
+    public int statusBarSystemColorOpacityTenthPercent =
+            SettingsStore.DEFAULT_STATUS_BAR_SYSTEM_COLOR_OPACITY_TENTH_PERCENT;
     public boolean statusBarRingerVectorIconsEnabled =
             SettingsStore.DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED;
     public RingerVectorXml silentIconVector;
@@ -545,6 +547,10 @@ public final class ModuleConfig {
                     key -> SettingsStore.readBoolean(prefs, key, false));
             config.statusBarTintEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_STATUS_BAR_TINT_ENABLED, SettingsStore.DEFAULT_STATUS_BAR_TINT_ENABLED);
+            config.statusBarSystemColorOpacityTenthPercent = Math.max(0, Math.min(1000,
+                    SettingsStore.readInt(prefs,
+                            SettingsStore.KEY_STATUS_BAR_SYSTEM_COLOR_OPACITY_TENTH_PERCENT,
+                            SettingsStore.DEFAULT_STATUS_BAR_SYSTEM_COLOR_OPACITY_TENTH_PERCENT)));
             config.statusBarRingerVectorIconsEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED,
                     SettingsStore.DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED);
