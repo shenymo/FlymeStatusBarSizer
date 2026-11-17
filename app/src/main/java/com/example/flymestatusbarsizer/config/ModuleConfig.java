@@ -1,5 +1,7 @@
 package com.example.flymestatusbarsizer.config;
 
+import com.example.flymestatusbarsizer.feature.statusbar.StatusBarPageLayout;
+
 import com.example.flymestatusbarsizer.feature.share.ShareTargetRules;
 import com.example.flymestatusbarsizer.feature.share.ShareTargetProfiles;
 
@@ -121,6 +123,11 @@ public final class ModuleConfig {
     public int clockFontWeight = SettingsStore.DEFAULT_CLOCK_FONT_WEIGHT;
     public int clockAndCarrierTextSizePercent = SettingsStore.DEFAULT_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT;
     public boolean lockscreenCanvasClockEnabled = SettingsStore.DEFAULT_LOCKSCREEN_CANVAS_CLOCK_ENABLED;
+    public boolean statusBarPagesEnabled;
+    public StatusBarPageLayout statusBarPageLayout =
+            StatusBarPageLayout.parse(
+                    StatusBarPageLayout.DEFAULT_LEFT,
+                    StatusBarPageLayout.DEFAULT_RIGHT);
     public boolean clockDetailPopupEnabled = SettingsStore.DEFAULT_CLOCK_DETAIL_POPUP_ENABLED;
     public boolean clockDetailLunarDateEnabled = SettingsStore.DEFAULT_CLOCK_DETAIL_LUNAR_DATE_ENABLED;
     public boolean clockDetailActionGridEnabled = SettingsStore.DEFAULT_CLOCK_DETAIL_ACTION_GRID_ENABLED;
@@ -766,6 +773,13 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_LOCKSCREEN_CANVAS_CLOCK_ENABLED,
                     SettingsStore.DEFAULT_LOCKSCREEN_CANVAS_CLOCK_ENABLED);
+            config.statusBarPagesEnabled = SettingsStore.readBoolean(prefs,
+                    SettingsStore.KEY_STATUS_BAR_PAGES_ENABLED, false);
+            config.statusBarPageLayout = StatusBarPageLayout.parse(
+                    SettingsStore.readString(prefs, SettingsStore.KEY_STATUS_BAR_PAGE_LEFT,
+                            StatusBarPageLayout.DEFAULT_LEFT),
+                    SettingsStore.readString(prefs, SettingsStore.KEY_STATUS_BAR_PAGE_RIGHT,
+                            StatusBarPageLayout.DEFAULT_RIGHT));
             config.clockDetailPopupEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_CLOCK_DETAIL_POPUP_ENABLED,

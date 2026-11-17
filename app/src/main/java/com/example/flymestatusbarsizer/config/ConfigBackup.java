@@ -145,6 +145,7 @@ public final class ConfigBackup {
                 || SettingsStore.KEY_COLOR_PICKER_PALETTE.equals(key)) return null;
         if (key.equals(SettingsStore.KEY_WIFI_PERF_LOGGING_ENABLED)
                 || key.equals(SettingsStore.KEY_WORKSPACE_FLOW_LOGGING_ENABLED)) return GROUP_IDS[5];
+        if (key.startsWith("status_bar_page")) return GROUP_IDS[1];
         if (key.startsWith("status_bar_") || key.startsWith("battery_")
                 || key.startsWith("camera_circle_") || key.startsWith("signal_")
                 || key.startsWith("wifi_") || key.startsWith("anip_")
