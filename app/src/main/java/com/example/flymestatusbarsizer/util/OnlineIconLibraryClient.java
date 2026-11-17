@@ -23,6 +23,7 @@ import java.util.UUID;
 public final class OnlineIconLibraryClient {
     public static final String TYPE_SILENT = "ringer_silent";
     public static final String TYPE_VIBRATE = "ringer_vibrate";
+    public static final String TYPE_ALARM = "ringer_alarm";
     public static final String TYPE_BATTERY = "battery";
     private static final String BASE_URL = "https://icon.biye.me";
     private static final int CONNECT_TIMEOUT_MS = 7000;

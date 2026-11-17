@@ -55,7 +55,7 @@ public final class IconsBatteryPageController {
                 SettingsStore.DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED,
                 (button, enabled) -> libraries.setVisibility(enabled ? View.VISIBLE : View.GONE));
         content.addView(libraries);
-        root.addView(activity.buildSectionCard("静音与震动", null, content),
+        root.addView(activity.buildSectionCard("静音、震动与闹钟", null, content),
                 PageViewUtils.matchWrapWithTop(activity, 8));
     }
 

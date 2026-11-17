@@ -25,13 +25,15 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-/** Replaces silent, vibrate and Bluetooth status icons with vector drawables. */
+/** Replaces silent, vibrate, alarm and Bluetooth status icons with vector drawables. */
 public final class RingerIconVectorHooks {
     private static final String TAG = "RingerIconVector";
     private static final Map<View, Integer> ICON_VIEWS =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static int silentDrawableId;
     private static int vibrateDrawableId;
+    private static int alarmDrawableId;
+    private static int alarmDimDrawableId;
 
     private RingerIconVectorHooks() {}
 
@@ -49,17 +51,16 @@ public final class RingerIconVectorHooks {
                     return chain.proceed();
                 }
                 String slot = (String) ReflectUtils.getField(iconView, "mSlot");
-                if (!"mute".equals(slot) && !"volume".equals(slot) && !"bluetooth".equals(slot)) {
+                if (!"mute".equals(slot) && !"volume".equals(slot) && !"alarm_clock".equals(slot)
+                        && !"bluetooth".equals(slot)) {
                     return chain.proceed();
                 }
-                String drawableName;
-                if ("mute".equals(slot)) {
-                    drawableName = "ic_legacy_speaker_mute";
-                } else if ("volume".equals(slot)) {
-                    drawableName = "ic_legacy_volume_ringer_vibrate";
-                } else {
-                    drawableName = null;
-                }
+                RingerIconLibrary.Target target = switch (slot) {
+                    case "mute" -> RingerIconLibrary.Target.SILENT;
+                    case "volume" -> RingerIconLibrary.Target.VIBRATE;
+                    case "alarm_clock" -> RingerIconLibrary.Target.ALARM;
+                    default -> null;
+                };
                 ICON_VIEWS.putIfAbsent(iconView, null);
 
                 ModuleConfig config = ModuleConfig.load(iconView.getContext());
@@ -89,34 +90,47 @@ public final class RingerIconVectorHooks {
                 if (!config.statusBarRingerVectorIconsEnabled) {
                     return chain.proceed();
                 }
-                RingerVectorXml custom = "mute".equals(slot) ? config.silentIconVector : config.vibrateIconVector;
+                RingerVectorXml custom = switch (target) {
+                    case SILENT -> config.silentIconVector;
+                    case VIBRATE -> config.vibrateIconVector;
+                    case ALARM -> config.alarmIconVector;
+                };
+                boolean alarmDim = target == RingerIconLibrary.Target.ALARM
+                        && isAlarmDim(context, chain.getArg(2));
                 if (custom != null) {
                     try {
-                        return compactDrawable(custom.newDrawable(context), context,
-                                custom.iconDrawingBounds());
+                        Drawable drawable = custom.newDrawable(context);
+                        if (alarmDim) drawable.setAlpha(77);
+                        return compactDrawable(drawable, context, custom.iconDrawingBounds());
                     } catch (IllegalArgumentException invalid) {
                         Log.w(TAG, "Ignoring unsupported custom ringer icon", invalid);
                     }
                 }
+                String drawableName = switch (target) {
+                    case SILENT -> "ic_legacy_speaker_mute";
+                    case VIBRATE -> "ic_legacy_volume_ringer_vibrate";
+                    case ALARM -> "ic_alarm";
+                };
                 int drawableId;
-                if ("mute".equals(slot)) {
-                    if (silentDrawableId == 0) {
-                        silentDrawableId = context.getResources().getIdentifier(
-                                drawableName, "drawable", "com.android.systemui");
-                    }
+                if (target == RingerIconLibrary.Target.SILENT) {
+                    if (silentDrawableId == 0) silentDrawableId = context.getResources().getIdentifier(
+                            drawableName, "drawable", "com.android.systemui");
                     drawableId = silentDrawableId;
-                } else {
-                    if (vibrateDrawableId == 0) {
-                        vibrateDrawableId = context.getResources().getIdentifier(
-                                drawableName, "drawable", "com.android.systemui");
-                    }
+                } else if (target == RingerIconLibrary.Target.VIBRATE) {
+                    if (vibrateDrawableId == 0) vibrateDrawableId = context.getResources().getIdentifier(
+                            drawableName, "drawable", "com.android.systemui");
                     drawableId = vibrateDrawableId;
+                } else {
+                    if (alarmDrawableId == 0) alarmDrawableId = context.getResources().getIdentifier(
+                            drawableName, "drawable", "com.android.systemui");
+                    drawableId = alarmDrawableId;
                 }
                 if (drawableId == 0) {
                     return chain.proceed();
                 }
                 RingerVectorDrawable drawable = new RingerVectorDrawable(context.getDrawable(drawableId), context,
-                        "mute".equals(slot));
+                        target);
+                if (alarmDim) drawable.setAlpha(77);
                 RectF bounds = new RectF(0, 0, 1, 1);
                 IconMetrics.VisualCanvas visual = IconMetrics.resolveCenteredVisualCanvas(bounds,
                         drawable.pathBounds.width() / drawable.pathBounds.height(), null);
@@ -213,7 +227,8 @@ public final class RingerIconVectorHooks {
                     continue;
                 }
                 String slot = (String) ReflectUtils.getField(view, "mSlot");
-                if ("mute".equals(slot) || "volume".equals(slot) || "bluetooth".equals(slot)) {
+                if ("mute".equals(slot) || "volume".equals(slot) || "alarm_clock".equals(slot)
+                        || "bluetooth".equals(slot)) {
                     FlymeStatusBarSizer.invokeNoArgCompat(view, "updateDrawable");
                 }
             }
@@ -221,12 +236,36 @@ public final class RingerIconVectorHooks {
     }
 
     public static Drawable builtInPreview(Context context, boolean silent) {
-        return new RingerVectorDrawable(context.getDrawable(silent ? R.drawable.ringer_builtin_silent
-                : R.drawable.ringer_builtin_vibrate), context, silent);
+        return builtInPreview(context, silent ? RingerIconLibrary.Target.SILENT
+                : RingerIconLibrary.Target.VIBRATE);
+    }
+
+    public static Drawable builtInPreview(Context context, RingerIconLibrary.Target target) {
+        int drawableId = switch (target) {
+            case SILENT -> R.drawable.ringer_builtin_silent;
+            case VIBRATE -> R.drawable.ringer_builtin_vibrate;
+            case ALARM -> R.drawable.ringer_builtin_alarm;
+        };
+        return new RingerVectorDrawable(context.getDrawable(drawableId), context, target);
+    }
+
+    private static boolean isAlarmDim(Context context, Object statusBarIcon) {
+        if (alarmDimDrawableId == 0) {
+            alarmDimDrawableId = context.getResources().getIdentifier(
+                    "stat_sys_alarm_dim", "drawable", "com.android.systemui");
+        }
+        if (alarmDimDrawableId == 0 || statusBarIcon == null) return false;
+        Icon sourceIcon = (Icon) ReflectUtils.getField(statusBarIcon, "icon");
+        return sourceIcon != null && sourceIcon.getType() == Icon.TYPE_RESOURCE
+                && sourceIcon.getResId() == alarmDimDrawableId;
     }
 
     private static Drawable compactDrawable(Drawable source, Context context, RectF drawingBounds) {
         if (drawingBounds == null) return source;
+        if (drawingBounds.left == 0f && drawingBounds.top == 0f
+                && drawingBounds.right == 1f && drawingBounds.bottom == 1f) {
+            return source;
+        }
         if (source instanceof AnimationDrawable animation) {
             AnimationDrawable compact = new AnimationDrawable();
             compact.setOneShot(animation.isOneShot());
@@ -239,10 +278,12 @@ public final class RingerIconVectorHooks {
         int width = source.getIntrinsicWidth();
         int height = source.getIntrinsicHeight();
         float padding = 2f * context.getResources().getDisplayMetrics().density;
-        int compactWidth = (int) Math.ceil(drawingBounds.width() * width + 2f * padding);
+        RectF visual = IconMetrics.resolveCenteredVisualCanvas(new RectF(0, 0, width, height),
+                drawingBounds.width() / drawingBounds.height(), null).rect;
+        int compactWidth = (int) Math.ceil(visual.width() + 2f * padding);
         if (compactWidth >= width) return source;
         return new CompactIconDrawable(source, compactWidth, width, height,
-                drawingBounds.left * width - padding);
+                visual.left - padding);
     }
 
     private static final class CompactIconDrawable extends DrawableWrapper {
@@ -283,13 +324,16 @@ public final class RingerIconVectorHooks {
         private final RectF pathBounds;
         private final IconMetrics.VisualCanvas visualCanvas = new IconMetrics.VisualCanvas();
 
-        RingerVectorDrawable(Drawable source, Context context, boolean silent) {
+        RingerVectorDrawable(Drawable source, Context context, RingerIconLibrary.Target target) {
             super(source.mutate());
             // The view applies the configured icon scale; keep the intrinsic box unscaled.
             intrinsicSize = IconMetrics.resolveSignalBoxHeight(context, 1f);
-            // Visible path extents in the two SystemUI vectors' 24 x 24 viewports.
-            pathBounds = silent ? new RectF(1.4f, 2.8f, 21.2f, 22.6f)
-                    : new RectF(1f, 4f, 23f, 20f);
+            // Visible path extents in the built-in SystemUI vectors' 24 x 24 viewports.
+            pathBounds = switch (target) {
+                case SILENT -> new RectF(1.4f, 2.8f, 21.2f, 22.6f);
+                case VIBRATE -> new RectF(1f, 4f, 23f, 20f);
+                case ALARM -> new RectF(2f, 1.8f, 22f, 22f);
+            };
         }
 
         @Override

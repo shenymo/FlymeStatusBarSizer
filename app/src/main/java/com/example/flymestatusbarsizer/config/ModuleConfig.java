@@ -50,6 +50,7 @@ public final class ModuleConfig {
             SettingsStore.DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED;
     public RingerVectorXml silentIconVector;
     public RingerVectorXml vibrateIconVector;
+    public RingerVectorXml alarmIconVector;
     public boolean statusBarBluetoothVectorIconsEnabled =
             SettingsStore.DEFAULT_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED;
     public BluetoothIconLibrary bluetoothIcons = BluetoothIconLibrary.defaults();
@@ -556,8 +557,11 @@ public final class ModuleConfig {
                     SettingsStore.DEFAULT_STATUS_BAR_RINGER_VECTOR_ICONS_ENABLED);
             RingerIconLibrary.Entry silentIcon = RingerIconLibrary.load(prefs, true).selectedEntry();
             RingerIconLibrary.Entry vibrateIcon = RingerIconLibrary.load(prefs, false).selectedEntry();
+            RingerIconLibrary.Entry alarmIcon = RingerIconLibrary.load(
+                    prefs, RingerIconLibrary.Target.ALARM).selectedEntry();
             config.silentIconVector = silentIcon == null ? null : silentIcon.vector();
             config.vibrateIconVector = vibrateIcon == null ? null : vibrateIcon.vector();
+            config.alarmIconVector = alarmIcon == null ? null : alarmIcon.vector();
             config.statusBarBluetoothVectorIconsEnabled = SettingsStore.readBoolean(prefs,
                     SettingsStore.KEY_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED,
                     SettingsStore.DEFAULT_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED);

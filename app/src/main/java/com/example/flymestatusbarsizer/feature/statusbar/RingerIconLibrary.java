@@ -16,6 +16,21 @@ import java.util.List;
 public final class RingerIconLibrary {
     private static final LruCache<String, RingerIconLibrary> CACHE = new LruCache<>(4);
     private static final String TRIANGLE_ID = "builtin:triangle";
+    public enum Target {
+        SILENT("静音图标", SettingsStore.KEY_STATUS_BAR_SILENT_ICON_LIBRARY, "ringer_silent"),
+        VIBRATE("震动图标", SettingsStore.KEY_STATUS_BAR_VIBRATE_ICON_LIBRARY, "ringer_vibrate"),
+        ALARM("闹钟图标", SettingsStore.KEY_STATUS_BAR_ALARM_ICON_LIBRARY, "ringer_alarm");
+
+        public final String title;
+        public final String key;
+        public final String onlineType;
+
+        Target(String title, String key, String onlineType) {
+            this.title = title;
+            this.key = key;
+            this.onlineType = onlineType;
+        }
+    }
     public static final String TRIANGLE_XML = """
             <vector xmlns:android="http://schemas.android.com/apk/res/android"
                 android:width="24dp"
@@ -37,8 +52,11 @@ public final class RingerIconLibrary {
     }
 
     public static String key(boolean silent) {
-        return silent ? SettingsStore.KEY_STATUS_BAR_SILENT_ICON_LIBRARY
-                : SettingsStore.KEY_STATUS_BAR_VIBRATE_ICON_LIBRARY;
+        return key(silent ? Target.SILENT : Target.VIBRATE);
+    }
+
+    public static String key(Target target) {
+        return target.key;
     }
 
     public static RingerIconLibrary load(SharedPreferences prefs, boolean silent) {
@@ -46,7 +64,15 @@ public final class RingerIconLibrary {
     }
 
     public static RingerIconLibrary load(SharedPreferences prefs, boolean silent, Context context) {
-        String raw = SettingsStore.readString(prefs, key(silent), "");
+        return load(prefs, silent ? Target.SILENT : Target.VIBRATE, context);
+    }
+
+    public static RingerIconLibrary load(SharedPreferences prefs, Target target) {
+        return load(prefs, target, null);
+    }
+
+    public static RingerIconLibrary load(SharedPreferences prefs, Target target, Context context) {
+        String raw = SettingsStore.readString(prefs, key(target), "");
         String cacheKey = (context == null ? "" : context.getPackageName()) + "\n" + raw;
         RingerIconLibrary cached = CACHE.get(cacheKey);
         if (cached != null) return cached;

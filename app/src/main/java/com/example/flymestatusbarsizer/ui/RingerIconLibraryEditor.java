@@ -36,25 +36,26 @@ import java.util.UUID;
 
 public final class RingerIconLibraryEditor {
     private final MainActivity activity;
-    private final boolean silent;
+    private final RingerIconLibrary.Target target;
     private final Runnable onChanged;
     private RingerIconLibrary library;
     private LinearLayout list;
 
-    private RingerIconLibraryEditor(MainActivity activity, boolean silent, Runnable onChanged) {
+    private RingerIconLibraryEditor(MainActivity activity, RingerIconLibrary.Target target,
+            Runnable onChanged) {
         this.activity = activity;
-        this.silent = silent;
+        this.target = target;
         this.onChanged = onChanged;
-        library = RingerIconLibrary.load(activity.prefs(), silent);
+        library = RingerIconLibrary.load(activity.prefs(), target);
     }
 
     public static void addSettingsRows(MainActivity activity, LinearLayout root) {
-        for (boolean silent : new boolean[]{true, false}) {
+        for (RingerIconLibrary.Target target : RingerIconLibrary.Target.values()) {
             LinearLayout row = new LinearLayout(activity);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setMinimumHeight(activity.dp(56));
             TextView title = new TextView(activity);
-            title.setText(silent ? "静音图标" : "震动图标");
+            title.setText(target.title);
             title.setTextColor(activity.textColor());
             title.setTextSize(15);
             row.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
@@ -67,9 +68,9 @@ public final class RingerIconLibraryEditor {
             name.setMaxLines(2);
             row.addView(name);
             Runnable refresh = () -> {
-                Entry entry = RingerIconLibrary.load(activity.prefs(), silent).selectedEntry();
+                Entry entry = RingerIconLibrary.load(activity.prefs(), target).selectedEntry();
                 name.setText(entry == null ? "内置矢量图标  ›" : entry.name() + "  ›");
-                Drawable drawable = RingerIconVectorHooks.builtInPreview(activity, silent);
+                Drawable drawable = RingerIconVectorHooks.builtInPreview(activity, target);
                 if (entry != null && entry.vector() != null) {
                     try {
                         drawable = entry.vector().newDrawable(activity);
@@ -81,14 +82,14 @@ public final class RingerIconLibraryEditor {
                 preview.setImageTintList(ColorStateList.valueOf(activity.textColor()));
             };
             refresh.run();
-            activity.setTapClickListener(row, v -> new RingerIconLibraryEditor(activity, silent, refresh).show());
+            activity.setTapClickListener(row, v -> new RingerIconLibraryEditor(activity, target, refresh).show());
             root.addView(row);
         }
     }
 
     private void show() {
         Dialog dialog = new Dialog(activity);
-        LinearLayout root = page(dialog, silent ? "静音图标库" : "震动图标库");
+        LinearLayout root = page(dialog, target.title + "库");
         OnlineIconLibraryDialog.addEntry(activity, root, this::showOnlineLibrary);
         FrameLayout body = new FrameLayout(activity);
         ScrollView scroll = new ScrollView(activity);
@@ -253,7 +254,7 @@ public final class RingerIconLibraryEditor {
     private void copyAiPrompt() {
         String prompt = "请基于下面的 Android Vector XML 模板，修改出一个图标。\n"
                 + "图标图案描述：【在此输入图案描述，例如："
-                + (silent ? "静音喇叭" : "震动的手机") + "】\n\n"
+                + target.title + "】\n\n"
                 + "请优先只修改 pathData；如果图案由多个部分组成，可以增加 path，"
                 + "但保留 vector 根标签、尺寸和视口设置。\n"
                 + "只输出最终的纯 XML 代码，不要 Markdown、代码块标记、前缀、后缀或解释文字。\n"
@@ -284,7 +285,7 @@ public final class RingerIconLibraryEditor {
 
     private void persist(RingerIconLibrary updated) {
         library = updated;
-        activity.prefs().edit().putString(RingerIconLibrary.key(silent), library.encode()).apply();
+        activity.prefs().edit().putString(RingerIconLibrary.key(target), library.encode()).apply();
         SettingsStore.notifyChanged(activity);
         renderList();
         onChanged.run();
@@ -292,8 +293,8 @@ public final class RingerIconLibraryEditor {
 
     private void showOnlineLibrary() {
         OnlineIconLibraryDialog.show(activity,
-                silent ? OnlineIconLibraryClient.TYPE_SILENT : OnlineIconLibraryClient.TYPE_VIBRATE,
-                silent ? "在线静音图标" : "在线震动图标",
+                target.onlineType,
+                "在线" + target.title,
                 () -> {
                     return library.entries.stream().filter(entry -> !entry.id().startsWith("builtin:"))
                             .map(entry -> new OnlineIconLibraryDialog.UploadData(entry.name(), entry.xml()))
@@ -319,12 +320,12 @@ public final class RingerIconLibraryEditor {
     }
 
     private Drawable drawable(Entry entry) {
-        if (entry == null) return RingerIconVectorHooks.builtInPreview(activity, silent);
+        if (entry == null) return RingerIconVectorHooks.builtInPreview(activity, target);
         if (entry.vector() == null) return activity.getDrawable(R.drawable.ic_settings_tune);
         try {
             return entry.vector().newDrawable(activity);
         } catch (IllegalArgumentException invalid) {
-            return RingerIconVectorHooks.builtInPreview(activity, silent);
+            return RingerIconVectorHooks.builtInPreview(activity, target);
         }
     }
 

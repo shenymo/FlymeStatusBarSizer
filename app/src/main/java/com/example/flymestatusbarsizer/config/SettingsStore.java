@@ -45,6 +45,7 @@ public final class SettingsStore {
     public static final boolean DEFAULT_STATUS_BAR_BLUETOOTH_VECTOR_ICONS_ENABLED = true;
     public static final String KEY_STATUS_BAR_SILENT_ICON_LIBRARY = "status_bar_silent_icon_library";
     public static final String KEY_STATUS_BAR_VIBRATE_ICON_LIBRARY = "status_bar_vibrate_icon_library";
+    public static final String KEY_STATUS_BAR_ALARM_ICON_LIBRARY = "status_bar_alarm_icon_library";
     public static final String KEY_STATUS_BAR_BLUETOOTH_ICON_LIBRARY = "status_bar_bluetooth_icon_library";
     public static final String KEY_STATUS_BAR_BLUETOOTH_ICON_PACKS = "status_bar_bluetooth_icon_packs";
     public static final String KEY_ICON_LIBRARY_DEVICE_ID = "icon_library_device_id";
@@ -1156,6 +1157,7 @@ public final class SettingsStore {
             KEY_BATTERY_ICON_LIBRARY,
             KEY_STATUS_BAR_SILENT_ICON_LIBRARY,
             KEY_STATUS_BAR_VIBRATE_ICON_LIBRARY,
+            KEY_STATUS_BAR_ALARM_ICON_LIBRARY,
             KEY_STATUS_BAR_BLUETOOTH_ICON_LIBRARY,
             KEY_STATUS_BAR_BLUETOOTH_ICON_PACKS,
             KEY_ASSISTANT_BACKGROUND_IMAGE,

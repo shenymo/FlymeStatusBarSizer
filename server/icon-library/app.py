@@ -22,7 +22,7 @@ MAX_LIKES = 100000
 MAX_TRACKED_DEVICES = 10000
 ANDROID_NS = "{http://schemas.android.com/apk/res/android}"
 CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
-ALLOWED_TYPES = {"ringer_silent", "ringer_vibrate", "battery"}
+ALLOWED_TYPES = {"ringer_silent", "ringer_vibrate", "ringer_alarm", "battery"}
 
 app = FastAPI(title="Flyme Status Bar Sizer Icon Library", docs_url=None, redoc_url=None)
 

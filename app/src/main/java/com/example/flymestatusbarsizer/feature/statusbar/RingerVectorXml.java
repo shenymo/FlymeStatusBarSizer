@@ -12,6 +12,7 @@ import android.graphics.PathMeasure;
 import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.Animatable;
@@ -381,7 +382,7 @@ public final class RingerVectorXml {
                 throw new IllegalArgumentException("系统无法解析矢量资源：" + error.getMessage(), error);
             }
         }
-        return new VectorIcon(IconMetrics.resolveSignalBoxHeight(context, 1f));
+        return new VectorIcon(IconMetrics.resolveSignalBoxHeight(context, 1f), iconDrawingBounds());
     }
 
     private static String resolveResourceIds(String xml, Context context) throws XmlPullParserException, IOException {
@@ -477,22 +478,45 @@ public final class RingerVectorXml {
 
     final class VectorIcon extends Drawable {
         private final int size;
+        private final RectF drawingBounds;
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final IconMetrics.VisualCanvas visual = new IconMetrics.VisualCanvas();
+        private final IconMetrics.VisualCanvas sourceVisual = new IconMetrics.VisualCanvas();
+        private final IconMetrics.VisualCanvas targetVisual = new IconMetrics.VisualCanvas();
         private int drawableAlpha = 255;
         private ColorFilter filter;
         private ColorStateList tint = ColorStateList.valueOf(Color.WHITE);
         private PorterDuff.Mode tintMode = PorterDuff.Mode.SRC_IN;
-        VectorIcon(int size) { this.size = size; }
+        VectorIcon(int size, RectF drawingBounds) {
+            this.size = size;
+            this.drawingBounds = drawingBounds == null
+                    ? new RectF(0, 0, 1, 1) : new RectF(drawingBounds);
+        }
         @Override public void draw(Canvas canvas) {
-            IconMetrics.resolveCenteredVisualCanvas(getBounds(), width / height, visual);
-            if (visual.isEmpty()) return;
+            Rect bounds = getBounds();
+            IconMetrics.resolveCenteredVisualCanvas(bounds, width / height, sourceVisual);
+            if (sourceVisual.isEmpty()) return;
+            float sourceWidth = bounds.width();
+            float sourceHeight = bounds.height();
+            RectF sourcePath = new RectF(
+                    bounds.left + drawingBounds.left * sourceWidth,
+                    bounds.top + drawingBounds.top * sourceHeight,
+                    bounds.left + drawingBounds.right * sourceWidth,
+                    bounds.top + drawingBounds.bottom * sourceHeight);
+            float pathHeight = sourcePath.height();
+            if (pathHeight <= 0f) return;
+            IconMetrics.resolveCenteredVisualCanvas(bounds,
+                    sourcePath.width() / pathHeight, targetVisual);
+            if (targetVisual.isEmpty()) return;
             paint.setColor(Color.WHITE);
             paint.setColorFilter(filter != null ? filter : new PorterDuffColorFilter(
                     tint.getColorForState(getState(), tint.getDefaultColor()), tintMode));
+            float scale = targetVisual.rect.height() / pathHeight;
             int save = canvas.save();
-            canvas.translate(visual.rect.left, visual.rect.top);
-            canvas.scale(visual.rect.width() / width, visual.rect.height() / height);
+            canvas.translate(targetVisual.rect.left - sourcePath.left * scale,
+                    targetVisual.rect.top - sourcePath.top * scale);
+            canvas.scale(scale, scale);
+            canvas.translate(sourceVisual.rect.left, sourceVisual.rect.top);
+            canvas.scale(sourceVisual.rect.width() / width, sourceVisual.rect.height() / height);
             canvas.clipRect(0, 0, width, height);
             root.draw(canvas, paint, alpha * drawableAlpha / 255f);
             canvas.restoreToCount(save);

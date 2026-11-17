@@ -72,8 +72,9 @@ public final class VectorIconLibraryController {
         RadioButton silent = radio("静音图标库", 2);
         RadioButton battery = radio("电池图标库", 3);
         RadioButton bluetooth = radio("蓝牙图标包", 4);
+        RadioButton alarm = radio("闹钟图标库", 5);
         target.addView(vibrate); target.addView(silent); target.addView(battery);
-        target.addView(bluetooth); target.check(1);
+        target.addView(bluetooth); target.addView(alarm); target.check(1);
         content.addView(target);
         RadioGroup mode = new RadioGroup(activity);
         RadioButton create = radio("新建图标", 10);
@@ -109,6 +110,7 @@ public final class VectorIconLibraryController {
         Runnable refreshOptions = () -> {
             boolean isBattery = target.getCheckedRadioButtonId() == 3;
             boolean isBluetooth = target.getCheckedRadioButtonId() == 4;
+            boolean isAlarm = target.getCheckedRadioButtonId() == 5;
             layerSpinner.setVisibility(isBattery ? View.VISIBLE : View.GONE);
             bluetoothState.setVisibility(isBluetooth ? View.VISIBLE : View.GONE);
             mode.setVisibility(isBluetooth ? View.GONE : View.VISIBLE);
@@ -130,8 +132,10 @@ public final class VectorIconLibraryController {
                 }
             } else {
                 ringerEntries.clear();
-                boolean silentTarget = target.getCheckedRadioButtonId() == 2;
-                for (RingerIconLibrary.Entry item : RingerIconLibrary.load(activity.prefs(), silentTarget).entries) {
+                RingerIconLibrary.Target ringerTarget = target.getCheckedRadioButtonId() == 2
+                        ? RingerIconLibrary.Target.SILENT
+                        : isAlarm ? RingerIconLibrary.Target.ALARM : RingerIconLibrary.Target.VIBRATE;
+                for (RingerIconLibrary.Entry item : RingerIconLibrary.load(activity.prefs(), ringerTarget).entries) {
                     if (!item.id().startsWith("builtin:") && item.vector() != null) {
                         ringerEntries.add(item); labels.add(item.name());
                     }
@@ -207,8 +211,11 @@ public final class VectorIconLibraryController {
                         library.withPack(pack.withIcon(state, new BluetoothIconLibrary.Icon(xml, vector))).encode()).apply();
                 SettingsStore.notifyChanged(activity);
             } else {
-                boolean silentTarget = target.getCheckedRadioButtonId() == 2;
-                RingerIconLibrary library = RingerIconLibrary.load(activity.prefs(), silentTarget);
+                RingerIconLibrary.Target ringerTarget = target.getCheckedRadioButtonId() == 2
+                        ? RingerIconLibrary.Target.SILENT
+                        : target.getCheckedRadioButtonId() == 5
+                        ? RingerIconLibrary.Target.ALARM : RingerIconLibrary.Target.VIBRATE;
+                RingerIconLibrary library = RingerIconLibrary.load(activity.prefs(), ringerTarget);
                 RingerIconLibrary.Entry base = null;
                 if (replacing && !ringerEntries.isEmpty()) {
                     base = ringerEntries.get(Math.min(entrySpinner.getSelectedItemPosition(), ringerEntries.size() - 1));
@@ -218,7 +225,7 @@ public final class VectorIconLibraryController {
                 RingerIconLibrary.Entry saved = new RingerIconLibrary.Entry(id, title, xml, vector, null);
                 ArrayList<RingerIconLibrary.Entry> entries = new ArrayList<>(library.entries);
                 if (base != null) entries.set(entries.indexOf(base), saved); else entries.add(1, saved);
-                activity.prefs().edit().putString(RingerIconLibrary.key(silentTarget),
+                activity.prefs().edit().putString(RingerIconLibrary.key(ringerTarget),
                         new RingerIconLibrary(entries, library.selected).encode()).apply();
                 SettingsStore.notifyChanged(activity);
             }
