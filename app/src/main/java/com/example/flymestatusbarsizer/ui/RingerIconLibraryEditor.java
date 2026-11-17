@@ -146,6 +146,12 @@ public final class RingerIconLibraryEditor {
             more.setContentDescription(entry.name() + "，更多操作");
             activity.setTapClickListener(more, v -> showMenu(entry));
             row.addView(more, new LinearLayout.LayoutParams(activity.dp(48), activity.dp(48)));
+        } else if (entry == null) {
+            TextView more = text("⋮", 24);
+            more.setGravity(Gravity.CENTER);
+            more.setContentDescription("内置矢量图标，更多操作");
+            activity.setTapClickListener(more, v -> showBuiltInMenu());
+            row.addView(more, new LinearLayout.LayoutParams(activity.dp(48), activity.dp(48)));
         } else row.setPadding(activity.dp(10), activity.dp(8), activity.dp(16), activity.dp(8));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.bottomMargin = activity.dp(8);
@@ -174,6 +180,12 @@ public final class RingerIconLibraryEditor {
         showAlert(dialog);
     }
 
+    private void showBuiltInMenu() {
+        AlertDialog dialog = new AlertDialog.Builder(activity).setTitle("内置矢量图标")
+                .setItems(new String[]{"复制并编辑"}, (d, which) -> edit(null)).create();
+        showAlert(dialog);
+    }
+
     private void rename(Entry entry) {
         EditText input = input("名称", false);
         input.setText(entry.name());
@@ -195,7 +207,7 @@ public final class RingerIconLibraryEditor {
 
     private void edit(Entry original) {
         new VectorDrawableEditor(activity).show(
-                original == null ? RingerIconLibrary.TRIANGLE_XML : original.xml(),
+                original == null ? RingerIconLibrary.builtInXml(target) : original.xml(),
                 original == null ? "新增图标" : original.name(),
                 (xml, vector, onSaved) -> showSaveDialog(original, xml, vector, onSaved),
                 this::copyAiPrompt);
@@ -261,10 +273,10 @@ public final class RingerIconLibraryEditor {
                 + "图形用于状态栏单色显示，不要额外预留安全留白。保持宽高比等比放大并居中，"
                 + "让图形较长方向铺满 24×24 视口，外沿到达坐标 0 和 24，不要缩成 18×18 或强行拉伸变形。"
                 + "若有描边，以描边外沿为边界，不得超出视口。\n"
-                + "下方三角形路径仅为 XML 结构示例，不要沿用其留白；请根据目标图案重新调整路径坐标，充分利用整个视口。\n"
+                + "请以当前内置图标 XML 为结构和尺寸参考，根据目标图案重新调整路径坐标，充分利用整个视口。\n"
                 + "不要使用 SVG、动画、渐变、@color/、?attr/ 或其他外部资源引用。\n\n"
                 + "模板：\n"
-                + RingerIconLibrary.TRIANGLE_XML;
+                + RingerIconLibrary.builtInXml(target);
         ClipboardManager clipboard = (ClipboardManager) activity.getSystemService(
                 android.content.Context.CLIPBOARD_SERVICE);
         if (clipboard != null) {
