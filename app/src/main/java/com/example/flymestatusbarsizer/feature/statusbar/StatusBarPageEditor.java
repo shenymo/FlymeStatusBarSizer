@@ -79,6 +79,7 @@ public final class StatusBarPageEditor {
         preview.setText(Item.TEMPERATURE, "35.2℃");
         preview.setText(Item.POWER, "12.3W");
         preview.setText(Item.MEMORY, "RAM 6.2G");
+        preview.setLyrics("跟随音乐显示原生歌词");
         preview.setMedia("当前歌曲", true, PlaybackState.ACTION_SKIP_TO_PREVIOUS
                 | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_SKIP_TO_NEXT, true);
         addSide(left, right, "左侧显示", "移至右侧");

@@ -9,6 +9,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Rect;
 import android.media.session.PlaybackState;
+import android.media.MediaMetadata;
+import android.service.notification.StatusBarNotification;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.PowerManager;
@@ -21,6 +23,7 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 import android.widget.TextView;
+import android.widget.TextSwitcher;
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.feature.statusbar.StatusBarPageLayout;
@@ -98,6 +101,37 @@ public final class StatusBarPageHooks {
             Class<?> live = Class.forName("com.android.systemui.statusbar.phone.PhoneStatusBarViewController$LiveNotificationTouchHandler", false, loader);
             module.intercept(live.getDeclaredMethod("onTouchEvent", MotionEvent.class), chain ->
                     current != null && current.fromExtra ? false : chain.proceed());
+            Class<?> ticker = Class.forName("com.flyme.systemui.statusbar.ticker.AdvertTickerView", false, loader);
+            Class<?> switcher = Class.forName("com.flyme.systemui.statusbar.ticker.MarqueeTickerView", false, loader);
+            module.intercept(switcher.getDeclaredMethod("setText", CharSequence.class), chain -> {
+                Object result = chain.proceed();
+                if (current != null && current.lyricText == chain.getThisObject()) current.updateLyrics();
+                return result;
+            });
+            Class<?> mediaListener = Class.forName("com.flyme.systemui.statusbar.ticker.AdvertTickerView$1", false, loader);
+            module.intercept(mediaListener.getDeclaredMethod("onPrimaryMetadataOrStateChanged", MediaMetadata.class, int.class), chain -> {
+                Object result = chain.proceed();
+                if (current != null && current.lyricTicker == ReflectUtils.getField(chain.getThisObject(), "this$0")) current.updateLyrics();
+                return result;
+            });
+            module.deoptimize(ticker.getDeclaredMethod("addNotification", StatusBarNotification.class));
+            module.deoptimize(ticker.getDeclaredMethod("removeNotification", String.class));
+            Class<?> advert = Class.forName("com.flyme.systemui.statusbar.ticker.AdvertSwitcherView", false, loader);
+            module.intercept(advert.getDeclaredMethod("updateTickerViewVisibility", boolean.class), chain -> {
+                State state = current;
+                if (state == null || state.start != chain.getThisObject()) return chain.proceed();
+                state.nativeTickerRequested = (Boolean) chain.getArg(0);
+                return state.lyricsOnExtra ? chain.proceed(new Object[]{false}) : chain.proceed();
+            });
+            Class<?> liveController = Class.forName("com.flyme.statusbar.livenotification.LiveNotificationController", false, loader);
+            module.intercept(liveController.getDeclaredMethod("getTopLyricsDisplayText", String.class), chain -> {
+                State state = current;
+                return state != null && state.lyricsOnExtra && state.liveController == chain.getThisObject()
+                        ? chain.getArg(0) : chain.proceed();
+            });
+            module.deoptimize(liveController.getDeclaredMethod("updateStatusBarIcons", boolean.class));
+            Class<?> tickController = Class.forName("com.flyme.systemui.statusbar.ticker.NotificationTickController", false, loader);
+            module.deoptimize(tickController.getDeclaredMethod("updateSwitcherViewVisibility", boolean.class));
         } catch (ReflectiveOperationException error) {
             FlymeStatusBarSizer.logClockWarning("Failed to hook status bar pages", error);
         }
@@ -118,11 +152,14 @@ public final class StatusBarPageHooks {
         final Object shade;
         final Object center;
         final Object windowState;
+        final Object liveController;
         final Handler handler;
         final PowerManager power;
         final View start;
         final View end;
         final TextView clock;
+        final View lyricTicker;
+        final TextSwitcher lyricText;
         final Rect leftBounds = new Rect();
         final Rect rightBounds = new Rect();
         final int slop;
@@ -133,6 +170,8 @@ public final class StatusBarPageHooks {
         ClockDetailMediaProvider media;
         ValueAnimator animator;
         boolean enabled;
+        boolean lyricsOnExtra;
+        boolean nativeTickerRequested;
         boolean available;
         boolean refreshing;
         boolean mediaListening;
@@ -160,9 +199,13 @@ public final class StatusBarPageHooks {
             shade = ReflectUtils.getField(fragment, "mShadeExpansionStateManager");
             center = ReflectUtils.getField(fragment, "mCenterExpansionStateManager");
             windowState = ReflectUtils.getField(fragment, "mStatusBarWindowStateController");
+            liveController = ReflectUtils.getField(fragment, "mLiveNotificationController");
             start = find("status_bar_start_side_container");
+            nativeTickerRequested = ReflectUtils.getBooleanField(start, "mShouldShowTicker", false);
             end = find("status_bar_end_side_container");
             clock = (TextView) find("clock");
+            lyricTicker = find("ticker_ext");
+            lyricText = (TextSwitcher) find("tickerText_ext");
             handler = new Handler(root.getContext().getMainLooper());
             power = root.getContext().getSystemService(PowerManager.class);
             ViewConfiguration config = ViewConfiguration.get(root.getContext());
@@ -181,6 +224,8 @@ public final class StatusBarPageHooks {
         void configure() {
             ModuleConfig config = ModuleConfig.load(root.getContext());
             enabled = config.enabled && config.statusBarPagesEnabled;
+            setLyricsOnExtra(enabled && (config.statusBarPageLayout.left.contains(Item.LYRICS)
+                    || config.statusBarPageLayout.right.contains(Item.LYRICS)));
             if (!enabled) {
                 selectedExtra = false;
                 cancelAnimation();
@@ -210,6 +255,17 @@ public final class StatusBarPageHooks {
             extra.setItems(config.statusBarPageLayout);
             nextBattery = nextMemory = 0;
             sync();
+        }
+
+        void setLyricsOnExtra(boolean value) {
+            if (lyricsOnExtra == value) return;
+            lyricsOnExtra = value;
+            ReflectUtils.invokeMethod(start, "updateTickerViewVisibility",
+                    new Class<?>[]{boolean.class}, nativeTickerRequested);
+            ReflectUtils.invokeMethod(liveController, "updateStatusBarIcons",
+                    new Class<?>[]{boolean.class}, false);
+            ReflectUtils.invokeMethod(fragment, "updateStatusBarVisibilities",
+                    new Class<?>[]{boolean.class}, false);
         }
 
         @Override public boolean onPreDraw() { sync(); return true; }
@@ -371,9 +427,17 @@ public final class StatusBarPageHooks {
             ReflectUtils.setBooleanField(root, "mIsTracking", false);
         }
 
+        void updateLyrics() {
+            if (!refreshing) return;
+            boolean playing = ReflectUtils.getBooleanField(lyricTicker, "mIsPlayingState", false);
+            boolean hasLyrics = ReflectUtils.getField(lyricTicker, "mCurrentKey") != null;
+            extra.setLyrics(playing && hasLyrics ? ((TextView) lyricText.getCurrentView()).getText() : null);
+        }
+
         void updateData() {
             sync();
             if (!refreshing) return;
+            updateLyrics();
             if (extra.hasVisible(Item.DATE)) extra.setText(Item.DATE,
                     new SimpleDateFormat("MM/dd E", Locale.getDefault()).format(new Date()));
             boolean battery = extra.hasVisible(Item.TEMPERATURE) || extra.hasVisible(Item.POWER);
@@ -427,6 +491,7 @@ public final class StatusBarPageHooks {
 
         void close() {
             enabled = false;
+            setLyricsOnExtra(false);
             cancelAnimation();
             finishTouch();
             stopData();

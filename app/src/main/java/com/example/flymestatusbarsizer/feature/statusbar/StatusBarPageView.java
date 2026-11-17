@@ -73,6 +73,12 @@ public final class StatusBarPageView extends FrameLayout {
                 text.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSize);
                 text.setTypeface(typeface);
                 text.setText("--");
+                if (item == Item.LYRICS) {
+                    text.setEllipsize(TextUtils.TruncateAt.MARQUEE);
+                    text.setMarqueeRepeatLimit(-1);
+                    text.setSelected(true);
+                    text.setVisibility(GONE);
+                }
                 child = text;
             }
             child.setTag(item);
@@ -87,6 +93,18 @@ public final class StatusBarPageView extends FrameLayout {
             view.setText(value);
             view.setContentDescription(item.label + " " + value);
         }
+    }
+
+    public void setLyrics(CharSequence value) {
+        TextView view = (TextView) items.get(Item.LYRICS);
+        if (view == null) return;
+        boolean show = !TextUtils.isEmpty(value);
+        if (show && !TextUtils.equals(view.getText(), value)) {
+            view.setText(value);
+            view.setContentDescription(Item.LYRICS.label + " " + value);
+        }
+        if (!show) view.setVisibility(GONE);
+        else if (view.getVisibility() == GONE) view.setVisibility(VISIBLE);
     }
 
     public boolean hasVisible(Item item) {
@@ -177,12 +195,14 @@ public final class StatusBarPageView extends FrameLayout {
                 int remaining = Math.max(0, width - usedWidth);
                 int childWidthSpec = item.isButton()
                         ? MeasureSpec.makeMeasureSpec(dp(28), MeasureSpec.EXACTLY)
+                        : item == Item.LYRICS
+                                ? MeasureSpec.makeMeasureSpec(remaining, MeasureSpec.AT_MOST)
                         : item == Item.SONG
                                 ? MeasureSpec.makeMeasureSpec(Math.min(dp(96), remaining), MeasureSpec.AT_MOST)
                                 : MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
                 child.measure(childWidthSpec, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
                 boolean fits = !full && remaining > 0 && child.getMeasuredWidth() <= remaining
-                        && (item != Item.SONG || remaining >= dp(28));
+                        && ((item != Item.SONG && item != Item.LYRICS) || remaining >= dp(28));
                 child.setVisibility(fits ? VISIBLE : INVISIBLE);
                 if (fits) usedWidth += child.getMeasuredWidth();
                 else full = true;

@@ -10,11 +10,11 @@ import java.util.List;
 public final class StatusBarPageLayout {
     public enum Item {
         DATE("日期"), TEMPERATURE("电池温度"), POWER("充电功率"), MEMORY("已用内存"),
-        SONG("歌曲名"), PREVIOUS("上一首"), PLAY_PAUSE("播放/暂停"), NEXT("下一首");
+        SONG("歌曲名"), LYRICS("原生歌词"), PREVIOUS("上一首"), PLAY_PAUSE("播放/暂停"), NEXT("下一首");
 
         public final String label;
         Item(String label) { this.label = label; }
-        public boolean isMedia() { return ordinal() >= SONG.ordinal(); }
+        public boolean isMedia() { return this == SONG || isButton(); }
         public boolean isButton() { return ordinal() >= PREVIOUS.ordinal(); }
     }
 
