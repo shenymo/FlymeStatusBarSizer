@@ -494,6 +494,11 @@ public final class RecentTaskSwitcher {
                     if (pendingTaskRemoval != null || closingAll) return;
                     if (isCurrent() || !hasSnapshot) {
                         applyPendingTasks();
+                        if (isCurrent()) {
+                            rows.stopScroll();
+                            ((LinearLayoutManager) rows.getLayoutManager())
+                                    .scrollToPositionWithOffset(0, 0);
+                        }
                         if (visible) updateListState();
                         else prepareLayout();
                     }
