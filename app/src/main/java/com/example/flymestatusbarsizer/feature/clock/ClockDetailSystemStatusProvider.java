@@ -87,45 +87,6 @@ final class ClockDetailSystemStatusProvider {
         void onMemoryRows(ClockDetailSystemStatusSnapshot.MemoryRow[] memoryRows);
     }
 
-    interface StatusBarValuesCallback {
-        void onValues(String temperature, String power, String memory);
-    }
-
-    void requestStatusBarValues(Handler resultHandler, boolean battery, boolean memory,
-            StatusBarValuesCallback callback) {
-        Handler worker = getBackgroundHandler();
-        if (worker == null) {
-            callback.onValues(battery ? "--" : null, battery ? "--" : null, memory ? "--" : null);
-            return;
-        }
-        worker.post(() -> {
-            String temperature = null, watts = null, ram = null;
-            if (battery) {
-                BatterySnapshot snapshot = readBatterySnapshot();
-                temperature = snapshot.temperatureTenthsCelsius == Integer.MIN_VALUE ? "--"
-                        : String.format(Locale.getDefault(), "%.1f℃", snapshot.temperatureTenthsCelsius / 10f);
-                long current = selectCurrentMicroamps(snapshot);
-                watts = snapshot.status == Integer.MIN_VALUE
-                        || snapshot.status == BatteryManager.BATTERY_STATUS_UNKNOWN ? "--"
-                        : !isChargingStatus(snapshot.status) ? "未充电"
-                        : current == Long.MIN_VALUE || snapshot.voltageMillivolts <= 0 ? "--"
-                        : String.format(Locale.getDefault(), "%.1fW",
-                                Math.abs(toWattsFromCurrentAndVoltage(current, snapshot.voltageMillivolts)));
-            }
-            if (memory) {
-                if (activityManager == null) ram = "--";
-                else {
-                    ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
-                    activityManager.getMemoryInfo(info);
-                    ram = info.totalMem <= 0 ? "--" : String.format(Locale.getDefault(), "RAM %.1fG",
-                            (info.totalMem - info.availMem) / (1024d * 1024 * 1024));
-                }
-            }
-            String finalTemperature = temperature, finalWatts = watts, finalRam = ram;
-            resultHandler.post(() -> callback.onValues(finalTemperature, finalWatts, finalRam));
-        });
-    }
-
     interface BatteryStatusCallback {
         void onBatteryStatus(
                 String temperatureValue,

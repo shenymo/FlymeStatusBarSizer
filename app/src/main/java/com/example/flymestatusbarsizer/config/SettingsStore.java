@@ -1,7 +1,5 @@
 package com.example.flymestatusbarsizer.config;
 
-import com.example.flymestatusbarsizer.feature.statusbar.StatusBarPageLayout;
-
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconLibrary;
 
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryAnimationConfig;
@@ -120,9 +118,6 @@ public final class SettingsStore {
     public static final String KEY_CLOCK_FONT_WEIGHT = "clock_font_weight";
     public static final String KEY_CLOCK_AND_CARRIER_TEXT_SIZE_PERCENT = "clock_and_carrier_text_size_percent";
     public static final String KEY_LOCKSCREEN_CANVAS_CLOCK_ENABLED = "lockscreen_canvas_clock_enabled";
-    public static final String KEY_STATUS_BAR_PAGES_ENABLED = "status_bar_pages_enabled";
-    public static final String KEY_STATUS_BAR_PAGE_LEFT = "status_bar_page_left";
-    public static final String KEY_STATUS_BAR_PAGE_RIGHT = "status_bar_page_right";
     public static final String KEY_CLOCK_DETAIL_POPUP_ENABLED = "clock_detail_popup_enabled";
     public static final String KEY_CLOCK_DETAIL_LUNAR_DATE_ENABLED = "clock_detail_lunar_date_enabled";
     public static final String KEY_CLOCK_DETAIL_ACTION_GRID_ENABLED = "clock_detail_action_grid_enabled";
@@ -1073,7 +1068,6 @@ public final class SettingsStore {
     };
 
     public static final String[] BOOLEAN_KEYS = StatusBarIconVisibility.appendPreferenceKeys(new String[]{
-            KEY_STATUS_BAR_PAGES_ENABLED,
             KEY_SHARE_TARGETS_ENABLED,
             KEY_ASSISTANT_BACKGROUND_CUSTOM,
             KEY_ASSISTANT_BACKGROUND_BLUR,
@@ -1160,7 +1154,6 @@ public final class SettingsStore {
     });
 
     public static final String[] STRING_KEYS = {
-            KEY_STATUS_BAR_PAGE_LEFT, KEY_STATUS_BAR_PAGE_RIGHT,
             KEY_BATTERY_ICON_LIBRARY,
             KEY_STATUS_BAR_SILENT_ICON_LIBRARY,
             KEY_STATUS_BAR_VIBRATE_ICON_LIBRARY,
@@ -1914,8 +1907,6 @@ public final class SettingsStore {
     }
 
     public static String defaultString(String key) {
-        if (KEY_STATUS_BAR_PAGE_LEFT.equals(key)) return StatusBarPageLayout.DEFAULT_LEFT;
-        if (KEY_STATUS_BAR_PAGE_RIGHT.equals(key)) return StatusBarPageLayout.DEFAULT_RIGHT;
         if (KEY_COLOR_PICKER_PALETTE.equals(key)) {
             return "{}";
         }

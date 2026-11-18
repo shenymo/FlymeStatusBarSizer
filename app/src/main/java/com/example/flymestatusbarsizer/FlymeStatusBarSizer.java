@@ -9,7 +9,6 @@ import com.example.flymestatusbarsizer.feature.battery.BatteryIconPack;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconLibrary;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconPainter;
 import com.example.flymestatusbarsizer.feature.statusbar.NativeStatusBarTextWeight;
-import com.example.flymestatusbarsizer.feature.clock.StatusBarPageHooks;
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryAppearance;
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryDynamics;
 import com.example.flymestatusbarsizer.feature.carlink.CarLinkHooks;
@@ -310,7 +309,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         AssistantHooks.installSystemUi(this, loader);
         installBatteryHooks(loader);
         ClockHooks.install(this, loader);
-        StatusBarPageHooks.install(this, loader);
     }
 
     private void hookFlymeLauncher(ClassLoader loader) {
@@ -569,7 +567,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                         && ((Integer) windowType) == 1) {
                     STATUS_BAR_WINDOW_SHOWING = ((Integer) windowState) == 0;
                     CircleBatteryDynamics.setStatusBarVisible(STATUS_BAR_WINDOW_SHOWING);
-                    StatusBarPageHooks.onWindowStateChanged();
                     refreshCameraCircleBatteryWindow();
                 }
                 return result;
@@ -6542,7 +6539,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         refreshTrackedStatusBarIconViews();
         refreshTrackedStatusIconLayout();
         ClockHooks.refreshTrackedViews();
-        StatusBarPageHooks.refresh();
         MBackHooks.refreshTrackedView();
         refreshTrackedInputMethodViews();
         LauncherRecentsHooks.refreshTrackedViews();
