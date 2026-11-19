@@ -8,6 +8,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.IdentityHashMap;
 import java.util.function.Function;
 
 /** Component-level rules. Never adds a target that cannot handle the current share. */
@@ -68,24 +69,22 @@ public final class ShareTargetRules {
     public String encodeHidden() { return String.join("\n", hidden); }
     public boolean isEmpty() { return order.isEmpty() && hidden.isEmpty(); }
 
-    public <T> List<T> apply(List<T> source, Function<T, String> componentOf) {
-        List<Ranked<T>> items = new ArrayList<>();
-        for (T item : source) {
-            String component = normalizeComponent(componentOf.apply(item));
-            if (!hidden.contains(component)) {
-                items.add(new Ranked<>(item, positions.getOrDefault(component, Integer.MAX_VALUE)));
-            }
-        }
-        // List.sort is stable: new/unconfigured targets retain the system's relative order.
-        items.sort((a, b) -> Integer.compare(a.rank, b.rank));
-        List<T> result = new ArrayList<>(items.size());
-        for (Ranked<T> item : items) result.add(item.value);
+    public <T> List<T> filterHidden(List<T> source, Function<T, String> componentOf) {
+        if (hidden.isEmpty()) return source;
+        List<T> result = new ArrayList<>(source);
+        result.removeIf(item -> hidden.contains(componentOf.apply(item)));
         return result;
     }
 
-    private static final class Ranked<T> {
-        final T value;
-        final int rank;
-        Ranked(T value, int rank) { this.value = value; this.rank = rank; }
+    public <T> List<T> apply(List<T> source, Function<T, String> componentOf) {
+        List<T> result = filterHidden(source, componentOf);
+        if (order.isEmpty()) return result;
+        Map<T, Integer> ranks = new IdentityHashMap<>();
+        for (T item : result) {
+            ranks.put(item, positions.getOrDefault(componentOf.apply(item), Integer.MAX_VALUE));
+        }
+        // List.sort is stable: new/unconfigured targets retain the system's relative order.
+        result.sort((left, right) -> Integer.compare(ranks.get(left), ranks.get(right)));
+        return result;
     }
 }

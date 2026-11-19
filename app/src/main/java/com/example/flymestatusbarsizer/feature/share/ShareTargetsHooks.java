@@ -1,16 +1,21 @@
 package com.example.flymestatusbarsizer.feature.share;
 
 import android.app.Activity;
+import android.content.pm.PackageManager;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ResolveInfo;
+import android.content.res.Resources;
 import android.util.Log;
+import android.widget.ImageView;
 
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class ShareTargetsHooks {
     public static final String PACKAGE = "com.android.intentresolver";
@@ -42,8 +47,8 @@ public final class ShareTargetsHooks {
                     }
                     // Runs before the system's zero/one-target checks and before adapter grouping.
                     ShareTargetRules rules = rulesFor(config, (Activity) activity);
-                    if (rules.isEmpty()) return original;
-                    return rules.apply((List<?>) original,
+                    if (rules.hidden().isEmpty()) return original;
+                    return rules.filterHidden((List<?>) original,
                             value -> componentOf(value, resolveInfoField));
                 } catch (Throwable error) {
                     Log.w(TAG, "Share list rules failed; using system targets", error);
@@ -65,8 +70,22 @@ public final class ShareTargetsHooks {
             activityField.setAccessible(true);
             Field isChooser = adapter.getDeclaredField("mIsChooserActivity");
             isChooser.setAccessible(true);
+            Field iconDpi = adapter.getDeclaredField("mIconDpi");
+            iconDpi.setAccessible(true);
+            Field resources = adapter.getDeclaredField("mResources");
+            resources.setAccessible(true);
             Method rebuild = adapter.getDeclaredMethod("rebuildData", List.class);
             rebuild.setAccessible(true);
+            Class<?> imageLoaderClass = Class.forName("com.android.internal.chooser.utils.ImageLoader", false, loader);
+            Method getImageLoader = imageLoaderClass.getDeclaredMethod("getInstance");
+            Method loadIcon = imageLoaderClass.getDeclaredMethod("load", ImageView.class,
+                    resolveInfoField.getDeclaringClass(), int.class,
+                    PackageManager.class, Resources.class);
+            Field displayIcon = resolveInfoField.getDeclaringClass().getDeclaredField("displayIcon");
+            getImageLoader.setAccessible(true);
+            loadIcon.setAccessible(true);
+            displayIcon.setAccessible(true);
+            Object imageLoader = getImageLoader.invoke(null);
             module.intercept(rebuild, chain -> {
                 Object[] args = chain.getArgs().toArray();
                 Object[] replacement = args;
@@ -74,9 +93,16 @@ public final class ShareTargetsHooks {
                     ModuleConfig config = ModuleConfig.load(null);
                     if (config.enabled && config.shareTargetsEnabled
                             && isChooser.getBoolean(chain.getThisObject()) && args[0] instanceof List<?>) {
-                        ShareTargetRules rules = rulesFor(config, (Activity) activityField.get(chain.getThisObject()));
-                        if (!rules.isEmpty()) replacement = new Object[]{rules.apply((List<?>) args[0],
-                                value -> componentOf(value, resolveInfoField))};
+                        Activity activity = (Activity) activityField.get(chain.getThisObject());
+                        ShareTargetRules rules = rulesFor(config, activity);
+                        if (!rules.isEmpty()) {
+                            List<?> targets = rules.apply((List<?>) args[0],
+                                    value -> componentOf(value, resolveInfoField));
+                            replacement = new Object[]{targets};
+                            prefetchOrderedIcons(activity, chain.getThisObject(), targets, rules,
+                                    resolveInfoField, displayIcon,
+                                    iconDpi, resources, imageLoader, loadIcon);
+                        }
                     }
                 } catch (Throwable error) {
                     Log.w(TAG, "Share adapter rules failed; using system targets", error);
@@ -93,6 +119,24 @@ public final class ShareTargetsHooks {
             deoptimize(module, more, "onClick");
         } catch (Throwable error) {
             Log.w(TAG, "Share adapter refresh hook unavailable", error);
+        }
+    }
+
+    private static void prefetchOrderedIcons(Activity activity, Object adapter, List<?> targets, ShareTargetRules rules,
+            Field resolveInfoField, Field displayIconField, Field iconDpiField, Field resourcesField,
+            Object imageLoader, Method loadIcon) throws ReflectiveOperationException {
+        if (activity == null || rules.order().isEmpty()) return;
+        Map<String, Object> targetsByComponent = new HashMap<>();
+        for (Object target : targets) {
+            targetsByComponent.put(componentOf(target, resolveInfoField), target);
+        }
+        int prefetched = 0;
+        for (String component : rules.order()) {
+            Object target = targetsByComponent.get(component);
+            if (target == null || displayIconField.get(target) != null) continue;
+            loadIcon.invoke(imageLoader, new ImageView(activity), target, iconDpiField.getInt(adapter),
+                    activity.getPackageManager(), (Resources) resourcesField.get(adapter));
+            if (++prefetched == 4) return;
         }
     }
 
