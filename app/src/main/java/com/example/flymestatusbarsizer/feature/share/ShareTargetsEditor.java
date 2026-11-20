@@ -77,7 +77,9 @@ public final class ShareTargetsEditor {
     private final Runnable clearUndo = this::dismissUndo;
     private String initialState;
     private boolean showHidden;
-    private Dialog sheet;
+    private FrameLayout overlayRoot;
+    private View sheetScrim;
+    private LinearLayout sheetBody;
     private AlertDialog exitPrompt;
     private EditText search;
     private ShareTargetsDraft draft;
@@ -151,8 +153,10 @@ public final class ShareTargetsEditor {
         LinearLayout tabs = row();
         for (ShareContentType type : ShareContentType.values()) {
             TextView tab = button(type == ShareContentType.DEFAULT ? "默认" : type.label, false);
-            tab.setMinHeight(dp(48));
-            tab.setMinWidth(dp(56));
+            tab.setMinHeight(dp(36));
+            tab.setMinWidth(dp(52));
+            tab.setPadding(dp(10), dp(4), dp(10), dp(4));
+            tab.setTextSize(13);
             tab.setContentDescription("分享类型：" + type.label);
             activity.setTapClickListener(tab, v -> {
                 if (loading || catalogs.isEmpty() || selected == type) return;
@@ -168,21 +172,22 @@ public final class ShareTargetsEditor {
             });
             typeTabs.put(type, tab);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-            lp.setMarginEnd(dp(4));
+            lp.setMarginEnd(dp(6));
             tabs.addView(tab, lp);
         }
         types.addView(tabs);
-        root.addView(types, activity.matchWrapWithTop(12));
+        root.addView(types, activity.matchWrapWithTop(8));
 
         profileRow = row();
-        profileRow.setPadding(dp(4), 0, dp(4), 0);
+        profileRow.setPadding(dp(12), dp(4), dp(8), dp(4));
+        profileRow.setBackground(activity.roundRect(activity.surfaceSoftColor(), 12));
         profileStatus = text("沿用默认", 12, activity.subtextColor());
         profileRow.addView(profileStatus, new LinearLayout.LayoutParams(0, -2, 1));
         independent = new Switch(activity);
         independent.setText("单独设置此类型");
         independent.setTextColor(activity.textColor());
-        independent.setTextSize(13);
-        independent.setMinHeight(dp(48));
+        independent.setTextSize(12);
+        independent.setMinHeight(dp(36));
         independent.setOnCheckedChangeListener((view, checked) -> {
             if (updatingSelection || loading || draft == null) return;
             dismissUndo();
@@ -192,25 +197,25 @@ public final class ShareTargetsEditor {
         activity.styleSwitch(independent);
         profileRow.addView(independent);
         profileRow.setVisibility(View.GONE);
-        root.addView(profileRow, activity.matchWrap());
+        root.addView(profileRow, activity.matchWrapWithTop(6));
 
         LinearLayout searchRow = row();
-        searchRow.setPadding(dp(12), 0, dp(4), 0);
-        searchRow.setBackground(activity.roundRect(activity.surfaceSoftColor(), 16));
+        searchRow.setPadding(dp(10), 0, dp(4), 0);
+        searchRow.setBackground(activity.roundRect(activity.surfaceSoftColor(), 12));
         ImageView searchIcon = new ImageView(activity);
         searchIcon.setImageResource(R.drawable.ic_feature_search);
         searchIcon.setColorFilter(activity.subtextColor());
         searchIcon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        searchRow.addView(searchIcon, new LinearLayout.LayoutParams(dp(20), dp(20)));
+        searchRow.addView(searchIcon, new LinearLayout.LayoutParams(dp(18), dp(18)));
         search = new EditText(activity);
         search.setSingleLine(true);
-        search.setTextSize(15);
+        search.setTextSize(13);
         search.setTextColor(activity.textColor());
         search.setHintTextColor(activity.subtextColor());
         search.setHint("搜索应用或分享入口");
         search.setContentDescription("搜索分享入口");
         search.setBackgroundColor(Color.TRANSPARENT);
-        search.setPadding(dp(10), dp(10), 0, dp(10));
+        search.setPadding(dp(8), dp(6), 0, dp(6));
         search.setImeOptions(EditorInfo.IME_ACTION_DONE);
         search.setOnEditorActionListener((view, action, event) -> {
             if (action != EditorInfo.IME_ACTION_DONE) return false;
@@ -223,7 +228,7 @@ public final class ShareTargetsEditor {
         clearSearch = iconButton(R.drawable.ic_share_clear, "清空搜索");
         clearSearch.setVisibility(View.INVISIBLE);
         activity.setTapClickListener(clearSearch, v -> search.setText(""));
-        searchRow.addView(clearSearch, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        searchRow.addView(clearSearch, new LinearLayout.LayoutParams(dp(36), dp(36)));
         search.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
@@ -232,53 +237,68 @@ public final class ShareTargetsEditor {
             }
             @Override public void afterTextChanged(Editable s) {}
         });
-        root.addView(searchRow, activity.matchWrapWithTop(12));
+        root.addView(searchRow, activity.matchWrapWithTop(6));
 
-        LinearLayout filters = row();
+        LinearLayout filterBar = row();
+        LinearLayout filterTabs = row();
+        filterTabs.setBackground(activity.roundRect(activity.surfaceSoftColor(), 10));
+        filterTabs.setPadding(dp(2), dp(2), dp(2), dp(2));
+
         shownTab = button("显示中 0", false);
         hiddenTab = button("已隐藏 0", false);
         shownTab.setContentDescription("查看显示中的入口");
         hiddenTab.setContentDescription("查看已隐藏的入口");
-        shownTab.setMinHeight(dp(48));
-        hiddenTab.setMinHeight(dp(48));
+        shownTab.setMinHeight(dp(30));
+        hiddenTab.setMinHeight(dp(30));
+        shownTab.setTextSize(12);
+        hiddenTab.setTextSize(12);
+        shownTab.setPadding(dp(10), dp(4), dp(10), dp(4));
+        hiddenTab.setPadding(dp(10), dp(4), dp(10), dp(4));
         activity.setTapClickListener(shownTab, v -> selectVisibility(false));
         activity.setTapClickListener(hiddenTab, v -> selectVisibility(true));
-        filters.addView(shownTab, new LinearLayout.LayoutParams(0, -2, 1));
-        LinearLayout.LayoutParams hiddenLp = new LinearLayout.LayoutParams(0, -2, 1);
-        hiddenLp.setMarginStart(dp(8));
-        filters.addView(hiddenTab, hiddenLp);
-        root.addView(filters, activity.matchWrapWithTop(12));
+        filterTabs.addView(shownTab);
+        filterTabs.addView(hiddenTab);
+        filterBar.addView(filterTabs);
 
-        status = text("正在扫描分享入口…", 12, activity.subtextColor());
-        status.setPadding(dp(4), dp(8), dp(4), dp(8));
-        root.addView(status, activity.matchWrap());
+        status = text("正在扫描分享入口…", 11, activity.subtextColor());
+        status.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        status.setSingleLine(true);
+        status.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        status.setPadding(dp(8), 0, dp(4), 0);
+        filterBar.addView(status, new LinearLayout.LayoutParams(0, -2, 1));
+        root.addView(filterBar, activity.matchWrapWithTop(6));
+
+        FrameLayout contentArea = new FrameLayout(activity);
         FrameLayout gridArea = new FrameLayout(activity);
         list = new GridView(activity);
         list.setNumColumns(4);
         list.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
         list.setHorizontalSpacing(dp(4));
-        list.setVerticalSpacing(dp(8));
+        list.setVerticalSpacing(dp(6));
         list.setClipToPadding(false);
-        list.setPadding(0, dp(4), 0, dp(16));
+        list.setPadding(0, dp(4), 0, dp(56));
         list.setSelector(new ColorDrawable(Color.TRANSPARENT));
         list.setAdapter(adapter);
         list.setOnDragListener(this::onDrag);
         gridArea.addView(list, new FrameLayout.LayoutParams(-1, -1));
-        empty = text("", 15, activity.subtextColor());
+        empty = text("", 14, activity.subtextColor());
         empty.setGravity(Gravity.CENTER);
         empty.setPadding(dp(24), dp(16), dp(24), dp(16));
         empty.setVisibility(View.GONE);
         gridArea.addView(empty, new FrameLayout.LayoutParams(-1, -1));
-        root.addView(gridArea, new LinearLayout.LayoutParams(-1, 0, 1));
+        contentArea.addView(gridArea, new FrameLayout.LayoutParams(-1, -1));
 
         undoBar = row();
-        undoBar.setPadding(dp(14), dp(4), dp(4), dp(4));
-        undoBar.setBackground(activity.roundRect(activity.surfaceSoftColor(), 16));
-        undoMessage = text("", 13, activity.textColor());
+        undoBar.setPadding(dp(14), dp(4), dp(6), dp(4));
+        undoBar.setBackground(activity.roundRect(activity.surfaceSoftColor(), 20));
+        undoBar.setElevation(dp(6));
+        undoMessage = text("", 12, activity.textColor());
         undoMessage.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        undoBar.addView(undoMessage, new LinearLayout.LayoutParams(0, -2, 1));
+        undoBar.addView(undoMessage, new LinearLayout.LayoutParams(-2, -2));
         TextView undo = button("撤销", false);
-        undo.setMinHeight(dp(48));
+        undo.setMinHeight(dp(36));
+        undo.setTextSize(12);
+        undo.setPadding(dp(10), dp(4), dp(10), dp(4));
         undo.setTextColor(activity.primaryColor());
         activity.setTapClickListener(undo, v -> {
             Runnable action = undoAction;
@@ -287,16 +307,26 @@ public final class ShareTargetsEditor {
         });
         undoBar.addView(undo);
         undoBar.setVisibility(View.GONE);
-        LinearLayout.LayoutParams undoLp = activity.matchWrap();
-        undoLp.bottomMargin = dp(8);
-        root.addView(undoBar, undoLp);
+        FrameLayout.LayoutParams undoLp = new FrameLayout.LayoutParams(-2, -2);
+        undoLp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        undoLp.bottomMargin = dp(12);
+        contentArea.addView(undoBar, undoLp);
 
-        dialog.setContentView(root);
+        root.addView(contentArea, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        overlayRoot = new FrameLayout(activity);
+        overlayRoot.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        sheetScrim = new View(activity);
+        sheetScrim.setBackgroundColor(Color.argb(77, 0, 0, 0));
+        sheetScrim.setVisibility(View.GONE);
+        sheetScrim.setOnClickListener(v -> dismissSheet());
+        overlayRoot.addView(sheetScrim, new FrameLayout.LayoutParams(-1, -1));
+        dialog.setContentView(overlayRoot);
         dialog.setOnDismissListener(ignored -> {
             closed = true;
             clearDrag();
             dismissUndo();
-            if (sheet != null) sheet.dismiss();
+            dismissSheet();
             if (exitPrompt != null) exitPrompt.dismiss();
         });
         dialog.show();
@@ -337,7 +367,12 @@ public final class ShareTargetsEditor {
         view.setSelected(active);
         view.setTextColor(active ? activity.primaryColor() : activity.subtextColor());
         view.setTypeface(null, active ? Typeface.BOLD : Typeface.NORMAL);
-        view.setBackground(activity.roundRect(active ? activity.surfaceSoftColor() : Color.TRANSPARENT, 14));
+        boolean isFilter = view == shownTab || view == hiddenTab;
+        if (isFilter) {
+            view.setBackground(activity.roundRect(active ? activity.surfaceColor() : Color.TRANSPARENT, 8));
+        } else {
+            view.setBackground(activity.roundRect(active ? activity.surfaceSoftColor() : Color.TRANSPARENT, 10));
+        }
     }
 
     private void load() {
@@ -445,12 +480,12 @@ public final class ShareTargetsEditor {
         shownTab.setText("显示中 " + (draft.components().size() - hiddenCount));
         hiddenTab.setText("已隐藏 " + hiddenCount);
         updateTabs();
-        String hint = !editable() ? "沿用默认配置 · 开启单独设置后可编辑"
-                : !query.isEmpty() ? "找到 " + visible.size() + " 个入口 · 清空搜索后可排序"
-                : showHidden ? "点击入口可恢复显示"
-                : (draft.hasFixedOrder() ? "自定义组内排序" : "跟随系统排序") + " · 长按拖动，点击管理";
+        String hint = !editable() ? "沿用默认 · 开启独立后可调"
+                : !query.isEmpty() ? "已找到 " + visible.size() + " 个"
+                : showHidden ? "点击入口恢复显示"
+                : (draft.hasFixedOrder() ? "自定义排序" : "系统排序") + " · 长按拖动";
         if (!catalogs.get(selected).systemOrderAvailable && !draft.hasFixedOrder()) {
-            hint += "\n暂未读取到 Flyme 排序，按系统查询顺序预览";
+            hint = "系统查询顺序 · 长按拖动";
         }
         status.setText(hint);
         empty.setText(!query.isEmpty() ? "没有找到匹配的入口\n试试应用名称，或清空搜索"
@@ -495,6 +530,10 @@ public final class ShareTargetsEditor {
     }
 
     private void requestClose() {
+        if (sheetBody != null) {
+            dismissSheet();
+            return;
+        }
         if (closed || (exitPrompt != null && exitPrompt.isShowing())) return;
         if (!dirty()) { dialog.dismiss(); return; }
         exitPrompt = new AlertDialog.Builder(activity).setTitle("保存分享列表修改？")
@@ -641,9 +680,7 @@ public final class ShareTargetsEditor {
     }
 
     private LinearLayout newSheet(String title, String subtitle) {
-        if (sheet != null) sheet.dismiss();
-        sheet = new Dialog(activity);
-        sheet.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dismissSheet();
         LinearLayout body = column();
         body.setPadding(dp(20), dp(12), dp(20), dp(16));
         body.setBackground(activity.roundRect(activity.surfaceColor(), 24));
@@ -668,29 +705,34 @@ public final class ShareTargetsEditor {
         item.setBackground(activity.roundRect(activity.surfaceSoftColor(), 14));
         item.setEnabled(available);
         item.setAlpha(available ? 1f : 0.4f);
-        activity.setTapClickListener(item, v -> { sheet.dismiss(); action.run(); });
+        activity.setTapClickListener(item, v -> { dismissSheet(); action.run(); });
         body.addView(item, activity.matchWrapWithTop(8));
     }
 
     private void showSheet(LinearLayout body) {
         TextView cancel = button("取消", false);
         cancel.setMinHeight(dp(48));
-        activity.setTapClickListener(cancel, v -> sheet.dismiss());
+        activity.setTapClickListener(cancel, v -> dismissSheet());
         body.addView(cancel, activity.matchWrapWithTop(12));
         ScrollView scroll = new ScrollView(activity);
         scroll.setFillViewport(true);
         scroll.addView(body);
-        sheet.setContentView(scroll);
-        sheet.show();
-        Window window = sheet.getWindow();
-        if (window != null) {
-            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            window.setDimAmount(0.3f);
-            window.setGravity(Gravity.BOTTOM);
-            int width = Math.min(activity.getResources().getDisplayMetrics().widthPixels, dp(560));
-            window.setLayout(width, -2);
+        sheetBody = body;
+        FrameLayout.LayoutParams contentParams = new FrameLayout.LayoutParams(
+                Math.min(activity.getResources().getDisplayMetrics().widthPixels, dp(560)), -2,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        overlayRoot.addView(scroll, contentParams);
+        sheetScrim.setVisibility(View.VISIBLE);
+    }
+
+    private void dismissSheet() {
+        if (overlayRoot == null) return;
+        if (sheetBody != null) {
+            View sheet = overlayRoot.getChildAt(overlayRoot.getChildCount() - 1);
+            if (sheet != sheetScrim) overlayRoot.removeView(sheet);
+            sheetBody = null;
         }
+        if (sheetScrim != null) sheetScrim.setVisibility(View.GONE);
     }
 
     private boolean move(String component, int destination) {
@@ -841,10 +883,13 @@ public final class ShareTargetsEditor {
                     : activity.roundRect(Color.TRANSPARENT, 16));
             cell.icon.setImageDrawable(target == null || target.icon == null
                     ? activity.getPackageManager().getDefaultActivityIcon() : target.icon);
-            cell.icon.setAlpha(draft.isHidden(component) ? 0.45f : 1f);
+            boolean isHidden = draft.isHidden(component);
+            cell.icon.setAlpha(isHidden ? 0.35f : 1f);
+            cell.function.setAlpha(isHidden ? 0.45f : 1f);
+            cell.app.setAlpha(isHidden ? 0.45f : 1f);
             cell.function.setText(name);
             cell.app.setText(app);
-            cell.setContentDescription(name + "，" + app + (draft.isHidden(component)
+            cell.setContentDescription(name + "，" + app + (isHidden
                     ? "，已隐藏，点击管理" : "，点击管理，长按拖动排序"));
             cell.setEnabled(!loading);
             activity.setTapClickListener(cell, v -> showTargetMenu(component));
@@ -863,24 +908,24 @@ public final class ShareTargetsEditor {
             super(activity);
             setOrientation(VERTICAL);
             setGravity(Gravity.CENTER_HORIZONTAL);
-            setPadding(dp(4), dp(10), dp(4), dp(8));
+            setPadding(dp(2), dp(8), dp(2), dp(6));
             setFocusable(true);
             icon = new ImageView(activity);
             icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
             icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            addView(icon, new LinearLayout.LayoutParams(dp(48), dp(48)));
-            function = text("", 13, activity.textColor());
-            function.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-            function.setLines(2);
+            addView(icon, new LinearLayout.LayoutParams(dp(44), dp(44)));
+            function = text("", 12, activity.textColor());
+            function.setGravity(Gravity.CENTER);
+            function.setSingleLine(true);
             function.setEllipsize(android.text.TextUtils.TruncateAt.END);
             function.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            addView(function, activity.matchWrapWithTop(6));
+            addView(function, activity.matchWrapWithTop(4));
             app = text("", 11, activity.subtextColor());
             app.setGravity(Gravity.CENTER);
             app.setSingleLine(true);
             app.setEllipsize(android.text.TextUtils.TruncateAt.END);
             app.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            addView(app, activity.matchWrap());
+            addView(app, activity.matchWrapWithTop(1));
         }
     }
 
