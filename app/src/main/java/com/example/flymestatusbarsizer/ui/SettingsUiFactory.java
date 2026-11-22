@@ -2,8 +2,11 @@ package com.example.flymestatusbarsizer.ui;
 
 import com.example.flymestatusbarsizer.MainActivity;
 import com.example.flymestatusbarsizer.config.SettingsStore;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.divider.MaterialDivider;
 
-import android.app.AlertDialog;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -12,6 +15,7 @@ import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import androidx.appcompat.app.AlertDialog;
 
 public final class SettingsUiFactory {
     private final MainActivity activity;
@@ -25,22 +29,42 @@ public final class SettingsUiFactory {
         view.setText(text);
         view.setTextColor(textColor);
         view.setTextSize(12);
+        view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         view.setGravity(Gravity.CENTER);
         view.setPadding(dp(12), dp(4), dp(12), dp(4));
-        view.setBackground(roundRect(backgroundColor, 99));
+        view.setBackground(roundRect(backgroundColor, 8));
         return view;
     }
 
-    public TextView filledButton(String text, int backgroundColor, int textColor) {
-        TextView view = new TextView(activity);
+    public MaterialButton filledButton(String text, int backgroundColor, int textColor) {
+        MaterialButton view = new MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonStyle);
         view.setText(text);
         view.setTextColor(textColor);
         view.setTextSize(14);
+        view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         view.setGravity(Gravity.CENTER);
         view.setMinHeight(dp(40));
+        view.setCornerRadius(dp(20));
+        view.setBackgroundTintList(ColorStateList.valueOf(backgroundColor));
+        view.setInsetTop(0);
+        view.setInsetBottom(0);
+        view.setPadding(dp(16), dp(6), dp(16), dp(6));
+        return view;
+    }
+
+    public MaterialButton tonalButton(String text, int backgroundColor, int textColor) {
+        MaterialButton view = new MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonStyle);
+        view.setText(text);
+        view.setTextColor(textColor);
+        view.setTextSize(13);
         view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        view.setPadding(dp(12), dp(6), dp(12), dp(6));
-        view.setBackground(roundRect(backgroundColor, 8));
+        view.setGravity(Gravity.CENTER);
+        view.setMinHeight(dp(36));
+        view.setCornerRadius(dp(18));
+        view.setBackgroundTintList(ColorStateList.valueOf(backgroundColor));
+        view.setInsetTop(0);
+        view.setInsetBottom(0);
+        view.setPadding(dp(14), dp(4), dp(14), dp(4));
         return view;
     }
 
@@ -74,11 +98,12 @@ public final class SettingsUiFactory {
     }
 
     public void addDivider(LinearLayout root) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
-        lp.leftMargin = dp(16);
-        lp.rightMargin = dp(16);
-        root.addView(buildDividerView(), lp);
+        MaterialDivider divider = new MaterialDivider(activity);
+        divider.setDividerColor(activity.surfaceStrongColor());
+        divider.setDividerInsetStart(dp(16));
+        divider.setDividerInsetEnd(dp(16));
+        divider.setDividerThickness(dp(1));
+        root.addView(divider, matchWrap());
     }
 
     public void addProfileSectionHeader(LinearLayout root, String titleText, String subtitleText) {
@@ -88,10 +113,10 @@ public final class SettingsUiFactory {
 
         TextView title = new TextView(activity);
         title.setText(titleText);
-        title.setTextColor(activity.subtextColor());
+        title.setTextColor(activity.primaryColor());
         title.setTextSize(13);
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        title.setPadding(dp(16), dp(12), dp(16), dp(4));
+        title.setPadding(dp(16), dp(14), dp(16), dp(6));
         row.addView(title, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         addHelpButton(row, titleText, subtitleText);
@@ -103,7 +128,49 @@ public final class SettingsUiFactory {
         LinearLayout row = new LinearLayout(activity);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(52));
+        row.setMinimumHeight(dp(56));
+        row.setPadding(0, dp(4), 0, dp(4));
+
+        LinearLayout textColumn = new LinearLayout(activity);
+        textColumn.setOrientation(LinearLayout.VERTICAL);
+
+        TextView title = new TextView(activity);
+        title.setText(titleText);
+        title.setTextColor(activity.textColor());
+        title.setTextSize(15);
+        title.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        textColumn.addView(title, matchWrap());
+
+        if (subtitleText != null && !subtitleText.trim().isEmpty()) {
+            TextView sub = new TextView(activity);
+            sub.setText(subtitleText);
+            sub.setTextColor(activity.subtextColor());
+            sub.setTextSize(12);
+            textColumn.addView(sub, matchWrapWithTop(2));
+        }
+
+        MaterialButton button = filledButton(buttonText, activity.primaryColor(), Color.WHITE);
+        activity.setTapClickListener(button, v -> action.run());
+
+        row.addView(textColumn, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        addHelpButton(row, titleText, subtitleText);
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        btnLp.leftMargin = dp(12);
+        row.addView(button, btnLp);
+        root.addView(row, matchWrap());
+        return button;
+    }
+
+    public void addMultiChoiceRow(LinearLayout root, String titleText, String subtitleText,
+            String key, int defaultValue, int[] values, String[] labels, String emptyLabel) {
+        LinearLayout row = new LinearLayout(activity);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setMinimumHeight(dp(56));
+        row.setPadding(0, dp(4), 0, dp(4));
 
         LinearLayout textColumn = new LinearLayout(activity);
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -114,38 +181,28 @@ public final class SettingsUiFactory {
         title.setTextSize(15);
         textColumn.addView(title, matchWrap());
 
-        TextView button = filledButton(buttonText, activity.primaryColor(), android.graphics.Color.WHITE);
-        activity.setTapClickListener(button, v -> action.run());
+        if (subtitleText != null && !subtitleText.trim().isEmpty()) {
+            TextView sub = new TextView(activity);
+            sub.setText(subtitleText);
+            sub.setTextColor(activity.subtextColor());
+            sub.setTextSize(12);
+            textColumn.addView(sub, matchWrapWithTop(2));
+        }
 
-        row.addView(textColumn, new LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        addHelpButton(row, titleText, subtitleText);
-        row.addView(button, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-        root.addView(row, matchWrap());
-        return button;
-    }
-
-    public void addMultiChoiceRow(LinearLayout root, String titleText, String subtitleText,
-            String key, int defaultValue, int[] values, String[] labels, String emptyLabel) {
-        LinearLayout row = new LinearLayout(activity);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setMinimumHeight(dp(52));
-        TextView title = new TextView(activity);
-        title.setText(titleText);
-        title.setTextColor(activity.textColor());
-        title.setTextSize(15);
-        row.addView(title, new LinearLayout.LayoutParams(0,
+        row.addView(textColumn, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         addHelpButton(row, titleText, subtitleText);
+
         TextView summary = new TextView(activity);
         summary.setTextColor(activity.primaryColor());
         summary.setTextSize(13);
+        summary.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        summary.setPadding(dp(12), dp(4), dp(12), dp(4));
+        summary.setBackground(roundRect(activity.surfaceStrongColor(), 8));
+        summary.setMinHeight(dp(32));
         summary.setMaxLines(1);
         summary.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        summary.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        summary.setGravity(Gravity.CENTER);
         summary.setText(multiChoiceLabel(readMultiChoiceValue(key, defaultValue),
                 values, labels, emptyLabel));
         summary.setMaxWidth(dp(180));
@@ -153,7 +210,7 @@ public final class SettingsUiFactory {
             int current = readMultiChoiceValue(key, defaultValue);
             boolean[] checked = new boolean[values.length];
             for (int i = 0; i < values.length; i++) checked[i] = (current & values[i]) != 0;
-            AlertDialog dialog = new AlertDialog.Builder(activity)
+            AlertDialog dialog = new MaterialAlertDialogBuilder(activity)
                     .setTitle(titleText)
                     .setMultiChoiceItems(labels, checked, (d, which, selected) -> checked[which] = selected)
                     .setNegativeButton("取消", null)
@@ -164,19 +221,11 @@ public final class SettingsUiFactory {
                         summary.setText(multiChoiceLabel(selected, values, labels, emptyLabel));
                     })
                     .show();
-            activity.styleDialog(dialog);
             activity.attachDialogButtonHaptics(dialog);
         });
         row.addView(summary, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
-        ImageView arrow = new ImageView(activity);
-        arrow.setImageResource(com.example.flymestatusbarsizer.R.drawable.ic_section_expand);
-        arrow.setRotation(-90f);
-        arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        LinearLayout.LayoutParams arrowLp = new LinearLayout.LayoutParams(dp(20), dp(20));
-        arrowLp.leftMargin = dp(4);
-        row.addView(arrow, arrowLp);
         root.addView(row, matchWrap());
     }
 
@@ -206,13 +255,5 @@ public final class SettingsUiFactory {
             activity.showHelpDialog(titleText, message);
             return true;
         });
-    }
-
-    private View buildDividerView() {
-        View divider = new View(activity);
-        int stroke = activity.strokeColor();
-        int softDividerColor = Color.argb(0x3B, Color.red(stroke), Color.green(stroke), Color.blue(stroke));
-        divider.setBackgroundColor(softDividerColor);
-        return divider;
     }
 }

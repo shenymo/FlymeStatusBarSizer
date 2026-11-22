@@ -1,13 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+    <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:fontFamily">sans-serif</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:statusBarColor">@color/flyme_background</item>
         <item name="android:navigationBarColor">@color/flyme_background</item>
-        <item name="android:colorAccent">@color/flyme_primary</item>
         <item name="android:windowBackground">@color/flyme_background</item>
+        <item name="colorPrimary">@color/flyme_primary</item>
+        <item name="colorOnPrimary">@color/flyme_on_primary</item>
+        <item name="colorPrimaryContainer">@color/flyme_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/flyme_primary_deep</item>
+        <item name="colorSecondary">@color/flyme_secondary</item>
+        <item name="colorSecondaryContainer">@color/flyme_secondary_soft</item>
+        <item name="colorSurface">@color/flyme_surface</item>
+        <item name="colorOnSurface">@color/flyme_text</item>
+        <item name="colorSurfaceVariant">@color/flyme_surface_container_high</item>
+        <item name="colorOnSurfaceVariant">@color/flyme_subtext</item>
+        <item name="colorSurfaceContainer">@color/flyme_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/flyme_surface_container_high</item>
+        <item name="colorSurfaceContainerHighest">@color/flyme_surface_container_highest</item>
+        <item name="colorSurfaceContainerLow">@color/flyme_surface_container_low</item>
+        <item name="colorSurfaceContainerLowest">@color/flyme_surface_container_lowest</item>
+        <item name="colorOutline">@color/flyme_outline</item>
+        <item name="colorOutlineVariant">@color/flyme_outline_variant</item>
+        <item name="colorError">@color/flyme_error</item>
+        <item name="colorErrorContainer">@color/flyme_error_soft</item>
     </style>
     <style name="OneStepTheme" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:windowIsTranslucent">false</item>

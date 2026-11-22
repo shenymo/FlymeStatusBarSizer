@@ -21,7 +21,7 @@ import android.widget.LinearLayout;
 import android.widget.CheckBox;
 import android.widget.ImageView;
 import android.widget.ScrollView;
-import android.widget.Switch;
+import com.google.android.material.materialswitch.MaterialSwitch;
 import android.widget.TextView;
 
 import java.util.ArrayList;
@@ -64,7 +64,7 @@ public final class ImeToolbarEditor {
                 SettingsStore.KEY_IME_VERIFICATION_CODE_AUTO_COPY_ENABLED,
                 SettingsStore.DEFAULT_IME_VERIFICATION_CODE_AUTO_COPY_ENABLED);
         activity.addDivider(details);
-        Switch expansionSwitch = activity.addSwitchRow(details, "拓展栏",
+        MaterialSwitch expansionSwitch = activity.addSwitchRow(details, "拓展栏",
                 "在主工具栏上方显示文字栏。",
                 SettingsStore.KEY_IME_CONTROL_BAR_EXPANSION_ENABLED,
                 SettingsStore.DEFAULT_IME_CONTROL_BAR_EXPANSION_ENABLED,

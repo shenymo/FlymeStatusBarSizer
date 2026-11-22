@@ -22,7 +22,7 @@ import android.graphics.Color;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
-import android.widget.Switch;
+import com.google.android.material.materialswitch.MaterialSwitch;
 import android.widget.TextView;
 
 public final class SettingsCardFactory {
@@ -587,7 +587,7 @@ public final class SettingsCardFactory {
         activity.addActionButtonRow(cornerEntry, "动作与触发区域",
                 null, "设置",
                 () -> activity.openPage(MainActivity.Page.CORNER_GESTURE_SETTINGS));
-        Switch cornerSwitch = activity.addSwitchRow(cornerOptions, "自定义底角手势", null,
+        MaterialSwitch cornerSwitch = activity.addSwitchRow(cornerOptions, "自定义底角手势", null,
                 SettingsStore.KEY_WINDOWMODE_SIDE_GESTURE_ENABLED,
                 SettingsStore.DEFAULT_WINDOWMODE_SIDE_GESTURE_ENABLED,
                 (buttonView, isChecked) -> {
@@ -830,7 +830,7 @@ public final class SettingsCardFactory {
         LinearLayout content = addSection(root, "通知与最近任务卡片圆角", "分别调整通知卡片和最近任务卡片的圆角。");
         LinearLayout notificationCornerOptions = new LinearLayout(activity);
         notificationCornerOptions.setOrientation(LinearLayout.VERTICAL);
-        Switch notificationCornerSwitch = activity.addSwitchRow(content, "自定义通知卡片圆角",
+        MaterialSwitch notificationCornerSwitch = activity.addSwitchRow(content, "自定义通知卡片圆角",
                 "开启后使用下方设置的圆角大小；关闭后恢复系统默认。",
                 SettingsStore.KEY_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED,
                 SettingsStore.DEFAULT_NOTIFICATION_CARD_CORNER_RADIUS_ENABLED,
@@ -848,7 +848,7 @@ public final class SettingsCardFactory {
         activity.addDivider(content);
         LinearLayout recentsCornerOptions = new LinearLayout(activity);
         recentsCornerOptions.setOrientation(LinearLayout.VERTICAL);
-        Switch recentsCornerSwitch = activity.addSwitchRow(content, "自定义最近任务卡片圆角",
+        MaterialSwitch recentsCornerSwitch = activity.addSwitchRow(content, "自定义最近任务卡片圆角",
                 "调整最近任务中的应用预览卡片圆角；关闭后恢复系统默认。",
                 SettingsStore.KEY_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED,
                 SettingsStore.DEFAULT_LAUNCHER_RECENTS_CARD_CORNER_RADIUS_ENABLED,
@@ -865,8 +865,8 @@ public final class SettingsCardFactory {
         content.addView(recentsCornerOptions, recentsCornerOptionsLp);
         content = addSection(root, "通知背景", "调整系统通知卡片的背景效果和颜色。");
         LinearLayout blurOnlyOptions = new LinearLayout(activity);
-        Switch[] textColorSwitchHolder = new Switch[1];
-        Switch blurOnlySwitch = activity.addSwitchRow(content, "使用模糊通知背景",
+        MaterialSwitch[] textColorSwitchHolder = new MaterialSwitch[1];
+        MaterialSwitch blurOnlySwitch = activity.addSwitchRow(content, "使用模糊通知背景",
                 "开启后移除通知原背景，只保留系统模糊层。",
                 SettingsStore.KEY_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
                 SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_ONLY_ENABLED,
@@ -907,7 +907,7 @@ public final class SettingsCardFactory {
                 true,
                 "恢复默认",
                 SettingsStore.DEFAULT_NOTIFICATION_SYSTEM_BLUR_DARK_COLOR);
-        Switch textColorSwitch = activity.addSwitchRow(blurOnlyOptions, "通知文字跟随状态栏",
+        MaterialSwitch textColorSwitch = activity.addSwitchRow(blurOnlyOptions, "通知文字跟随状态栏",
                 "通知文字使用当前状态栏图标颜色，仅在模糊通知背景开启时生效。",
                 SettingsStore.KEY_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED,
                 SettingsStore.DEFAULT_NOTIFICATION_TEXT_FOLLOW_STATUS_BAR_ENABLED);

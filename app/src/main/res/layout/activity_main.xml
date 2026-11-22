@@ -1,22 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/main_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/flyme_background"
     android:orientation="vertical">
 
-    <LinearLayout
+    <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/top_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:minHeight="56dp"
-        android:orientation="horizontal"
-        android:paddingStart="16dp"
+        android:minHeight="64dp"
+        android:paddingStart="12dp"
         android:paddingTop="4dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="4dp">
+        android:paddingEnd="12dp"
+        android:paddingBottom="4dp"
+        app:contentInsetStart="0dp"
+        app:contentInsetEnd="0dp">
 
         <ImageButton
             android:id="@+id/back_button"
@@ -27,58 +28,59 @@
             android:padding="12dp"
             android:contentDescription="返回"
             android:layout_marginEnd="8dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
             android:visibility="gone" />
 
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/top_bar_eyebrow"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="@color/flyme_primary"
-                android:textSize="11sp"
-                android:visibility="gone" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/top_bar_eyebrow"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/flyme_primary"
+                    android:textSize="11sp"
+                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/top_bar_title"
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:textColor="@color/flyme_text"
+                    android:fontFamily="sans-serif-medium"
                     android:textSize="20sp" />
 
+                <TextView
+                    android:id="@+id/top_bar_subtitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:maxLines="2"
+                    android:textColor="@color/flyme_subtext"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/top_bar_subtitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:maxLines="2"
-                android:textColor="@color/flyme_subtext"
-                android:textSize="12sp"
-                android:visibility="gone" />
+            <ImageButton
+                android:id="@+id/more_button"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:src="@drawable/ic_settings_more"
+                android:padding="12dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="更多选项" />
         </LinearLayout>
-
-        <ImageButton
-            android:id="@+id/more_button"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:gravity="center"
-            android:src="@drawable/ic_settings_more"
-            android:padding="12dp"
-            android:contentDescription="更多选项" />
-    </LinearLayout>
+    </com.google.android.material.appbar.MaterialToolbar>
 
     <FrameLayout
         android:id="@+id/page_host"

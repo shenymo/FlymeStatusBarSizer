@@ -29,7 +29,7 @@ import com.example.flymestatusbarsizer.ui.TimeNetworkPageController;
 import com.example.flymestatusbarsizer.util.ReleaseUpdateChecker;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import androidx.appcompat.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -86,6 +86,15 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AppCompatActivity;
+import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.materialswitch.MaterialSwitch;
+import com.google.android.material.slider.Slider;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -108,7 +117,7 @@ import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.regex.Pattern;
 
-public class MainActivity extends Activity {
+public class MainActivity extends AppCompatActivity {
     private static final String PREF_LONG_PRESS_HELP_HINT_SHOWN =
             "ui_long_press_help_hint_shown";
     private static final Pattern SEARCH_TEXT_PATTERN = Pattern.compile("[^\\p{L}\\p{N}]");
@@ -163,7 +172,7 @@ public class MainActivity extends Activity {
     private final ArrayList<PositionOffsetSliderBinding> positionTuningSliderBindings = new ArrayList<>();
     private final HashMap<String, Integer> pendingIntSliderValues = new HashMap<>();
     private final HashMap<String, Integer> pendingPositionOffsetValues = new HashMap<>();
-    private LinearLayout topBar;
+    private View topBar;
     private ImageButton backButtonView;
     private ImageButton moreButtonView;
     private TextView topBarEyebrowView;
@@ -331,13 +340,10 @@ public class MainActivity extends Activity {
             pageHostView.setBackgroundColor(colorBackground);
         }
         if (backButtonView != null) {
-            backButtonView.setBackground(roundRect(Color.TRANSPARENT, 24));
+            backButtonView.setColorFilter(colorText);
         }
         if (moreButtonView != null) {
-            moreButtonView.setBackground(roundRect(Color.TRANSPARENT, 24));
-        }
-        if (topBarSubtitleView != null) {
-            topBarSubtitleView.setBackground(roundRect(Color.TRANSPARENT, 24));
+            moreButtonView.setColorFilter(colorText);
         }
         setTapClickListener(backButtonView, v -> onBackPressed());
         setTapClickListener(moreButtonView, this::showMoreMenu);
@@ -406,15 +412,30 @@ public class MainActivity extends Activity {
     }
 
     public LinearLayout addFeatureSearch(LinearLayout root) {
+        MaterialCardView card = new MaterialCardView(this);
+        card.setCardElevation(0);
+        card.setStrokeWidth(0);
+        card.setRadius(dp(28));
+        card.setCardBackgroundColor(colorSurfaceStrong);
+        card.setContentPadding(dp(16), 0, dp(12), 0);
+
         LinearLayout bar = new LinearLayout(this);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setBackground(outlinedRect(colorSurface, colorStroke, 1, 16));
-        bar.setClipToOutline(true);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setMinimumHeight(dp(56));
+        card.addView(bar, matchWrap());
+
+        ImageView searchIcon = new ImageView(this);
+        searchIcon.setImageResource(R.drawable.ic_feature_search);
+        searchIcon.setColorFilter(colorSubtext);
+        searchIcon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        bar.addView(searchIcon, new LinearLayout.LayoutParams(dp(20), dp(20)));
+
         EditText input = new EditText(this);
         input.setId(R.id.feature_search_input);
-        input.setHint("搜索设置");
-        input.setContentDescription("搜索设置");
-        input.setTextSize(16);
+        input.setHint("搜索设置项…");
+        input.setContentDescription("搜索设置项");
+        input.setTextSize(15);
         input.setTextColor(colorText);
         input.setHintTextColor(colorSubtext);
         input.setSingleLine(true);
@@ -423,21 +444,19 @@ public class MainActivity extends Activity {
         input.setBackground(null);
         input.setPadding(dp(12), dp(8), dp(8), dp(8));
         input.setMinHeight(dp(48));
-        input.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_feature_search, 0, 0, 0);
-        input.setCompoundDrawablePadding(dp(8));
         input.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
         bar.addView(input, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         TextView clear = new TextView(this);
-        clear.setText("×");
-        clear.setTextSize(24);
+        clear.setText("✕");
+        clear.setTextSize(16);
         clear.setTextColor(colorSubtext);
         clear.setGravity(Gravity.CENTER);
         clear.setContentDescription("清除搜索");
         clear.setVisibility(View.GONE);
         setTapClickListener(clear, v -> input.setText(""));
-        bar.addView(clear, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        root.addView(bar, matchWrapWithTop(12));
+        bar.addView(clear, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        root.addView(card, matchWrapWithTop(12));
 
         LinearLayout results = new LinearLayout(this);
         results.setOrientation(LinearLayout.VERTICAL);
@@ -484,19 +503,29 @@ public class MainActivity extends Activity {
         count.setTextSize(13);
         results.addView(count, matchWrap());
         for (SearchResult match : matches) {
-            LinearLayout row = card(colorSurface, 8);
+            MaterialCardView card = new MaterialCardView(this);
+            card.setCardElevation(0);
+            card.setStrokeWidth(0);
+            card.setRadius(dp(16));
+            card.setCardBackgroundColor(colorSurfaceSoft);
+            card.setContentPadding(dp(16), dp(12), dp(16), dp(12));
+
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
             TextView title = new TextView(this);
             title.setText(match.title);
             title.setTextColor(colorText);
-            title.setTextSize(16);
+            title.setTextSize(15);
+            title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
             row.addView(title, matchWrap());
             TextView path = new TextView(this);
             path.setText(match.path);
             path.setTextColor(colorSubtext);
             path.setTextSize(12);
-            row.addView(path, matchWrapWithTop(4));
-            setTapClickListener(row, v -> showSearchResult(input, match));
-            results.addView(row, matchWrapWithTop(8));
+            row.addView(path, matchWrapWithTop(3));
+            card.addView(row, matchWrap());
+            setTapClickListener(card, v -> showSearchResult(input, match));
+            results.addView(card, matchWrapWithTop(8));
         }
     }
 
@@ -576,7 +605,7 @@ public class MainActivity extends Activity {
                         || sibling.getVisibility() != View.VISIBLE) continue;
                 ViewGroup row = (ViewGroup) sibling;
                 for (int j = 0; j < row.getChildCount(); j++) {
-                    if (row.getChildAt(j) instanceof Switch) {
+                    if (row.getChildAt(j) instanceof CompoundButton) {
                         target = sibling;
                         prerequisite = ((String[]) metadata)[0];
                         break;
@@ -600,7 +629,7 @@ public class MainActivity extends Activity {
             if (destination != page) {
                 searchHighlightedView = destination;
                 searchPreviousForeground = destination.getForeground();
-                destination.setForeground(outlinedRect(0x186750A4, colorPrimary, 1, 12));
+                destination.setForeground(outlinedRect(Color.argb(0x28, Color.red(colorPrimary), Color.green(colorPrimary), Color.blue(colorPrimary)), colorPrimary, 2, 16));
                 destination.postDelayed(searchHighlightReset, 1400);
             }
         });
@@ -1595,17 +1624,18 @@ public class MainActivity extends Activity {
         clockDetailActionGridEditor.show();
     }
 
-    public Switch addSwitchRow(LinearLayout root, String titleText, String subtitleText,
+    public MaterialSwitch addSwitchRow(LinearLayout root, String titleText, String subtitleText,
             String key, boolean defaultValue) {
         return addSwitchRow(root, titleText, subtitleText, key, defaultValue, null);
     }
 
-    public Switch addSwitchRow(LinearLayout root, String titleText, String subtitleText,
+    public MaterialSwitch addSwitchRow(LinearLayout root, String titleText, String subtitleText,
             String key, boolean defaultValue, CompoundButton.OnCheckedChangeListener extraListener) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(52));
+        row.setMinimumHeight(dp(56));
+        row.setPadding(0, dp(4), 0, dp(4));
 
         LinearLayout textColumn = new LinearLayout(this);
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -1616,7 +1646,15 @@ public class MainActivity extends Activity {
         title.setTextSize(15);
         textColumn.addView(title, matchWrap());
 
-        Switch toggle = new Switch(this);
+        if (subtitleText != null && !subtitleText.trim().isEmpty()) {
+            TextView sub = new TextView(this);
+            sub.setText(subtitleText);
+            sub.setTextColor(colorSubtext);
+            sub.setTextSize(12);
+            textColumn.addView(sub, matchWrapWithTop(2));
+        }
+
+        MaterialSwitch toggle = new MaterialSwitch(this);
         styleSwitch(toggle);
         toggle.setChecked(SettingsStore.readBoolean(prefs, key, defaultValue));
         toggle.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) -> {
@@ -1691,71 +1729,74 @@ public class MainActivity extends Activity {
 
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
-        valueView.setTextSize(14);
+        valueView.setTextSize(13);
+        valueView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         int current = readIntSetting(key, defaultValue);
         int clamped = Math.max(min, Math.min(max, current));
         valueView.setText(tenthDp ? formatDpValue(clamped, decimalScale) : formatValue(clamped, suffix));
-        valueView.setPadding(dp(10), dp(4), dp(10), dp(4));
-        valueView.setBackground(roundRect(colorSurfaceSoft, 4));
-        valueView.setMinHeight(dp(36));
+        valueView.setPadding(dp(12), dp(4), dp(12), dp(4));
+        valueView.setBackground(roundRect(colorSurfaceStrong, 8));
+        valueView.setMinHeight(dp(32));
         valueView.setGravity(Gravity.CENTER);
         header.addView(valueView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        SeekBar seekBar = new SeekBar(this);
-        styleSeekBar(seekBar);
-        seekBar.setMax(max - min);
-        seekBar.setProgress(clamped - min);
-        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+        Slider slider = new Slider(this);
+        slider.setValueFrom(min);
+        slider.setValueTo(max);
+        slider.setStepSize(1f);
+        slider.setValue(clamped);
+        slider.setLabelFormatter(value -> {
+            int v = Math.round(value);
+            return tenthDp ? formatDpValue(v, decimalScale) : formatValue(v, suffix);
+        });
+        slider.addOnChangeListener((s, value, fromUser) -> {
+            int v = Math.round(value);
+            valueView.setText(tenthDp ? formatDpValue(v, decimalScale) : formatValue(v, suffix));
+            if (fromUser) {
+                performSliderHaptic(s);
+                putIntSetting(key, v);
+            }
+        });
+        slider.addOnSliderTouchListener(new Slider.OnSliderTouchListener() {
             @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                int value = min + progress;
-                valueView.setText(tenthDp ? formatDpValue(value, decimalScale) : formatValue(value, suffix));
-                if (fromUser) {
-                    performSliderHaptic(seekBar);
-                    putIntSetting(key, value);
-                }
+            public void onStartTrackingTouch(Slider s) {
             }
 
             @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-                putIntSetting(key, min + seekBar.getProgress());
+            public void onStopTrackingTouch(Slider s) {
+                putIntSetting(key, Math.round(s.getValue()));
             }
         });
         if (tenthDp) {
             setTapClickListener(valueView, v -> showDecimalInputDialog(
                     titleText,
-                    min + seekBar.getProgress(),
+                    Math.round(slider.getValue()),
                     min,
                     max,
                     decimalScale,
                     value -> {
                         valueView.setText(formatDpValue(value, decimalScale));
-                        seekBar.setProgress(value - min);
+                        slider.setValue(value);
                         putIntSetting(key, value);
                     }));
         } else {
             setTapClickListener(valueView, v -> showIntInputDialog(
                     titleText,
-                    min + seekBar.getProgress(),
+                    Math.round(slider.getValue()),
                     min,
                     max,
                     suffix,
                     value -> {
                         valueView.setText(formatValue(value, suffix));
-                        seekBar.setProgress(value - min);
+                        slider.setValue(value);
                         putIntSetting(key, value);
                     }));
         }
 
         row.addView(header, matchWrap());
-        row.addView(seekBar, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(40)));
+        row.addView(slider, matchWrap());
         root.addView(row, matchWrap());
     }
 
@@ -1790,49 +1831,49 @@ public class MainActivity extends Activity {
 
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
-        valueView.setTextSize(14);
-        valueView.setPadding(dp(10), dp(4), dp(10), dp(4));
-        valueView.setBackground(roundRect(colorSurfaceSoft, 4));
-        valueView.setMinHeight(dp(36));
+        valueView.setTextSize(13);
+        valueView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        valueView.setPadding(dp(12), dp(4), dp(12), dp(4));
+        valueView.setBackground(roundRect(colorSurfaceStrong, 8));
+        valueView.setMinHeight(dp(32));
         valueView.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         header.addView(valueView, valueLp);
 
-        SeekBar seekBar = new SeekBar(this);
-        styleSeekBar(seekBar);
-        seekBar.setMax((maxTenthDp - minTenthDp) / 10);
+        int minDp = minTenthDp / 10;
+        int maxDp = maxTenthDp / 10;
+        Slider slider = new Slider(this);
+        slider.setValueFrom(minDp);
+        slider.setValueTo(maxDp);
+        slider.setStepSize(1f);
+        slider.setLabelFormatter(value -> formatOffsetValue(Math.round(value) * 10));
+
         PositionOffsetSliderBinding binding =
-                new PositionOffsetSliderBinding(valueView, seekBar, minTenthDp, maxTenthDp);
+                new PositionOffsetSliderBinding(valueView, slider, minTenthDp, maxTenthDp);
         int current = getPendingPositionOffsetValue(key, defaultValueTenthDp, minTenthDp, maxTenthDp);
         binding.setValue(current);
 
-        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+        slider.addOnChangeListener((s, value, fromUser) -> {
+            int coarseDp = Math.round(value);
+            int val = Math.max(minTenthDp, Math.min(maxTenthDp, coarseDp * 10));
+            valueView.setText(formatOffsetValue(val));
+            if (fromUser) {
+                performSliderHaptic(s);
+                updatePendingPositionOffsetValue(key, val, minTenthDp, maxTenthDp);
+            }
+        });
+        slider.addOnSliderTouchListener(new Slider.OnSliderTouchListener() {
             @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                int value = sliderProgressToPositionOffsetTenthDp(progress, minTenthDp, maxTenthDp);
-                valueView.setText(formatOffsetValue(value));
-                if (fromUser) {
-                    performSliderHaptic(seekBar);
-                    updatePendingPositionOffsetValue(key, value, minTenthDp, maxTenthDp);
-                }
+            public void onStartTrackingTouch(Slider s) {
             }
 
             @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-                updatePendingPositionOffsetValue(
-                        key,
-                        sliderProgressToPositionOffsetTenthDp(
-                                seekBar.getProgress(),
-                                minTenthDp,
-                                maxTenthDp),
-                        minTenthDp,
-                        maxTenthDp);
+            public void onStopTrackingTouch(Slider s) {
+                int coarseDp = Math.round(s.getValue());
+                int val = Math.max(minTenthDp, Math.min(maxTenthDp, coarseDp * 10));
+                updatePendingPositionOffsetValue(key, val, minTenthDp, maxTenthDp);
             }
         });
         setTapClickListener(valueView, v -> showDecimalInputDialog(
@@ -1847,8 +1888,7 @@ public class MainActivity extends Activity {
 
         positionTuningSliderBindings.add(binding);
         row.addView(header, matchWrap());
-        row.addView(seekBar, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(40)));
+        row.addView(slider, matchWrap());
         root.addView(row, matchWrap());
     }
 
@@ -1895,39 +1935,38 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        SeekBar seekBar = new SeekBar(this);
-        styleSeekBar(seekBar);
-        seekBar.setMax((maxTenthDp - minTenthDp) / 10);
+        int minDp = minTenthDp / 10;
+        int maxDp = maxTenthDp / 10;
+        Slider slider = new Slider(this);
+        slider.setValueFrom(minDp);
+        slider.setValueTo(maxDp);
+        slider.setStepSize(1f);
+        slider.setLabelFormatter(value -> formatOffsetValue(Math.round(value) * 10));
+
         PositionOffsetSliderBinding binding =
-                new PositionOffsetSliderBinding(valueView, seekBar, minTenthDp, maxTenthDp);
+                new PositionOffsetSliderBinding(valueView, slider, minTenthDp, maxTenthDp);
         int current = getPendingPositionOffsetValue(key, defaultValueTenthDp, minTenthDp, maxTenthDp);
         binding.setValue(current);
 
-        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+        slider.addOnChangeListener((s, value, fromUser) -> {
+            int coarseDp = Math.round(value);
+            int val = Math.max(minTenthDp, Math.min(maxTenthDp, coarseDp * 10));
+            valueView.setText(formatOffsetValue(val));
+            if (fromUser) {
+                performSliderHaptic(s);
+                updatePendingPositionOffsetValue(key, val, minTenthDp, maxTenthDp);
+            }
+        });
+        slider.addOnSliderTouchListener(new Slider.OnSliderTouchListener() {
             @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                int value = sliderProgressToPositionOffsetTenthDp(progress, minTenthDp, maxTenthDp);
-                valueView.setText(formatOffsetValue(value));
-                if (fromUser) {
-                    performSliderHaptic(seekBar);
-                    updatePendingPositionOffsetValue(key, value, minTenthDp, maxTenthDp);
-                }
+            public void onStartTrackingTouch(Slider s) {
             }
 
             @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-                updatePendingPositionOffsetValue(
-                        key,
-                        sliderProgressToPositionOffsetTenthDp(
-                                seekBar.getProgress(),
-                                minTenthDp,
-                                maxTenthDp),
-                        minTenthDp,
-                        maxTenthDp);
+            public void onStopTrackingTouch(Slider s) {
+                int coarseDp = Math.round(s.getValue());
+                int val = Math.max(minTenthDp, Math.min(maxTenthDp, coarseDp * 10));
+                updatePendingPositionOffsetValue(key, val, minTenthDp, maxTenthDp);
             }
         });
         setTapClickListener(valueView, v -> showDecimalInputDialog(
@@ -1955,8 +1994,7 @@ public class MainActivity extends Activity {
         header.addView(applyButton, applyLp);
 
         row.addView(header, matchWrap());
-        row.addView(seekBar, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(40)));
+        row.addView(slider, matchWrap());
         root.addView(row, matchWrap());
     }
 
@@ -2013,41 +2051,41 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         header.addView(valueView, valueLp);
 
-        SeekBar seekBar = new SeekBar(this);
-        styleSeekBar(seekBar);
-        seekBar.setMax(max - min);
-        seekBar.setProgress(clamped - min);
-        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+        Slider slider = new Slider(this);
+        slider.setValueFrom(min);
+        slider.setValueTo(max);
+        slider.setStepSize(1f);
+        slider.setValue(clamped);
+        slider.setLabelFormatter(value -> formatSliderDisplayValue(Math.round(value), suffix, insetValue, valueScale));
+        slider.addOnChangeListener((s, value, fromUser) -> {
+            int intVal = Math.round(value);
+            valueView.setText(formatSliderDisplayValue(intVal, suffix, insetValue, valueScale));
+            if (fromUser) {
+                performSliderHaptic(s);
+                updatePendingIntSliderValue(key, intVal, min, max);
+            }
+        });
+        slider.addOnSliderTouchListener(new Slider.OnSliderTouchListener() {
             @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                int value = min + progress;
-                valueView.setText(formatSliderDisplayValue(value, suffix, insetValue, valueScale));
-                if (fromUser) {
-                    performSliderHaptic(seekBar);
-                    updatePendingIntSliderValue(key, value, min, max);
-                }
+            public void onStartTrackingTouch(Slider s) {
             }
 
             @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-                updatePendingIntSliderValue(key, min + seekBar.getProgress(), min, max);
+            public void onStopTrackingTouch(Slider s) {
+                updatePendingIntSliderValue(key, Math.round(s.getValue()), min, max);
             }
         });
         setTapClickListener(valueView, v -> {
             IntValueConsumer onValue = value -> {
                 updatePendingIntSliderValue(key, value, min, max);
                 valueView.setText(formatSliderDisplayValue(value, suffix, insetValue, valueScale));
-                seekBar.setProgress(value - min);
+                slider.setValue(value);
             };
             if (valueScale == 1) {
-                showIntInputDialog(titleText, min + seekBar.getProgress(), min, max,
+                showIntInputDialog(titleText, Math.round(slider.getValue()), min, max,
                         insetValue ? "" : suffix, onValue);
             } else {
-                showDecimalInputDialog(titleText, min + seekBar.getProgress(), min, max,
+                showDecimalInputDialog(titleText, Math.round(slider.getValue()), min, max,
                         valueScale, suffix, onValue);
             }
         });
@@ -2062,8 +2100,7 @@ public class MainActivity extends Activity {
         header.addView(applyButton, applyLp);
 
         row.addView(header, matchWrap());
-        row.addView(seekBar, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(40)));
+        row.addView(slider, matchWrap());
         root.addView(row, matchWrap());
     }
 
@@ -2111,53 +2148,52 @@ public class MainActivity extends Activity {
         resetLp.leftMargin = dp(8);
         header.addView(resetButton, resetLp);
 
-        SeekBar seekBar = new SeekBar(this);
-        styleSeekBar(seekBar);
-        seekBar.setMax(max - min);
-        seekBar.setProgress(clamped - min);
-        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+        Slider slider = new Slider(this);
+        slider.setValueFrom(min);
+        slider.setValueTo(max);
+        slider.setStepSize(1f);
+        slider.setValue(clamped);
+        slider.setLabelFormatter(value -> formatValue(Math.round(value), suffix));
+        slider.addOnChangeListener((s, value, fromUser) -> {
+            int intVal = Math.round(value);
+            valueView.setText(formatValue(intVal, suffix));
+            if (fromUser) {
+                performSliderHaptic(s);
+                putIntSetting(key, intVal);
+            }
+        });
+        slider.addOnSliderTouchListener(new Slider.OnSliderTouchListener() {
             @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                int value = min + progress;
-                valueView.setText(formatValue(value, suffix));
-                if (fromUser) {
-                    performSliderHaptic(seekBar);
-                    putIntSetting(key, value);
-                }
+            public void onStartTrackingTouch(Slider s) {
             }
 
             @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-                putIntSetting(key, min + seekBar.getProgress());
+            public void onStopTrackingTouch(Slider s) {
+                putIntSetting(key, Math.round(s.getValue()));
             }
         });
         setTapClickListener(valueView, v -> showIntInputDialog(
                 titleText,
-                min + seekBar.getProgress(),
+                Math.round(slider.getValue()),
                 min,
                 max,
                 suffix,
                 value -> {
                     valueView.setText(formatValue(value, suffix));
-                    seekBar.setProgress(value - min);
+                    slider.setValue(value);
                     putIntSetting(key, value);
                 }));
         setTapClickListener(resetButton, v -> {
             int value = Math.max(min, Math.min(max,
                     SettingsStore.normalizeLauncherStackParameter(key, defaultValue)));
             valueView.setText(formatValue(value, suffix));
-            seekBar.setProgress(value - min);
+            slider.setValue(value);
             putIntSetting(key, value);
             showToast(titleText + "已恢复默认");
         });
 
         row.addView(header, matchWrap());
-        row.addView(seekBar, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(40)));
+        row.addView(slider, matchWrap());
         root.addView(row, matchWrap());
     }
 
@@ -2251,9 +2287,10 @@ public class MainActivity extends Activity {
         TextView valueView = new TextView(this);
         valueView.setTextColor(colorPrimary);
         valueView.setTextSize(13);
-        valueView.setPadding(dp(10), dp(4), dp(10), dp(4));
-        valueView.setBackground(roundRect(colorSurfaceSoft, 4));
-        valueView.setMinHeight(dp(36));
+        valueView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        valueView.setPadding(dp(12), dp(4), dp(12), dp(4));
+        valueView.setBackground(roundRect(colorSurfaceStrong, 8));
+        valueView.setMinHeight(dp(32));
         valueView.setGravity(Gravity.CENTER);
         valueView.setMaxWidth(dp(160));
         valueView.setMaxLines(1);
@@ -2329,12 +2366,11 @@ public class MainActivity extends Activity {
         if (TextUtils.isEmpty(message)) {
             return;
         }
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = new MaterialAlertDialogBuilder(this)
                 .setTitle(titleText)
                 .setMessage(message)
                 .setPositiveButton("知道了", null)
                 .show();
-        styleDialog(dialog);
         attachDialogButtonHaptics(dialog);
     }
 
@@ -2861,25 +2897,33 @@ public class MainActivity extends Activity {
 
     public void showIntInputDialog(String titleText, int currentValue, int min, int max, String suffix,
             IntValueConsumer consumer) {
-        EditText input = new EditText(this);
+        TextInputLayout textInputLayout = new TextInputLayout(this);
+        textInputLayout.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
+        textInputLayout.setHint(min + " ~ " + max + (suffix == null ? "" : " " + suffix));
+
+        TextInputEditText input = new TextInputEditText(textInputLayout.getContext());
         input.setText(String.valueOf(currentValue));
         input.setSelection(input.getText().length());
         input.setInputType(min < 0
                 ? InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED
                 : InputType.TYPE_CLASS_NUMBER);
-        input.setHint(min + " ~ " + max);
-        int padding = dp(20);
-        input.setPadding(padding, padding, padding, padding);
+        textInputLayout.addView(input);
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        FrameLayout container = new FrameLayout(this);
+        int padH = dp(24);
+        int padV = dp(12);
+        container.setPadding(padH, padV, padH, 0);
+        container.addView(textInputLayout, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT);
+
+        AlertDialog dialog = new MaterialAlertDialogBuilder(this)
                 .setTitle(titleText)
-                .setMessage("\u8f93\u5165\u8303\u56f4 " + min + " ~ " + max + (suffix == null ? "" : suffix))
-                .setView(input)
-                .setNegativeButton("\u53d6\u6d88", null)
-                .setPositiveButton("\u786e\u5b9a", (dialogInterface, which) -> {
+                .setMessage("输入范围 " + min + " ~ " + max + (suffix == null ? "" : suffix))
+                .setView(container)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确定", (dialogInterface, which) -> {
                     String text = input.getText() == null ? "" : input.getText().toString().trim();
                     if (text.length() == 0) {
-                        showToast("\u8bf7\u8f93\u5165\u6570\u503c");
+                        showToast("请输入数值");
                         return;
                     }
                     try {
@@ -2887,11 +2931,10 @@ public class MainActivity extends Activity {
                         int clamped = Math.max(min, Math.min(max, value));
                         consumer.accept(clamped);
                     } catch (NumberFormatException ignored) {
-                        showToast("\u8f93\u5165\u683c\u5f0f\u4e0d\u6b63\u786e");
+                        showToast("输入格式不正确");
                     }
                 })
                 .show();
-        styleDialog(dialog);
         attachDialogButtonHaptics(dialog);
     }
 
@@ -2907,7 +2950,12 @@ public class MainActivity extends Activity {
 
     private void showDecimalInputDialog(String titleText, int currentValue,
             int min, int max, int scale, String suffix, IntValueConsumer consumer) {
-        EditText input = new EditText(this);
+        TextInputLayout textInputLayout = new TextInputLayout(this);
+        textInputLayout.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
+        textInputLayout.setHint(String.format(Locale.US, scale == 100 ? "%.2f ~ %.2f %s" : "%.1f ~ %.1f %s",
+                min / (float) scale, max / (float) scale, suffix == null ? "" : suffix));
+
+        TextInputEditText input = new TextInputEditText(textInputLayout.getContext());
         input.setText(String.format(Locale.US, scale == 100 ? "%.2f" : "%.1f",
                 currentValue / (float) scale));
         input.setSelection(input.getText().length());
@@ -2915,23 +2963,26 @@ public class MainActivity extends Activity {
                 ? InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED
                 : InputType.TYPE_CLASS_NUMBER)
                 | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-        input.setHint(String.format(Locale.US, scale == 100 ? "%.2f ~ %.2f" : "%.1f ~ %.1f",
-                min / (float) scale, max / (float) scale));
-        int padding = dp(20);
-        input.setPadding(padding, padding, padding, padding);
+        textInputLayout.addView(input);
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        FrameLayout container = new FrameLayout(this);
+        int padH = dp(24);
+        int padV = dp(12);
+        container.setPadding(padH, padV, padH, 0);
+        container.addView(textInputLayout, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT);
+
+        AlertDialog dialog = new MaterialAlertDialogBuilder(this)
                 .setTitle(titleText)
-                .setMessage("\u8f93\u5165\u8303\u56f4 "
+                .setMessage("输入范围 "
                         + String.format(Locale.US, "%s%s", min / (float) scale, suffix)
                         + " ~ "
                         + String.format(Locale.US, "%s%s", max / (float) scale, suffix))
-                .setView(input)
-                .setNegativeButton("\u53d6\u6d88", null)
-                .setPositiveButton("\u786e\u5b9a", (dialogInterface, which) -> {
+                .setView(container)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确定", (dialogInterface, which) -> {
                     String text = input.getText() == null ? "" : input.getText().toString().trim();
                     if (text.length() == 0) {
-                        showToast("\u8bf7\u8f93\u5165\u6570\u503c");
+                        showToast("请输入数值");
                         return;
                     }
                     try {
@@ -2943,7 +2994,6 @@ public class MainActivity extends Activity {
                     }
                 })
                 .show();
-        styleDialog(dialog);
         attachDialogButtonHaptics(dialog);
     }
 
@@ -2956,34 +3006,46 @@ public class MainActivity extends Activity {
     void showTextInputDialog(String titleText, String currentValue, String message,
             String inputHint, boolean plainTextInput, String neutralButtonText,
             String neutralValue, TextValueConsumer consumer) {
-        EditText input = new EditText(this);
+        TextInputLayout textInputLayout = new TextInputLayout(this);
+        textInputLayout.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
+        if (inputHint != null && !inputHint.isEmpty()) {
+            textInputLayout.setHint(inputHint);
+        }
+
+        TextInputEditText input = new TextInputEditText(textInputLayout.getContext());
         input.setText(currentValue == null ? "" : currentValue);
         input.setSelection(input.getText().length());
         if (plainTextInput) {
             input.setInputType(InputType.TYPE_CLASS_TEXT
                     | InputType.TYPE_TEXT_FLAG_MULTI_LINE
                     | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            input.setHint(inputHint == null ? "" : inputHint);
         } else {
             input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-            input.setHint(inputHint == null ? "https://example.com or intent://..." : inputHint);
         }
         input.setMinLines(2);
         input.setMaxLines(6);
-        int padding = dp(20);
-        input.setPadding(padding, padding, padding, padding);
+        textInputLayout.addView(input);
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        FrameLayout container = new FrameLayout(this);
+        int padH = dp(24);
+        int padV = dp(12);
+        container.setPadding(padH, padV, padH, 0);
+        container.addView(textInputLayout, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT);
+
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
                 .setTitle(titleText)
-                .setMessage(message)
-                .setView(input)
-                .setNeutralButton(neutralButtonText,
-                        (dialogInterface, which) -> consumer.accept(neutralValue))
-                .setNegativeButton("\u53d6\u6d88", null)
-                .setPositiveButton("\u786e\u5b9a", (dialogInterface, which) ->
-                        consumer.accept(input.getText() == null ? "" : input.getText().toString().trim()))
-                .show();
-        styleDialog(dialog);
+                .setView(container)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确定", (dialogInterface, which) ->
+                        consumer.accept(input.getText() == null ? "" : input.getText().toString().trim()));
+        if (message != null && !message.isEmpty()) {
+            builder.setMessage(message);
+        }
+        if (neutralButtonText != null) {
+            builder.setNeutralButton(neutralButtonText,
+                    (dialogInterface, which) -> consumer.accept(neutralValue));
+        }
+        AlertDialog dialog = builder.show();
         attachDialogButtonHaptics(dialog);
     }
 
@@ -3093,6 +3155,14 @@ public class MainActivity extends Activity {
         });
     }
 
+    public void styleSwitch(MaterialSwitch toggle) {
+        if (toggle == null) {
+            return;
+        }
+        toggle.setShowText(false);
+        toggle.setMinHeight(dp(48));
+    }
+
     public void styleSwitch(Switch toggle) {
         if (toggle == null) {
             return;
@@ -3130,6 +3200,29 @@ public class MainActivity extends Activity {
         TextView positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
         TextView negative = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
         TextView neutral = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+        if (positive != null) {
+            positive.setTextColor(Color.WHITE);
+            positive.setBackground(roundRect(colorPrimary, 8));
+            positive.setMinHeight(dp(48));
+        }
+        if (negative != null) {
+            negative.setTextColor(colorPrimary);
+        }
+        if (neutral != null) {
+            neutral.setTextColor(colorPrimary);
+        }
+    }
+
+    public void styleDialog(android.app.AlertDialog dialog) {
+        if (dialog == null) {
+            return;
+        }
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(roundRect(colorSurfaceSoft, 28));
+        }
+        TextView positive = dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE);
+        TextView negative = dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE);
+        TextView neutral = dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL);
         if (positive != null) {
             positive.setTextColor(Color.WHITE);
             positive.setBackground(roundRect(colorPrimary, 8));
@@ -3198,6 +3291,15 @@ public class MainActivity extends Activity {
         attachPressHaptic(dialog.getButton(AlertDialog.BUTTON_POSITIVE));
         attachPressHaptic(dialog.getButton(AlertDialog.BUTTON_NEGATIVE));
         attachPressHaptic(dialog.getButton(AlertDialog.BUTTON_NEUTRAL));
+    }
+
+    public void attachDialogButtonHaptics(android.app.AlertDialog dialog) {
+        if (dialog == null) {
+            return;
+        }
+        attachPressHaptic(dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE));
+        attachPressHaptic(dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE));
+        attachPressHaptic(dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL));
     }
 
     void attachPressHaptic(View view) {
@@ -3518,8 +3620,8 @@ public class MainActivity extends Activity {
     public LinearLayout card(int color, int radiusDp) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(12), dp(8), dp(12), dp(8));
-        card.setBackground(roundRect(color, Math.min(radiusDp, 8)));
+        card.setPadding(dp(16), dp(12), dp(16), dp(12));
+        card.setBackground(roundRect(color, Math.max(radiusDp, 16)));
         return card;
     }
 
@@ -3571,12 +3673,16 @@ public class MainActivity extends Activity {
         return colorPrimaryContainer;
     }
 
-    int primaryDeepColor() {
+    public int primaryDeepColor() {
         return colorPrimaryDeep;
     }
 
-    int secondaryColor() {
-        return 0xFF625B71;
+    public int secondaryColor() {
+        return getColor(R.color.flyme_secondary);
+    }
+
+    public int secondarySoftColor() {
+        return getColor(R.color.flyme_secondary_soft);
     }
 
     public int tertiaryColor() {
@@ -3755,15 +3861,21 @@ public class MainActivity extends Activity {
     }
 
     public View buildSectionCard(String titleText, String subtitleText, View content, boolean expanded) {
-        LinearLayout card = card(colorSurface, 8);
-        card.setPadding(0, 0, 0, 0);
-        card.setClipToOutline(true);
+        MaterialCardView card = new MaterialCardView(this);
+        card.setCardElevation(0f);
+        card.setStrokeWidth(0);
+        card.setCardBackgroundColor(colorSurfaceSoft);
+        card.setRadius(dp(20));
+
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        card.addView(container, matchWrap());
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(16), dp(8), dp(16), dp(8));
-        header.setMinimumHeight(dp(52));
+        header.setPadding(dp(16), dp(12), dp(16), dp(12));
+        header.setMinimumHeight(dp(56));
 
         TextView title = new TextView(this);
         title.setText(titleText);
@@ -3772,23 +3884,23 @@ public class MainActivity extends Activity {
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         header.addView(title, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        card.addView(header, matchWrap());
+        container.addView(header, matchWrap());
 
         if (content != null) {
             settingsUiFactory.addHelpButton(header, titleText, subtitleText);
             ImageView arrow = new ImageView(this);
             arrow.setImageResource(R.drawable.ic_section_expand);
+            arrow.setColorFilter(colorSubtext);
             arrow.setRotation(expanded ? 0f : -90f);
             arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            header.addView(arrow, new LinearLayout.LayoutParams(dp(24), dp(24)));
+            header.addView(arrow, new LinearLayout.LayoutParams(dp(20), dp(20)));
             content.setVisibility(expanded ? View.VISIBLE : View.GONE);
             LinearLayout.LayoutParams contentLp = matchWrapWithTop(0);
             contentLp.leftMargin = dp(16);
             contentLp.rightMargin = dp(16);
-            contentLp.bottomMargin = dp(10);
-            card.addView(content, contentLp);
-            header.setPadding(dp(16), dp(8), dp(16), expanded ? 0 : dp(8));
-            header.setMinimumHeight(dp(52));
+            contentLp.bottomMargin = dp(14);
+            container.addView(content, contentLp);
+            header.setPadding(dp(16), dp(12), dp(16), expanded ? dp(4) : dp(12));
             header.setContentDescription(titleText + (expanded
                     ? "，已展开，点击收起" : "，已收起，点击展开"));
             setTapClickListener(header, v -> {
@@ -3800,8 +3912,7 @@ public class MainActivity extends Activity {
                             .hideSoftInputFromWindow(content.getWindowToken(), 0);
                 }
                 content.setVisibility(expand ? View.VISIBLE : View.GONE);
-                header.setPadding(dp(16), dp(8), dp(16), expand ? 0 : dp(8));
-                header.setMinimumHeight(dp(52));
+                header.setPadding(dp(16), dp(12), dp(16), expand ? dp(4) : dp(12));
                 arrow.setRotation(expand ? 0f : -90f);
                 header.setContentDescription(titleText + (expand
                         ? "，已展开，点击收起" : "，已收起，点击展开"));
@@ -3818,9 +3929,10 @@ public class MainActivity extends Activity {
 
     public View buildSectionCard(String titleText, String subtitleText, View content,
             boolean expanded, String switchKey, boolean switchDefaultValue) {
-        LinearLayout card = (LinearLayout) buildSectionCard(titleText, subtitleText, content, expanded);
-        LinearLayout header = (LinearLayout) card.getChildAt(0);
-        Switch toggle = new Switch(this);
+        MaterialCardView card = (MaterialCardView) buildSectionCard(titleText, subtitleText, content, expanded);
+        LinearLayout container = (LinearLayout) card.getChildAt(0);
+        LinearLayout header = (LinearLayout) container.getChildAt(0);
+        MaterialSwitch toggle = new MaterialSwitch(this);
         styleSwitch(toggle);
         toggle.setChecked(SettingsStore.readBoolean(prefs, switchKey, switchDefaultValue));
         toggle.setContentDescription(titleText);
@@ -3834,9 +3946,16 @@ public class MainActivity extends Activity {
         });
         setEnabledRecursively(content, toggle.isChecked());
         content.setAlpha(toggle.isChecked() ? 1f : 0.45f);
-        header.addView(toggle, new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams toggleLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        int insertIndex = Math.max(0, header.getChildCount() - 1);
+        if (insertIndex > 0) {
+            toggleLp.rightMargin = dp(8);
+            header.addView(toggle, insertIndex, toggleLp);
+        } else {
+            header.addView(toggle, toggleLp);
+        }
         return card;
     }
 
@@ -3853,17 +3972,17 @@ public class MainActivity extends Activity {
 
     private final class PositionOffsetSliderBinding {
         private final TextView valueView;
-        private final SeekBar seekBar;
+        private final Slider slider;
         private final int minTenthDp;
         private final int maxTenthDp;
 
         private PositionOffsetSliderBinding(
                 TextView valueView,
-                SeekBar seekBar,
+                Slider slider,
                 int minTenthDp,
                 int maxTenthDp) {
             this.valueView = valueView;
-            this.seekBar = seekBar;
+            this.slider = slider;
             this.minTenthDp = minTenthDp;
             this.maxTenthDp = maxTenthDp;
         }
@@ -3871,12 +3990,12 @@ public class MainActivity extends Activity {
         private void setValue(int value) {
             int normalized = Math.max(minTenthDp, Math.min(maxTenthDp, value));
             valueView.setText(formatOffsetValue(normalized));
-            int progress = positionOffsetTenthDpToSliderProgress(
-                    normalized,
-                    minTenthDp,
-                    maxTenthDp);
-            if (seekBar.getProgress() != progress) {
-                seekBar.setProgress(progress);
+            float sliderVal = Math.round(normalized / 10f);
+            float minVal = slider.getValueFrom();
+            float maxVal = slider.getValueTo();
+            sliderVal = Math.max(minVal, Math.min(maxVal, sliderVal));
+            if (slider.getValue() != sliderVal) {
+                slider.setValue(sliderVal);
             }
         }
     }
@@ -3888,8 +4007,8 @@ public class MainActivity extends Activity {
     private void initPalette() {
         colorBackground = getColor(R.color.flyme_background);
         colorSurface = getColor(R.color.flyme_surface);
-        colorSurfaceSoft = getColor(R.color.flyme_surface_low);
-        colorSurfaceStrong = getColor(R.color.flyme_surface_container_highest);
+        colorSurfaceSoft = getColor(R.color.flyme_surface_container);
+        colorSurfaceStrong = getColor(R.color.flyme_surface_container_high);
         colorFeatureSurface = getColor(R.color.flyme_primary_container);
         colorFeatureStroke = getColor(R.color.flyme_primary);
         colorText = getColor(R.color.flyme_text);

@@ -12,7 +12,9 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.Switch;
+import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.divider.MaterialDivider;
+import com.google.android.material.materialswitch.MaterialSwitch;
 import android.widget.TextView;
 
 import java.util.Set;
@@ -22,42 +24,62 @@ public final class HomePageController {
     }
 
     public static void bind(MainActivity activity, LinearLayout root) {
-        TextView title = text(activity, "FlymeBarSizer", 24, activity.textColor());
+        LinearLayout header = new LinearLayout(activity);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(activity.dp(4), activity.dp(8), activity.dp(4), activity.dp(4));
+
+        LinearLayout titleCol = new LinearLayout(activity);
+        titleCol.setOrientation(LinearLayout.VERTICAL);
+        TextView title = text(activity, "FlymeBarSizer", 28, activity.textColor());
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        LinearLayout titleRow = new LinearLayout(activity);
-        titleRow.setGravity(Gravity.CENTER_VERTICAL);
-        titleRow.addView(title, new LinearLayout.LayoutParams(0,
+        titleCol.addView(title, PageViewUtils.matchWrap());
+
+        TextView subtitle = text(activity, "状态栏与系统界面设置", 13, activity.subtextColor());
+        titleCol.addView(subtitle, PageViewUtils.matchWrapWithTop(activity, 2));
+
+        header.addView(titleCol, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        MaterialCardView donateCard = new MaterialCardView(activity);
+        donateCard.setCardElevation(0);
+        donateCard.setStrokeWidth(0);
+        donateCard.setRadius(activity.dp(20));
+        donateCard.setCardBackgroundColor(activity.surfaceStrongColor());
         ImageView donate = new ImageView(activity);
         donate.setImageResource(R.drawable.ic_donate_copy);
         donate.setColorFilter(activity.primaryColor());
-        donate.setContentDescription("捐赠");
-        donate.setPadding(activity.dp(8), activity.dp(8), activity.dp(8), activity.dp(8));
-        donate.setBackground(activity.roundRect(activity.surfaceColor(), 8));
-        activity.setTapClickListener(donate, v -> activity.openPage(MainActivity.Page.DONATION));
-        LinearLayout.LayoutParams donateLp = new LinearLayout.LayoutParams(activity.dp(40), activity.dp(40));
-        donateLp.leftMargin = activity.dp(12);
-        titleRow.addView(donate, donateLp);
-        root.addView(titleRow, PageViewUtils.matchWrapWithTop(activity, 4));
+        donate.setContentDescription("捐赠支持");
+        donate.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        donate.setPadding(activity.dp(10), activity.dp(10), activity.dp(10), activity.dp(10));
+        donateCard.addView(donate, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        activity.setTapClickListener(donateCard, v -> activity.openPage(MainActivity.Page.DONATION));
+        header.addView(donateCard, new LinearLayout.LayoutParams(activity.dp(40), activity.dp(40)));
+
+        root.addView(header, PageViewUtils.matchWrap());
+
         LinearLayout content = activity.addFeatureSearch(root);
-        content.addView(buildRestartCard(activity), PageViewUtils.matchWrapWithTop(activity, 12));
         content.addView(buildModuleToggleCard(activity),
-                PageViewUtils.matchWrapWithTop(activity, 8));
+                PageViewUtils.matchWrapWithTop(activity, 12));
+        content.addView(buildRestartCard(activity),
+                PageViewUtils.matchWrapWithTop(activity, 10));
 
         LinearLayout personal = addGroup(activity, content, "功能设置");
-        addEntry(activity, personal, "状态栏图标与电池", null,
+        addEntry(activity, personal, "状态栏图标与电池", "电池、状态栏图标、通知图标与移动网络",
                 R.drawable.ic_settings_battery, MainActivity.Page.ICONS_BATTERY);
-        addEntry(activity, personal, "时间与网速", null,
+        addEntry(activity, personal, "时间与网速", "实时网速、时间格式、时钟交互与锁屏大时钟",
                 R.drawable.ic_settings_clock, MainActivity.Page.TIME_NETWORK);
-        addEntry(activity, personal, "系统外观", null,
+        addEntry(activity, personal, "系统外观", "摄像头挖孔、图标颜色、桌面整理与系统界面外观",
                 R.drawable.ic_settings_appearance, MainActivity.Page.SYSTEM_APPEARANCE);
-        addEntry(activity, personal, "手势与系统交互", null,
+        addEntry(activity, personal, "手势与系统交互", "侧边手势、单手模式、MBack、小窗与最近任务",
                 R.drawable.ic_settings_interaction, MainActivity.Page.SYSTEM_INTERACTION);
 
-        LinearLayout tools = addGroup(activity, content, "工具");
-        addEntry(activity, tools, "工具与调试", null,
+        LinearLayout tools = addGroup(activity, content, "工具与支持");
+        addEntry(activity, tools, "工具与调试", "配置备份与恢复、性能日志与调试工具",
                 R.drawable.ic_settings_tune, MainActivity.Page.ADVANCED_DEBUG);
-        addEntry(activity, tools, "关于与支持", null,
+        addEntry(activity, tools, "关于与支持", "版本信息、开源地址、适用范围与交流",
                 R.drawable.ic_settings_info, MainActivity.Page.ABOUT);
     }
 
@@ -65,88 +87,106 @@ public final class HomePageController {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
         activity.bindRestartCardContent(content);
-        View card = activity.buildSectionCard("重启相关组件", null, content);
-        card.setBackground(activity.roundRect(activity.primaryContainerColor(), 8));
+        View card = activity.buildSectionCard("快速重启", "配置更新后重启对应应用使修改生效", content);
+        if (card instanceof MaterialCardView) {
+            ((MaterialCardView) card).setCardBackgroundColor(activity.surfaceSoftColor());
+            ((MaterialCardView) card).setStrokeWidth(0);
+            ((MaterialCardView) card).setRadius(activity.dp(24));
+        }
         return card;
     }
 
     private static View buildModuleToggleCard(MainActivity activity) {
-        LinearLayout card = new LinearLayout(activity);
-        card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(activity.dp(16), activity.dp(14), activity.dp(16), activity.dp(14));
-        card.setMinimumHeight(activity.dp(76));
-        card.setClipToOutline(true);
+        MaterialCardView card = new MaterialCardView(activity);
+        card.setCardElevation(0);
+        card.setStrokeWidth(0);
+        card.setRadius(activity.dp(24));
+        card.setContentPadding(activity.dp(16), activity.dp(16), activity.dp(16), activity.dp(16));
+        card.setMinimumHeight(activity.dp(80));
 
         boolean enabled = SettingsStore.readBoolean(activity.prefs(),
                 SettingsStore.KEY_ENABLED, SettingsStore.DEFAULT_ENABLED);
+
+        LinearLayout row = new LinearLayout(activity);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+
+        ImageView icon = new ImageView(activity);
+        icon.setImageResource(R.drawable.ic_module_power);
+        icon.setPadding(activity.dp(11), activity.dp(11), activity.dp(11), activity.dp(11));
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(icon, new LinearLayout.LayoutParams(activity.dp(46), activity.dp(46)));
+
         LinearLayout copy = new LinearLayout(activity);
         copy.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        copyLp.leftMargin = activity.dp(12);
+        copyLp.leftMargin = activity.dp(16);
+        copyLp.rightMargin = activity.dp(8);
 
-        TextView title = text(activity, "启用模块", 16,
-                enabled ? activity.textColor() : activity.subtextColor());
+        TextView title = text(activity, enabled ? "模块已启用" : "模块未启用", 17,
+                enabled ? activity.primaryDeepColor() : activity.textColor());
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         copy.addView(title, PageViewUtils.matchWrap());
 
-        ImageView icon = new ImageView(activity);
-        icon.setImageResource(R.drawable.ic_module_power);
-        icon.setPadding(activity.dp(8), activity.dp(8), activity.dp(8), activity.dp(8));
-        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        TextView summary = text(activity, enabled ? "界面增强与配置已生效" : "未生效 · 点击开启以应用所有设置",
+                12, activity.subtextColor());
+        copy.addView(summary, PageViewUtils.matchWrapWithTop(activity, 2));
 
-        LinearLayout header = new LinearLayout(activity);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(icon, new LinearLayout.LayoutParams(activity.dp(40), activity.dp(40)));
-        header.addView(copy, copyLp);
+        row.addView(copy, copyLp);
 
-        Switch toggle = new Switch(activity);
+        MaterialSwitch toggle = new MaterialSwitch(activity);
         activity.styleSwitch(toggle);
         toggle.setChecked(enabled);
         toggle.setContentDescription("启用模块，总开关");
-        header.addView(toggle, new LinearLayout.LayoutParams(
+        row.addView(toggle, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        card.addView(header, PageViewUtils.matchWrap());
-        applyModuleToggleVisuals(activity, card, icon, title, enabled, false);
+        card.addView(row, PageViewUtils.matchWrap());
+
+        applyModuleToggleVisuals(activity, card, icon, title, summary, enabled, false);
 
         toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (buttonView.isPressed()) {
                 activity.performTapHaptic(buttonView);
             }
             activity.putBooleanSetting(SettingsStore.KEY_ENABLED, isChecked);
-            applyModuleToggleVisuals(activity, card, icon, title, isChecked, true);
+            applyModuleToggleVisuals(activity, card, icon, title, summary, isChecked, true);
         });
         activity.setTapClickListener(card, v -> toggle.setChecked(!toggle.isChecked()));
         return card;
     }
 
-    private static void applyModuleToggleVisuals(MainActivity activity, LinearLayout card,
-            ImageView icon, TextView title, boolean enabled, boolean animate) {
-        int backgroundColor = moduleToggleBackground(activity, enabled);
-        int strokeColor = enabled ? Color.argb(0x52,
-                Color.red(activity.primaryColor()), Color.green(activity.primaryColor()),
-                Color.blue(activity.primaryColor())) : activity.strokeColor();
-        android.graphics.drawable.GradientDrawable cardBackground =
-                activity.outlinedRect(backgroundColor, strokeColor, 1, 16);
-        card.setBackground(cardBackground);
-        icon.setBackground(activity.roundRect(
-                enabled ? activity.primaryContainerColor() : activity.surfaceSoftColor(), 10));
-        icon.setColorFilter(enabled ? activity.primaryColor() : activity.subtextColor());
-        title.setTextColor(enabled ? activity.textColor() : activity.subtextColor());
+    private static void applyModuleToggleVisuals(MainActivity activity, MaterialCardView card,
+            ImageView icon, TextView title, TextView summary, boolean enabled, boolean animate) {
+        int targetBg = enabled ? activity.primaryContainerColor() : activity.surfaceSoftColor();
+        card.setCardBackgroundColor(targetBg);
+        card.setStrokeWidth(0);
+
+        if (enabled) {
+            icon.setBackground(activity.roundRect(activity.primaryColor(), 16));
+            icon.setColorFilter(Color.WHITE);
+            title.setText("模块已启用");
+            title.setTextColor(activity.primaryDeepColor());
+            summary.setText("界面增强与配置已生效");
+            summary.setTextColor(activity.primaryDeepColor());
+            summary.setAlpha(0.75f);
+        } else {
+            icon.setBackground(activity.roundRect(activity.surfaceStrongColor(), 16));
+            icon.setColorFilter(activity.subtextColor());
+            title.setText("模块未启用");
+            title.setTextColor(activity.textColor());
+            summary.setText("未生效 · 点击开启以应用所有设置");
+            summary.setTextColor(activity.subtextColor());
+            summary.setAlpha(1.0f);
+        }
 
         if (animate) {
-            int previousColor = moduleToggleBackground(activity, !enabled);
-            ValueAnimator animator = ValueAnimator.ofObject(new ArgbEvaluator(),
-                    previousColor, backgroundColor);
-            animator.setDuration(200L);
-            animator.addUpdateListener(value -> cardBackground.setColor(
-                    (Integer) value.getAnimatedValue()));
+            int prevBg = enabled ? activity.surfaceSoftColor() : activity.primaryContainerColor();
+            ValueAnimator animator = ValueAnimator.ofObject(new ArgbEvaluator(), prevBg, targetBg);
+            animator.setDuration(220L);
+            animator.addUpdateListener(value -> card.setCardBackgroundColor((Integer) value.getAnimatedValue()));
             animator.start();
         }
-    }
-
-    private static int moduleToggleBackground(MainActivity activity, boolean enabled) {
-        return enabled ? activity.surfaceSoftColor() : activity.surfaceColor();
     }
 
     public static void renderRestartTargets(MainActivity activity, LinearLayout content,
@@ -198,41 +238,49 @@ public final class HomePageController {
     }
 
     private static LinearLayout addGroup(MainActivity activity, LinearLayout root, String title) {
-        TextView heading = text(activity, title, 13, activity.subtextColor());
+        TextView heading = text(activity, title, 13, activity.primaryColor());
         heading.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        heading.setPadding(activity.dp(4), 0, 0, 0);
-        root.addView(heading, PageViewUtils.matchWrapWithTop(activity, 16));
-        LinearLayout group = activity.card(activity.surfaceColor(), 8);
+        heading.setPadding(activity.dp(16), 0, 0, 0);
+        root.addView(heading, PageViewUtils.matchWrapWithTop(activity, 20));
+
+        MaterialCardView card = new MaterialCardView(activity);
+        card.setCardElevation(0);
+        card.setStrokeWidth(0);
+        card.setRadius(activity.dp(24));
+        card.setCardBackgroundColor(activity.surfaceSoftColor());
+        card.setContentPadding(0, 0, 0, 0);
+
+        LinearLayout group = new LinearLayout(activity);
+        group.setOrientation(LinearLayout.VERTICAL);
         group.setPadding(0, 0, 0, 0);
-        group.setClipToOutline(true);
-        root.addView(group, PageViewUtils.matchWrapWithTop(activity, 6));
+        card.addView(group, PageViewUtils.matchWrap());
+        root.addView(card, PageViewUtils.matchWrapWithTop(activity, 8));
         return group;
     }
 
     private static void addEntry(MainActivity activity, LinearLayout group, String title,
             String summary, int iconRes, MainActivity.Page page) {
         if (group.getChildCount() > 0) {
-            View divider = new View(activity);
-            divider.setBackgroundColor(activity.surfaceSoftColor());
-            LinearLayout.LayoutParams line = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, activity.dp(1));
-            line.leftMargin = activity.dp(72);
-            line.rightMargin = activity.dp(16);
-            group.addView(divider, line);
+            MaterialDivider divider = new MaterialDivider(activity);
+            divider.setDividerColor(activity.surfaceStrongColor());
+            divider.setDividerInsetStart(activity.dp(74));
+            divider.setDividerInsetEnd(activity.dp(16));
+            divider.setDividerThickness(activity.dp(1));
+            group.addView(divider, PageViewUtils.matchWrap());
         }
         LinearLayout row = new LinearLayout(activity);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(activity.dp(56));
-        row.setPadding(activity.dp(16), activity.dp(8), activity.dp(16), activity.dp(8));
+        row.setMinimumHeight(activity.dp(68));
+        row.setPadding(activity.dp(16), activity.dp(12), activity.dp(16), activity.dp(12));
         activity.setTapClickListener(row, v -> activity.openPage(page));
 
         ImageView icon = new ImageView(activity);
         icon.setImageResource(iconRes);
         icon.setColorFilter(activity.primaryColor());
         icon.setPadding(activity.dp(10), activity.dp(10), activity.dp(10), activity.dp(10));
-        icon.setBackground(activity.roundRect(activity.surfaceSoftColor(), 8));
+        icon.setBackground(activity.roundRect(activity.secondarySoftColor(), 14));
         icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        row.addView(icon, new LinearLayout.LayoutParams(activity.dp(40), activity.dp(40)));
+        row.addView(icon, new LinearLayout.LayoutParams(activity.dp(44), activity.dp(44)));
 
         LinearLayout texts = new LinearLayout(activity);
         texts.setOrientation(LinearLayout.VERTICAL);
@@ -240,18 +288,21 @@ public final class HomePageController {
         name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         texts.addView(name, PageViewUtils.matchWrap());
         if (summary != null && !summary.isEmpty()) {
-            texts.addView(text(activity, summary, 12, activity.subtextColor()),
-                    PageViewUtils.matchWrapWithTop(activity, 4));
+            TextView sumView = text(activity, summary, 12, activity.subtextColor());
+            texts.addView(sumView, PageViewUtils.matchWrapWithTop(activity, 3));
         }
         LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        textLp.leftMargin = activity.dp(16);
+        textLp.leftMargin = activity.dp(14);
         textLp.rightMargin = activity.dp(8);
         row.addView(texts, textLp);
 
-        TextView arrow = text(activity, "›", 22, activity.subtextColor());
-        arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        row.addView(arrow, PageViewUtils.wrapWrap());
+        ImageView chevron = new ImageView(activity);
+        chevron.setImageResource(R.drawable.ic_settings_chevron);
+        chevron.setColorFilter(activity.subtextColor());
+        chevron.setAlpha(0.6f);
+        chevron.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(chevron, new LinearLayout.LayoutParams(activity.dp(20), activity.dp(20)));
         group.addView(row, PageViewUtils.matchWrap());
     }
 

@@ -1,24 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="flyme_background">#F6F8FB</color>
-    <color name="flyme_surface">#FFFFFF</color>
-    <color name="flyme_surface_low">#EFF3F8</color>
-    <color name="flyme_surface_container">#EDF2F7</color>
-    <color name="flyme_surface_container_high">#E6ECF3</color>
-    <color name="flyme_surface_container_highest">#DDE5EE</color>
-    <color name="flyme_outline">#737D8B</color>
-    <color name="flyme_outline_variant">#DCE3EC</color>
-    <color name="flyme_text">#1B1F24</color>
-    <color name="flyme_subtext">#4E5865</color>
-    <color name="flyme_primary">#2F6FED</color>
-    <color name="flyme_primary_deep">#2458B8</color>
-    <color name="flyme_primary_container">#E6EFFF</color>
-    <color name="flyme_primary_soft">#E6EFFF</color>
-    <color name="flyme_secondary">#53647B</color>
-    <color name="flyme_secondary_soft">#E4EAF2</color>
-    <color name="flyme_tertiary">#725C45</color>
-    <color name="flyme_tertiary_soft">#F0E3D3</color>
-    <color name="flyme_error">#B3261E</color>
-    <color name="flyme_error_soft">#F9DEDC</color>
+    <color name="flyme_background">#F8F9FD</color>
+    <color name="flyme_surface">#F8F9FD</color>
+    <color name="flyme_surface_container_lowest">#FFFFFF</color>
+    <color name="flyme_surface_container_low">#F2F4F9</color>
+    <color name="flyme_surface_container">#ECEEF4</color>
+    <color name="flyme_surface_container_high">#E6E8EF</color>
+    <color name="flyme_surface_container_highest">#DFE2E9</color>
+    <color name="flyme_surface_low">#F2F4F9</color>
+    <color name="flyme_outline">#74777F</color>
+    <color name="flyme_outline_variant">#C4C7D0</color>
+    <color name="flyme_text">#191C20</color>
+    <color name="flyme_subtext">#44474E</color>
+    <color name="flyme_primary">#005FB0</color>
+    <color name="flyme_primary_deep">#001C3A</color>
+    <color name="flyme_primary_container">#D5E3FF</color>
+    <color name="flyme_primary_soft">#D5E3FF</color>
+    <color name="flyme_secondary">#545F71</color>
+    <color name="flyme_secondary_soft">#D8E3F8</color>
+    <color name="flyme_tertiary">#6E5676</color>
+    <color name="flyme_tertiary_soft">#F8D8FD</color>
+    <color name="flyme_error">#BA1A1A</color>
+    <color name="flyme_error_soft">#FFDAD6</color>
     <color name="flyme_on_primary">#FFFFFF</color>
 </resources>
