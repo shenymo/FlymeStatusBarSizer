@@ -1,16 +1,24 @@
 package com.example.flymestatusbarsizer.feature.launcher.organizer;
 
 import com.example.flymestatusbarsizer.MainActivity;
+import com.example.flymestatusbarsizer.R;
 import com.example.flymestatusbarsizer.ui.PageViewUtils;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.materialswitch.MaterialSwitch;
 
-import android.app.AlertDialog;
 import android.content.res.ColorStateList;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
+import android.text.Editable;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
+import android.view.View.MeasureSpec;
 import android.view.ViewGroup;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -51,12 +59,18 @@ final class LauncherOrganizerScopeEditor {
         this.scope = scope;
         root.removeAllViews();
         if (desktop == null) {
+            label(root, "请先在上方步骤 1 中读取桌面数据以展示布局。");
             return;
         }
         try {
             label(root, summary(desktop, scope));
-            button(root, "快捷选择：" + LauncherOrganizerScope.MODES[scope.mode] + " ▾", this::choosePreset);
-            toggle(root, "保留首屏（含空白位置）", scope.keepFirstScreen, value -> {
+            LinearLayout choiceRow = row(root);
+            button(choiceRow, "快捷选择 ▾", this::choosePreset);
+            button(choiceRow, "搜索应用", this::searchAllApps);
+            TextView presetHint = text("当前范围预设：" + LauncherOrganizerScope.MODES[scope.mode], 12);
+            presetHint.setTextColor(activity.subtextColor());
+            root.addView(presetHint, activity.matchWrapWithTop(4));
+            toggle(root, "保留首屏", "锁定首屏图标和空白位置，保持原位不参与整理", scope.keepFirstScreen, value -> {
                 LauncherOrganizerScope next = copy();
                 next.keepFirstScreen = value;
                 changed.accept(next);
@@ -75,12 +89,20 @@ final class LauncherOrganizerScopeEditor {
         JSONArray apps = desktop.getJSONArray("apps");
         for (int i = 0; i < apps.length(); i++) if (!apps.getJSONObject(i).getBoolean("newApp")) existing++;
         for (int i = 0; i < selected.length(); i++) if (!selected.getJSONObject(i).getBoolean("newApp")) selectedExisting++;
-        return "已勾选 " + selectedExisting + " 个桌面应用，添加 " + (selected.length() - selectedExisting) + " 个应用\n"
-                + "未选 " + (existing - selectedExisting) + " 个桌面应用，整页保留 " + scope.protectedScreens(desktop).size() + " 页。";
+        int newAppsCount = selected.length() - selectedExisting;
+        int keptScreens = scope.protectedScreens(desktop).size();
+        int unselectedExisting = existing - selectedExisting;
+        StringBuilder sb = new StringBuilder();
+        sb.append("已选 ").append(selected.length()).append(" 个应用参与整理");
+        if (newAppsCount > 0) sb.append("（含未放桌面 ").append(newAppsCount).append(" 个）");
+        sb.append("\n未选 ").append(unselectedExisting).append(" 个桌面应用保持原位");
+        if (keptScreens > 0) sb.append("，整页锁定 ").append(keptScreens).append(" 页");
+        sb.append("。");
+        return sb.toString();
     }
 
     private void choosePreset() {
-        new AlertDialog.Builder(activity).setTitle("快捷选择（保留锁定页面）")
+        new MaterialAlertDialogBuilder(activity).setTitle("快捷选择（保留锁定页面）")
                 .setSingleChoiceItems(LauncherOrganizerScope.MODES, scope.mode, (dialog, which) -> {
                     try {
                         LauncherOrganizerScope next = copy();
@@ -106,21 +128,59 @@ final class LauncherOrganizerScopeEditor {
         currentScreen = screens.getInt(page);
         final int index = page;
         LinearLayout navigation = row(root);
-        TextView previous = button(navigation, "‹", () -> switchPage(index - 1));
-        previous.setContentDescription("上一页");
-        previous.setEnabled(page > 0);
-        button(navigation, "第 " + (page + 1) + " / " + screens.length() + " 页 ▾", () -> {
+        navigation.setGravity(Gravity.CENTER_VERTICAL);
+
+        ImageView prevBtn = new ImageView(activity);
+        prevBtn.setImageResource(R.drawable.ic_chevron_left);
+        prevBtn.setImageTintList(ColorStateList.valueOf(activity.textColor()));
+        prevBtn.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        prevBtn.setBackground(activity.outlinedRect(activity.surfaceStrongColor(), activity.strokeColor(), 1, 10));
+        prevBtn.setContentDescription("上一页");
+        boolean canPrev = page > 0;
+        prevBtn.setEnabled(canPrev);
+        prevBtn.setAlpha(canPrev ? 1f : 0.35f);
+        if (canPrev) {
+            activity.setTapClickListener(prevBtn, v -> switchPage(index - 1));
+        }
+        navigation.addView(prevBtn, new LinearLayout.LayoutParams(activity.dp(44), activity.dp(42)));
+
+        TextView pageBtn = activity.filledButton("第 " + (page + 1) + " / " + screens.length() + " 页 ▾",
+                activity.surfaceStrongColor(), activity.textColor());
+        if (pageBtn instanceof MaterialButton mb) {
+            mb.setStrokeColor(ColorStateList.valueOf(activity.strokeColor()));
+            mb.setStrokeWidth(activity.dp(1));
+            mb.setCornerRadius(activity.dp(10));
+        }
+        pageBtn.setMinHeight(activity.dp(42));
+        pageBtn.setTextSize(14);
+        activity.setTapClickListener(pageBtn, v -> {
             String[] titles = new String[screens.length()];
             for (int i = 0; i < titles.length; i++) titles[i] = "第 " + (i + 1) + " 页";
-            new AlertDialog.Builder(activity).setTitle("选择桌面页面")
+            new MaterialAlertDialogBuilder(activity).setTitle("选择桌面页面")
                     .setSingleChoiceItems(titles, index, (dialog, which) -> { dialog.dismiss(); switchPage(which); })
                     .setNegativeButton("取消", null).show();
         });
-        TextView following = button(navigation, "›", () -> switchPage(index + 1));
-        following.setContentDescription("下一页");
-        following.setEnabled(page < screens.length() - 1);
+        LinearLayout.LayoutParams centerLp = new LinearLayout.LayoutParams(0, activity.dp(42), 1f);
+        centerLp.leftMargin = activity.dp(8);
+        centerLp.rightMargin = activity.dp(8);
+        navigation.addView(pageBtn, centerLp);
+
+        ImageView nextBtn = new ImageView(activity);
+        nextBtn.setImageResource(R.drawable.ic_chevron_right);
+        nextBtn.setImageTintList(ColorStateList.valueOf(activity.textColor()));
+        nextBtn.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        nextBtn.setBackground(activity.outlinedRect(activity.surfaceStrongColor(), activity.strokeColor(), 1, 10));
+        nextBtn.setContentDescription("下一页");
+        boolean canNext = page < screens.length() - 1;
+        nextBtn.setEnabled(canNext);
+        nextBtn.setAlpha(canNext ? 1f : 0.35f);
+        if (canNext) {
+            activity.setTapClickListener(nextBtn, v -> switchPage(index + 1));
+        }
+        navigation.addView(nextBtn, new LinearLayout.LayoutParams(activity.dp(44), activity.dp(42)));
+
         boolean locked = scope.protectedScreens(desktop).contains(currentScreen);
-        if (page != 0) toggle(root, "保留本页（含空白位置）", locked, value -> {
+        if (page != 0) toggle(root, "保留本页", "锁定第 " + (page + 1) + " 页图标和空白位置，保持原位不参与整理", locked, value -> {
             LauncherOrganizerScope next = copy();
             if (value) next.keptScreens.add(currentScreen);
             else next.keptScreens.remove(currentScreen);
@@ -191,33 +251,111 @@ final class LauncherOrganizerScopeEditor {
         try {
             LauncherOrganizerScope next = copy();
             Set<String> selected = selectedIds(next);
-            LinearLayout content = new LinearLayout(activity);
-            content.setOrientation(LinearLayout.VERTICAL);
-            content.setPadding(activity.dp(16), activity.dp(8), activity.dp(16), activity.dp(8));
-            TextView count = text("", 14);
-            content.addView(count);
-            Runnable updateCount = () -> count.setText("已选 " + selectedCount(apps, selected) + "/" + apps.size() + " 个应用");
-            updateCount.run();
-            LinearLayout actions = row(content);
-            List<CheckBox> boxes = new ArrayList<>();
-            button(actions, "全选", () -> { for (CheckBox box : boxes) box.setChecked(true); });
-            button(actions, "清空", () -> { for (CheckBox box : boxes) box.setChecked(false); });
-            int columns = 3;
-            LauncherOrganizerDesktopGrid grid = new LauncherOrganizerDesktopGrid(activity, columns, (apps.size() + columns - 1) / columns);
-            for (int i = 0; i < apps.size(); i++) {
-                JSONObject app = apps.get(i);
-                String id = app.getString("id");
-                FrameLayout tile = appTile(app, selected.contains(id), true, value -> {
-                    if (value) selected.add(id); else selected.remove(id);
-                    updateCount.run();
-                });
-                boxes.add((CheckBox) tile.findViewWithTag("selection"));
-                grid.addItem(tile, i % columns, i / columns, 1, 1);
-            }
-            content.addView(grid, PageViewUtils.matchWrap());
-            ScrollView scroll = new ScrollView(activity);
-            scroll.addView(content);
-            new AlertDialog.Builder(activity).setTitle(title).setView(scroll)
+            LinearLayout dialogView = new LinearLayout(activity);
+            dialogView.setOrientation(LinearLayout.VERTICAL);
+            dialogView.setPadding(activity.dp(20), activity.dp(8), activity.dp(20), 0);
+
+            // Pinned Header
+            LinearLayout fixedHeader = new LinearLayout(activity);
+            fixedHeader.setOrientation(LinearLayout.VERTICAL);
+
+            EditText search = new EditText(activity);
+            search.setHint("搜索应用名称...");
+            search.setSingleLine(true);
+            search.setTextSize(14);
+            search.setTextColor(activity.textColor());
+            search.setHintTextColor(activity.subtextColor());
+            search.setBackground(activity.roundRect(activity.surfaceStrongColor(), 8));
+            search.setPadding(activity.dp(12), activity.dp(8), activity.dp(12), activity.dp(8));
+            fixedHeader.addView(search, PageViewUtils.matchWrap());
+
+            TextView count = text("", 13);
+            count.setTextColor(activity.subtextColor());
+            fixedHeader.addView(count, activity.matchWrapWithTop(6));
+
+            LinearLayout actions = new LinearLayout(activity);
+            actions.setOrientation(LinearLayout.HORIZONTAL);
+            fixedHeader.addView(actions, activity.matchWrapWithTop(6));
+
+            dialogView.addView(fixedHeader, PageViewUtils.matchWrap());
+
+            // Scrollable Content
+            FrameLayout gridContainer = new FrameLayout(activity);
+            ScrollView scroll = new ScrollView(activity) {
+                @Override
+                protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                    int maxHeight = (int) (activity.getResources().getDisplayMetrics().heightPixels * 0.48f);
+                    heightMeasureSpec = MeasureSpec.makeMeasureSpec(maxHeight, MeasureSpec.AT_MOST);
+                    super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+                }
+            };
+            scroll.addView(gridContainer, PageViewUtils.matchWrap());
+            dialogView.addView(scroll, activity.matchWrapWithTop(8));
+
+            List<JSONObject> currentFiltered = new ArrayList<>();
+
+            Runnable updateCount = () -> {
+                String query = search.getText().toString().trim();
+                if (query.isEmpty()) {
+                    count.setText("已选 " + selectedCount(apps, selected) + "/" + apps.size() + " 个应用");
+                } else {
+                    count.setText("匹配 " + currentFiltered.size() + " 个（已选 " + selectedCount(currentFiltered, selected) + " 个）");
+                }
+            };
+
+            Runnable renderGrid = () -> {
+                gridContainer.removeAllViews();
+                currentFiltered.clear();
+                String query = search.getText().toString().trim().toLowerCase(java.util.Locale.ROOT);
+                for (JSONObject app : apps) {
+                    String name = app.optString("name", "");
+                    String pkg = app.optString("package", "");
+                    if (query.isEmpty() || name.toLowerCase(java.util.Locale.ROOT).contains(query)
+                            || pkg.toLowerCase(java.util.Locale.ROOT).contains(query)) {
+                        currentFiltered.add(app);
+                    }
+                }
+                if (currentFiltered.isEmpty()) {
+                    TextView empty = text("未找到匹配的应用", 13);
+                    empty.setTextColor(activity.subtextColor());
+                    empty.setGravity(Gravity.CENTER);
+                    gridContainer.addView(empty, PageViewUtils.matchWrapWithTop(activity, 16));
+                } else {
+                    int columns = 3;
+                    int rows = (currentFiltered.size() + columns - 1) / columns;
+                    LauncherOrganizerDesktopGrid grid = new LauncherOrganizerDesktopGrid(activity, columns, rows);
+                    for (int i = 0; i < currentFiltered.size(); i++) {
+                        JSONObject app = currentFiltered.get(i);
+                        String id = app.optString("id");
+                        FrameLayout tile = appTile(app, selected.contains(id), true, value -> {
+                            if (value) selected.add(id); else selected.remove(id);
+                            updateCount.run();
+                        });
+                        grid.addItem(tile, i % columns, i / columns, 1, 1);
+                    }
+                    gridContainer.addView(grid, PageViewUtils.matchWrap());
+                }
+                updateCount.run();
+            };
+
+            button(actions, "全选", () -> {
+                for (JSONObject app : currentFiltered) selected.add(app.optString("id"));
+                renderGrid.run();
+            });
+            button(actions, "清空", () -> {
+                for (JSONObject app : currentFiltered) selected.remove(app.optString("id"));
+                renderGrid.run();
+            });
+
+            search.addTextChangedListener(new TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+                @Override public void afterTextChanged(Editable s) { renderGrid.run(); }
+            });
+
+            renderGrid.run();
+
+            new MaterialAlertDialogBuilder(activity).setTitle(title).setView(dialogView)
                     .setNegativeButton("取消", null)
                     .setPositiveButton("确定", (dialog, which) -> {
                         try {
@@ -226,6 +364,167 @@ final class LauncherOrganizerScopeEditor {
                             next.editSelection(desktop, ids, false);
                             ids.retainAll(selected);
                             next.editSelection(desktop, ids, true);
+                            changed.accept(next);
+                        } catch (Exception error) { showError(error); }
+                    }).show();
+        } catch (Exception error) { showError(error); }
+    }
+
+    private void searchAllApps() {
+        try {
+            if (desktop == null) return;
+            LauncherOrganizerScope next = copy();
+            Set<String> selected = selectedIds(next);
+            JSONArray allAppsJson = desktop.getJSONArray("apps");
+            List<JSONObject> allApps = new ArrayList<>();
+            for (int i = 0; i < allAppsJson.length(); i++) {
+                allApps.add(allAppsJson.getJSONObject(i));
+            }
+            allApps.sort(Comparator.comparing(app -> app.optString("name", "")));
+
+            LinearLayout dialogView = new LinearLayout(activity);
+            dialogView.setOrientation(LinearLayout.VERTICAL);
+            dialogView.setPadding(activity.dp(20), activity.dp(8), activity.dp(20), 0);
+
+            // Fixed Header: search, count, actions pinned at top
+            LinearLayout fixedHeader = new LinearLayout(activity);
+            fixedHeader.setOrientation(LinearLayout.VERTICAL);
+
+            EditText search = new EditText(activity);
+            search.setHint("搜索应用名称或包名...");
+            search.setSingleLine(true);
+            search.setTextSize(14);
+            search.setTextColor(activity.textColor());
+            search.setHintTextColor(activity.subtextColor());
+            search.setBackground(activity.roundRect(activity.surfaceStrongColor(), 8));
+            search.setPadding(activity.dp(12), activity.dp(8), activity.dp(12), activity.dp(8));
+            fixedHeader.addView(search, PageViewUtils.matchWrap());
+
+            TextView count = text("", 13);
+            count.setTextColor(activity.subtextColor());
+            fixedHeader.addView(count, activity.matchWrapWithTop(6));
+
+            LinearLayout actions = new LinearLayout(activity);
+            actions.setOrientation(LinearLayout.HORIZONTAL);
+            fixedHeader.addView(actions, activity.matchWrapWithTop(6));
+
+            dialogView.addView(fixedHeader, PageViewUtils.matchWrap());
+
+            // Scrollable Content: ONLY the list scrolls
+            LinearLayout listContainer = new LinearLayout(activity);
+            listContainer.setOrientation(LinearLayout.VERTICAL);
+
+            ScrollView scroll = new ScrollView(activity) {
+                @Override
+                protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                    int maxHeight = (int) (activity.getResources().getDisplayMetrics().heightPixels * 0.48f);
+                    heightMeasureSpec = MeasureSpec.makeMeasureSpec(maxHeight, MeasureSpec.AT_MOST);
+                    super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+                }
+            };
+            scroll.addView(listContainer, PageViewUtils.matchWrap());
+            dialogView.addView(scroll, activity.matchWrapWithTop(8));
+
+            List<JSONObject> currentFiltered = new ArrayList<>();
+
+            Runnable updateCount = () -> {
+                count.setText("匹配 " + currentFiltered.size() + " 个（已选 " + selectedCount(currentFiltered, selected) + " 个）");
+            };
+
+            Runnable renderList = () -> {
+                listContainer.removeAllViews();
+                currentFiltered.clear();
+                String query = search.getText().toString().trim().toLowerCase(java.util.Locale.ROOT);
+                for (JSONObject app : allApps) {
+                    String name = app.optString("name", "");
+                    String pkg = app.optString("package", "");
+                    if (query.isEmpty() || name.toLowerCase(java.util.Locale.ROOT).contains(query)
+                            || pkg.toLowerCase(java.util.Locale.ROOT).contains(query)) {
+                        currentFiltered.add(app);
+                    }
+                }
+                if (currentFiltered.isEmpty()) {
+                    TextView empty = text("未找到匹配的应用", 13);
+                    empty.setTextColor(activity.subtextColor());
+                    empty.setGravity(Gravity.CENTER);
+                    listContainer.addView(empty, PageViewUtils.matchWrapWithTop(activity, 16));
+                } else {
+                    for (JSONObject app : currentFiltered) {
+                        String id = app.optString("id");
+                        String name = app.optString("name");
+                        String pkg = app.optString("package");
+                        boolean newApp = app.optBoolean("newApp", false);
+                        int screen = app.optInt("screen", -1);
+                        int folderId = app.optInt("folderId", -1);
+
+                        String location;
+                        if (newApp) location = "未放到桌面";
+                        else if (folderId >= 0) location = "第 " + (screen + 1) + " 页 · 文件夹内";
+                        else location = "第 " + (screen + 1) + " 页";
+
+                        LinearLayout row = new LinearLayout(activity);
+                        row.setOrientation(LinearLayout.HORIZONTAL);
+                        row.setGravity(Gravity.CENTER_VERTICAL);
+                        row.setPadding(activity.dp(4), activity.dp(6), activity.dp(4), activity.dp(6));
+
+                        ImageView iconView = icon(pkg);
+                        row.addView(iconView, new LinearLayout.LayoutParams(activity.dp(32), activity.dp(32)));
+
+                        LinearLayout textCol = new LinearLayout(activity);
+                        textCol.setOrientation(LinearLayout.VERTICAL);
+                        textCol.setPadding(activity.dp(8), 0, activity.dp(8), 0);
+
+                        TextView titleView = text(name, 14);
+                        textCol.addView(titleView);
+
+                        TextView locView = text(location, 11);
+                        locView.setTextColor(activity.subtextColor());
+                        textCol.addView(locView);
+
+                        row.addView(textCol, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+                        CheckBox check = new CheckBox(activity);
+                        check.setButtonTintList(ColorStateList.valueOf(activity.primaryColor()));
+                        check.setChecked(selected.contains(id));
+                        check.setOnCheckedChangeListener((btn, isChecked) -> {
+                            if (isChecked) selected.add(id); else selected.remove(id);
+                            updateCount.run();
+                        });
+                        row.addView(check);
+
+                        row.setOnClickListener(v -> check.performClick());
+                        listContainer.addView(row);
+                    }
+                }
+                updateCount.run();
+            };
+
+            button(actions, "全选", () -> {
+                for (JSONObject app : currentFiltered) selected.add(app.optString("id"));
+                renderList.run();
+            });
+            button(actions, "清空", () -> {
+                for (JSONObject app : currentFiltered) selected.remove(app.optString("id"));
+                renderList.run();
+            });
+
+            search.addTextChangedListener(new TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+                @Override public void afterTextChanged(Editable s) { renderList.run(); }
+            });
+
+            renderList.run();
+
+            new MaterialAlertDialogBuilder(activity).setTitle("按名称搜索应用").setView(dialogView)
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("确定", (dialog, which) -> {
+                        try {
+                            if (selected.equals(selectedIds(next))) return;
+                            Set<String> allIds = ids(allApps);
+                            next.editSelection(desktop, allIds, false);
+                            allIds.retainAll(selected);
+                            next.editSelection(desktop, allIds, true);
                             changed.accept(next);
                         } catch (Exception error) { showError(error); }
                     }).show();
@@ -362,29 +661,71 @@ final class LauncherOrganizerScopeEditor {
         if (view instanceof ViewGroup group) for (int i = 0; i < group.getChildCount(); i++) setEnabled(group.getChildAt(i), enabled);
     }
 
-    private void toggle(LinearLayout parent, String title, boolean checked, Consumer<Boolean> changed) {
-        CheckBox box = new CheckBox(activity);
-        box.setText(title);
-        box.setTextColor(activity.textColor());
-        box.setButtonTintList(ColorStateList.valueOf(activity.primaryColor()));
-        box.setChecked(checked);
-        box.setOnCheckedChangeListener((button, value) -> changed.accept(value));
-        parent.addView(box, PageViewUtils.matchWrap());
+    private void toggle(LinearLayout parent, String title, String subtitle, boolean checked, Consumer<Boolean> changed) {
+        LinearLayout row = new LinearLayout(activity);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(activity.dp(14), activity.dp(8), activity.dp(14), activity.dp(8));
+        row.setBackground(activity.outlinedRect(activity.surfaceStrongColor(), activity.strokeColor(), 1, 10));
+
+        LinearLayout textCol = new LinearLayout(activity);
+        textCol.setOrientation(LinearLayout.VERTICAL);
+
+        TextView titleView = text(title, 14);
+        titleView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        textCol.addView(titleView);
+
+        if (subtitle != null && !subtitle.isEmpty()) {
+            TextView subView = text(subtitle, 12);
+            subView.setTextColor(activity.subtextColor());
+            textCol.addView(subView, activity.matchWrapWithTop(2));
+        }
+
+        row.addView(textCol, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        MaterialSwitch toggleSwitch = new MaterialSwitch(activity);
+        activity.styleSwitch(toggleSwitch);
+        toggleSwitch.setChecked(checked);
+        toggleSwitch.setOnCheckedChangeListener((btn, isChecked) -> changed.accept(isChecked));
+        row.addView(toggleSwitch, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        activity.setTapClickListener(row, v -> toggleSwitch.toggle());
+
+        parent.addView(row, activity.matchWrapWithTop(8));
     }
 
     private LinearLayout row(LinearLayout parent) {
         LinearLayout row = new LinearLayout(activity);
         row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setBaselineAligned(false);
         parent.addView(row, activity.matchWrapWithTop(8));
         return row;
     }
 
     private TextView button(LinearLayout parent, String title, Runnable action) {
-        TextView button = activity.filledButton(title, activity.surfaceSoftColor(), activity.primaryColor());
-        button.setMinHeight(activity.dp(48));
+        TextView button = activity.filledButton(title, activity.surfaceStrongColor(), activity.textColor());
+        if (button instanceof MaterialButton mb) {
+            mb.setStrokeColor(ColorStateList.valueOf(activity.strokeColor()));
+            mb.setStrokeWidth(activity.dp(1));
+            mb.setCornerRadius(activity.dp(10));
+            mb.setInsetTop(0);
+            mb.setInsetBottom(0);
+        }
+        button.setMinHeight(activity.dp(40));
+        button.setMaxLines(1);
+        button.setEllipsize(TextUtils.TruncateAt.END);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding(activity.dp(8), 0, activity.dp(8), 0);
         activity.setTapClickListener(button, view -> action.run());
-        parent.addView(button, parent.getOrientation() == LinearLayout.HORIZONTAL
-                ? new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1) : activity.matchWrapWithTop(8));
+        if (parent.getOrientation() == LinearLayout.HORIZONTAL) {
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+            if (parent.getChildCount() > 0) {
+                lp.leftMargin = activity.dp(8);
+            }
+            parent.addView(button, lp);
+        } else {
+            parent.addView(button, activity.matchWrapWithTop(8));
+        }
         return button;
     }
 
@@ -403,6 +744,6 @@ final class LauncherOrganizerScopeEditor {
     }
 
     private void showError(Exception error) {
-        new AlertDialog.Builder(activity).setMessage(error.getMessage()).setPositiveButton("确定", null).show();
+        new MaterialAlertDialogBuilder(activity).setMessage(error.getMessage()).setPositiveButton("确定", null).show();
     }
 }

@@ -227,6 +227,7 @@ public class MainActivity extends AppCompatActivity {
         CAMERA_CIRCLE_POSITION("环形电池位置", "调整环形电池相对摄像头挖孔中心的位置。", null, true),
         LAUNCHER_STACK_PARAMS("最近任务布局参数", "调整最近任务卡片的布局、动画、手势、视觉和性能。", null, true),
         LAUNCHER_ORGANIZER("AI 桌面整理", "生成应用分类并预览，确认后应用到 Flyme 桌面。", null, true),
+        LAUNCHER_ORGANIZER_AI_SETTINGS("AI 接口与核心提示词", "配置模型接口、API Key 与核心提示词。", null, false),
         LAUNCHER_USAGE_SORT("按使用情况排序", "按最近使用频率整理桌面文件夹内的应用。", null, true),
         TELEPHONY_DEBUG("移动网络状态模拟", "模拟 SIM 卡数量、网络类型和信号等级，用于检查状态栏图标布局。", null, true);
 
@@ -382,6 +383,8 @@ public class MainActivity extends AppCompatActivity {
                 LauncherStackParamsPageController::bind);
         registerPage(Page.LAUNCHER_ORGANIZER, R.layout.page_system_appearance,
                 LauncherOrganizerPage::bind);
+        registerPage(Page.LAUNCHER_ORGANIZER_AI_SETTINGS, R.layout.page_system_appearance,
+                com.example.flymestatusbarsizer.feature.launcher.organizer.LauncherOrganizerAiSettingsPage::bind);
         registerPage(Page.LAUNCHER_USAGE_SORT, R.layout.page_system_appearance,
                 LauncherUsageSortPage::bind);
         registerPage(Page.TELEPHONY_DEBUG, R.layout.page_telephony_debug, TelephonyDebugPageController::bind);
@@ -3689,7 +3692,7 @@ public class MainActivity extends AppCompatActivity {
         return 0xFF7D5260;
     }
 
-    int errorColor() {
+    public int errorColor() {
         return 0xFFB3261E;
     }
 
