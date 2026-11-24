@@ -25,7 +25,7 @@ public final class OnlineIconLibraryClient {
     public static final String TYPE_VIBRATE = "ringer_vibrate";
     public static final String TYPE_ALARM = "ringer_alarm";
     public static final String TYPE_BATTERY = "battery";
-    private static final String BASE_URL = "https://icon.biye.me";
+    private static final String BASE_URL = "https://icon.shenmo.best";
     private static final int CONNECT_TIMEOUT_MS = 7000;
     private static final int READ_TIMEOUT_MS = 10000;
     private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
