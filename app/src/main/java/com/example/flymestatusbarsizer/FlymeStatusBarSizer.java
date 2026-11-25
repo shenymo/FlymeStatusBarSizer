@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer;
 
 import com.example.flymestatusbarsizer.feature.share.ShareTargetsHooks;
 import com.example.flymestatusbarsizer.feature.share.GalleryShareTargetsHooks;
+import com.example.flymestatusbarsizer.feature.openwith.OpenWithTargetsHooks;
 
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.config.SettingsStore;
@@ -251,7 +252,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
         String packageName = param.getPackageName();
         if (!param.isFirstPackage() && !MEIZU_PPS.equals(packageName)
-                && !PHONE_PACKAGE.equals(packageName)) {
+                && !PHONE_PACKAGE.equals(packageName) && !"android".equals(packageName)) {
             return;
         }
         MODULE = this;
@@ -260,6 +261,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         ClassLoader loader = param.getDefaultClassLoader();
         if (ShareTargetsHooks.PACKAGE.equals(packageName)) {
             ShareTargetsHooks.install(this, loader);
+        }
+        if (OpenWithTargetsHooks.PACKAGE.equals(packageName)) {
+            OpenWithTargetsHooks.install(this, loader);
         }
         if (GalleryShareTargetsHooks.PACKAGE.equals(packageName)) {
             GalleryShareTargetsHooks.install(this, loader);

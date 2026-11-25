@@ -3803,6 +3803,10 @@ public class MainActivity extends AppCompatActivity {
         return settingsCardFactory.createShareTargetsSettingsCard();
     }
 
+    public View createResolverTargetsSettingsCard() {
+        return settingsCardFactory.createResolverTargetsSettingsCard();
+    }
+
     public View createCarLinkSettingsCard() {
         return settingsCardFactory.createCarLinkSettingsCard();
     }
@@ -3932,18 +3936,27 @@ public class MainActivity extends AppCompatActivity {
 
     public View buildSectionCard(String titleText, String subtitleText, View content,
             boolean expanded, String switchKey, boolean switchDefaultValue) {
+        return buildSectionCard(titleText, subtitleText, content, expanded,
+                SettingsStore.readBoolean(prefs, switchKey, switchDefaultValue),
+                (buttonView, isChecked) -> putBooleanSetting(switchKey, isChecked));
+    }
+
+    public View buildSectionCard(String titleText, String subtitleText, View content,
+            boolean expanded, boolean checked, CompoundButton.OnCheckedChangeListener onToggle) {
         MaterialCardView card = (MaterialCardView) buildSectionCard(titleText, subtitleText, content, expanded);
         LinearLayout container = (LinearLayout) card.getChildAt(0);
         LinearLayout header = (LinearLayout) container.getChildAt(0);
         MaterialSwitch toggle = new MaterialSwitch(this);
         styleSwitch(toggle);
-        toggle.setChecked(SettingsStore.readBoolean(prefs, switchKey, switchDefaultValue));
+        toggle.setChecked(checked);
         toggle.setContentDescription(titleText);
         toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (buttonView.isPressed()) {
                 performTapHaptic(buttonView);
             }
-            putBooleanSetting(switchKey, isChecked);
+            if (onToggle != null) {
+                onToggle.onCheckedChanged(buttonView, isChecked);
+            }
             setEnabledRecursively(content, isChecked);
             content.setAlpha(isChecked ? 1f : 0.45f);
         });

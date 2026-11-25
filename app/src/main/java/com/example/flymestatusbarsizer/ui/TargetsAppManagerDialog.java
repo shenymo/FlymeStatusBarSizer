@@ -1,4 +1,4 @@
-package com.example.flymestatusbarsizer.feature.share;
+package com.example.flymestatusbarsizer.ui;
 
 import android.app.Dialog;
 import android.graphics.Color;
@@ -38,11 +38,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/** App-grouped view for batch hiding or toggling individual share targets. */
-final class ShareAppManagerDialog {
+/** App-grouped view for batch hiding or toggling individual targets. */
+final class TargetsAppManagerDialog {
     private final MainActivity activity;
-    private final ShareContentType type;
-    private final ShareTargetsDraft draft;
+    private final String typeLabel;
+    private final String searchHint;
+    private final String switchDescriptionSuffix;
+    private final String entryFallbackLabel;
+    private final TargetsEditorDraft draft;
     private final Runnable onChanged;
     private final List<AppGroup> allGroups;
     private final List<AppGroup> visibleGroups = new ArrayList<>();
@@ -54,10 +57,20 @@ final class ShareAppManagerDialog {
     private TextView subtitle;
     private TextView empty;
 
-    ShareAppManagerDialog(MainActivity activity, ShareContentType type,
-            Collection<ShareTargetCatalog.Target> targets, ShareTargetsDraft draft, Runnable onChanged) {
+    TargetsAppManagerDialog(
+            MainActivity activity,
+            String typeLabel,
+            String searchHint,
+            String switchDescriptionSuffix,
+            String entryFallbackLabel,
+            Collection<ResolverTargetsUiApi.Target> targets,
+            TargetsEditorDraft draft,
+            Runnable onChanged) {
         this.activity = activity;
-        this.type = type;
+        this.typeLabel = typeLabel;
+        this.searchHint = searchHint;
+        this.switchDescriptionSuffix = switchDescriptionSuffix;
+        this.entryFallbackLabel = entryFallbackLabel;
         this.draft = draft;
         this.onChanged = onChanged;
         this.allGroups = buildGroups(targets);
@@ -101,7 +114,7 @@ final class ShareAppManagerDialog {
         search.setTextSize(13);
         search.setTextColor(activity.textColor());
         search.setHintTextColor(activity.subtextColor());
-        search.setHint("搜索应用或分享入口");
+        search.setHint(searchHint);
         search.setBackgroundColor(Color.TRANSPARENT);
         search.setPadding(dp(8), dp(6), 0, dp(6));
         search.setImeOptions(EditorInfo.IME_ACTION_DONE);
@@ -163,10 +176,10 @@ final class ShareAppManagerDialog {
         return dialog;
     }
 
-    private List<AppGroup> buildGroups(Collection<ShareTargetCatalog.Target> targets) {
+    private List<AppGroup> buildGroups(Collection<ResolverTargetsUiApi.Target> targets) {
         Map<String, AppGroup> byPackage = new LinkedHashMap<>();
         Drawable fallbackIcon = activity.getPackageManager().getDefaultActivityIcon();
-        for (ShareTargetCatalog.Target target : targets) {
+        for (ResolverTargetsUiApi.Target target : targets) {
             int slash = target.component.indexOf('/');
             if (slash <= 0) continue;
             String pkg = target.component.substring(0, slash);
@@ -178,14 +191,16 @@ final class ShareAppManagerDialog {
                 group = new AppGroup(pkg, name, appIcon);
                 byPackage.put(pkg, group);
             }
-            group.entries.add(new Entry(target.component, ShareTargetsEditor.targetName(target.component, target),
+            group.entries.add(new Entry(
+                    target.component,
+                    TargetsEditorDialog.targetName(target.component, target, entryFallbackLabel),
                     target.icon != null ? target.icon : fallbackIcon));
         }
-        // Freeze initial order: active apps first, fully hidden apps last, no jumping while toggling.
         List<AppGroup> active = new ArrayList<>();
         List<AppGroup> disabled = new ArrayList<>();
         for (AppGroup group : byPackage.values()) {
-            if (shownCount(group) > 0) active.add(group); else disabled.add(group);
+            if (shownCount(group) > 0) active.add(group);
+            else disabled.add(group);
         }
         active.addAll(disabled);
         return active;
@@ -242,7 +257,6 @@ final class ShareAppManagerDialog {
                 if (draft.isHidden(entry.component)) hiddenEntries++;
             }
         }
-        String typeLabel = type == ShareContentType.DEFAULT ? "默认" : type.label;
         subtitle.setText(typeLabel + " · 已隐藏 " + hiddenEntries + "/" + totalEntries);
     }
 
@@ -349,7 +363,7 @@ final class ShareAppManagerDialog {
 
             toggle.setOnCheckedChangeListener(null);
             toggle.setChecked(!allHidden);
-            toggle.setContentDescription(group.appName + "，分享开关");
+            toggle.setContentDescription(group.appName + "，" + switchDescriptionSuffix);
             toggle.setOnCheckedChangeListener((view, checked) -> {
                 draft.setHiddenAll(group.components(), !checked);
                 applyChanges();

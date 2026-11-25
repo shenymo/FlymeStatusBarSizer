@@ -714,13 +714,25 @@ public final class SettingsCardFactory {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
         activity.addActionButtonRow(content, "管理分享面板",
-                "可按图片、视频、文本、PDF 和音频分别隐藏、排序，也可单独管理微信好友和朋友圈。"
+                "仅管理“分享”弹窗中的目标应用与快捷入口（如微信好友、朋友圈），不影响“打开方式”。"
                         + "首次使用请在 LSPosed 中启用系统分享范围并重启分享进程或手机。",
                 "管理", () -> new ShareTargetsEditor(activity).show());
         return activity.buildSectionCard("分享面板",
-                "默认跟随系统顺序，可按内容类型隐藏和排序，保存后应用到分享面板。", content,
-                false, SettingsStore.KEY_SHARE_TARGETS_ENABLED,
+                "仅控制系统的“分享”弹窗（发送或转发内容），不影响“打开方式”。默认跟随系统顺序，可按内容类型隐藏和排序。",
+                content, false, SettingsStore.KEY_SHARE_TARGETS_ENABLED,
                 SettingsStore.DEFAULT_SHARE_TARGETS_ENABLED);
+    }
+
+    public View createResolverTargetsSettingsCard() {
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        activity.addActionButtonRow(content, "管理打开方式",
+                "按网页链接、图片、视频、音频、文档和安装包等类型管理“打开方式”弹窗中的候选应用，与“分享面板”互不影响。",
+                "管理", () -> new ResolverTargetsEditor(activity).show());
+        return activity.buildSectionCard("打开方式",
+                "仅控制系统的“打开方式”弹窗（用其他应用打开文件或链接），不影响“分享面板”。默认跟随系统顺序，可按内容类型隐藏和排序。",
+                content, false, ResolverTargetsUiApi.getProvider().isEnabled(activity),
+                (buttonView, isChecked) -> ResolverTargetsUiApi.getProvider().setEnabled(activity, isChecked));
     }
 
     public View createCarLinkSettingsCard() {

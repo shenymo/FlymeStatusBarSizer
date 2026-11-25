@@ -7,6 +7,8 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.drawable.Drawable;
 
+import com.example.flymestatusbarsizer.feature.resolver.DeclaredIntentCatalog;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -61,6 +63,10 @@ public final class ShareTargetCatalog {
             ShareTargetSystemOrder.Result ordered = systemOrder.load(context, new ArrayList<>(found.values()),
                     info -> label(pm, info));
             List<Target> result = new ArrayList<>();
+            Map<String, DeclaredIntentCatalog.Entry> declared = new LinkedHashMap<>();
+            for (DeclaredIntentCatalog.Entry entry : DeclaredIntentCatalog.load(context, cancelled)) {
+                if (entry.shareTypes.contains(type.name())) declared.put(entry.component, entry);
+            }
             for (ResolveInfo info : ordered.targets) {
                 checkCancelled();
                 ActivityInfo ai = info.activityInfo;
@@ -95,8 +101,14 @@ public final class ShareTargetCatalog {
                 Drawable appIcon = cloneDrawable(context, cached.appIcon);
                 if (appIcon == null) appIcon = icon;
                 result.add(new Target(component, cached.label, cached.appName, icon, appIcon));
+                declared.remove(component);
             }
-            return new Snapshot(result, ordered.available);
+            for (DeclaredIntentCatalog.Entry entry : declared.values()) {
+                checkCancelled();
+                result.add(new Target(entry.component, entry.label, entry.appName,
+                        entry.icon, entry.appIcon));
+            }
+            return new Snapshot(result, ordered.available && declared.isEmpty());
         }
 
         private static Drawable cloneDrawable(Context context, Drawable source) {

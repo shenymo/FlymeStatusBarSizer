@@ -2,6 +2,7 @@ package com.example.flymestatusbarsizer.config;
 
 import com.example.flymestatusbarsizer.feature.share.ShareTargetRules;
 import com.example.flymestatusbarsizer.feature.share.ShareTargetProfiles;
+import com.example.flymestatusbarsizer.feature.openwith.OpenWithTargetProfiles;
 
 import com.example.flymestatusbarsizer.feature.battery.CircleBatteryAnimationConfig;
 import com.example.flymestatusbarsizer.feature.battery.BatteryIconPack;
@@ -43,6 +44,9 @@ public final class ModuleConfig {
     public boolean shareTargetsEnabled = SettingsStore.DEFAULT_SHARE_TARGETS_ENABLED;
     public ShareTargetProfiles shareTargetProfiles = new ShareTargetProfiles();
     public ShareTargetRules shareTargetRules = ShareTargetRules.EMPTY;
+    public boolean openWithTargetsEnabled = SettingsStore.DEFAULT_OPEN_WITH_TARGETS_ENABLED;
+    public OpenWithTargetProfiles openWithTargetProfiles = new OpenWithTargetProfiles();
+    public ShareTargetRules openWithTargetRules = ShareTargetRules.EMPTY;
     public boolean statusBarTintEnabled = SettingsStore.DEFAULT_STATUS_BAR_TINT_ENABLED;
     public int statusBarSystemColorOpacityTenthPercent =
             SettingsStore.DEFAULT_STATUS_BAR_SYSTEM_COLOR_OPACITY_TENTH_PERCENT;
@@ -543,6 +547,14 @@ public final class ModuleConfig {
             config.shareTargetRules = ShareTargetRules.parse(
                     SettingsStore.readString(prefs, SettingsStore.KEY_SHARE_TARGET_ORDER, ""),
                     SettingsStore.readString(prefs, SettingsStore.KEY_SHARE_HIDDEN_TARGETS, ""));
+            config.openWithTargetsEnabled = SettingsStore.readBoolean(prefs,
+                    SettingsStore.KEY_OPEN_WITH_TARGETS_ENABLED,
+                    SettingsStore.DEFAULT_OPEN_WITH_TARGETS_ENABLED);
+            config.openWithTargetProfiles = OpenWithTargetProfiles.parse(
+                    SettingsStore.readString(prefs, SettingsStore.KEY_OPEN_WITH_TARGET_PROFILES, ""));
+            config.openWithTargetRules = ShareTargetRules.parse(
+                    SettingsStore.readString(prefs, SettingsStore.KEY_OPEN_WITH_TARGET_ORDER, ""),
+                    SettingsStore.readString(prefs, SettingsStore.KEY_OPEN_WITH_HIDDEN_TARGETS, ""));
             config.enabled = SettingsStore.readBoolean(prefs, SettingsStore.KEY_ENABLED, SettingsStore.DEFAULT_ENABLED);
             config.hiddenStatusBarSlots = StatusBarIconVisibility.readHiddenSlots(
                     key -> SettingsStore.readBoolean(prefs, key, false));

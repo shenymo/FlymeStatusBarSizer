@@ -15,6 +15,7 @@ public final class SystemInteractionPageController {
         root.addView(activity.createWindowModeSideGestureSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createCarLinkSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createShareTargetsSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
+        root.addView(activity.createResolverTargetsSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createMBackNavigationSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createImeToolbarSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));
         root.addView(activity.createLauncherRecentsSettingsCard(), PageViewUtils.matchWrapWithTop(activity, 8));

@@ -168,7 +168,8 @@ public final class ConfigBackup {
                 || key.startsWith("corner_gesture_") || key.startsWith("one_handed_")
                 || key.startsWith("workspace_") || key.startsWith("mback_")
                 || key.startsWith("windowmode_") || key.startsWith("ime_")
-                || key.startsWith("share_") || key.startsWith("carlink_")) return GROUP_IDS[3];
+                || key.startsWith("share_") || key.startsWith("open_with_")
+                || key.startsWith("carlink_")) return GROUP_IDS[3];
         return null;
     }
 }
