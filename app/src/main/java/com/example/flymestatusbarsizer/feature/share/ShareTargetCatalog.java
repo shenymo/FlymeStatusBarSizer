@@ -39,6 +39,7 @@ public final class ShareTargetCatalog {
         private final Map<MetadataKey, Target> metadata = new LinkedHashMap<>();
         private final Map<MetadataKey, String> labels = new LinkedHashMap<>();
         private final Map<String, String> appNames = new LinkedHashMap<>();
+        private final Map<String, Drawable> appIcons = new LinkedHashMap<>();
         private final ShareTargetSystemOrder.Session systemOrder = new ShareTargetSystemOrder.Session();
 
         Snapshot load(Context context, ShareContentType type) {
@@ -77,19 +78,31 @@ public final class ShareTargetCatalog {
                     Drawable icon;
                     try { icon = info.loadIcon(pm); }
                     catch (RuntimeException ignored) { icon = pm.getDefaultActivityIcon(); }
-                    cached = new Target(component, label, appName, icon);
+                    Drawable appIcon = appIcons.get(ai.packageName);
+                    if (appIcon == null) {
+                        try { appIcon = ai.applicationInfo.loadIcon(pm); }
+                        catch (RuntimeException ignored) { appIcon = icon; }
+                        appIcons.put(ai.packageName, appIcon);
+                    }
+                    cached = new Target(component, label, appName, icon, appIcon);
                     metadata.put(key, cached);
                 }
-                Drawable.ConstantState state = cached.icon == null ? null : cached.icon.getConstantState();
-                // A Drawable owns a view callback; share its resources, not the mutable instance.
-                Drawable icon = state == null ? null : state.newDrawable(context.getResources()).mutate();
+                Drawable icon = cloneDrawable(context, cached.icon);
                 if (icon == null && cached.icon != null) {
                     try { icon = info.loadIcon(pm); }
                     catch (RuntimeException ignored) { icon = pm.getDefaultActivityIcon(); }
                 }
-                result.add(new Target(component, cached.label, cached.appName, icon));
+                Drawable appIcon = cloneDrawable(context, cached.appIcon);
+                if (appIcon == null) appIcon = icon;
+                result.add(new Target(component, cached.label, cached.appName, icon, appIcon));
             }
             return new Snapshot(result, ordered.available);
+        }
+
+        private static Drawable cloneDrawable(Context context, Drawable source) {
+            Drawable.ConstantState state = source == null ? null : source.getConstantState();
+            // A Drawable owns a view callback; share its resources, not the mutable instance.
+            return state == null ? null : state.newDrawable(context.getResources()).mutate();
         }
 
         private String label(PackageManager pm, ResolveInfo info) {
@@ -133,12 +146,18 @@ public final class ShareTargetCatalog {
         public final String label;
         public final String appName;
         public final Drawable icon;
+        public final Drawable appIcon;
 
         public Target(String component, String label, String appName, Drawable icon) {
+            this(component, label, appName, icon, icon);
+        }
+
+        public Target(String component, String label, String appName, Drawable icon, Drawable appIcon) {
             this.component = component;
             this.label = label;
             this.appName = appName;
             this.icon = icon;
+            this.appIcon = appIcon;
         }
     }
 }

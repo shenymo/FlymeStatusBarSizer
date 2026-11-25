@@ -63,9 +63,11 @@ public final class ShareTargetsEditor {
     private final List<String> visible = new ArrayList<>();
     private final TargetAdapter adapter = new TargetAdapter();
     private Dialog dialog;
+    private Dialog appManager;
     private GridView list;
     private TextView status;
-    private TextView save;
+    private ImageView byApp;
+    private ImageView save;
     private TextView changes;
     private TextView shownTab;
     private TextView hiddenTab;
@@ -129,22 +131,30 @@ public final class ShareTargetsEditor {
         activity.setTapClickListener(back, v -> requestClose());
         titleRow.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
         LinearLayout heading = column();
-        TextView title = text("分享列表管理", 20, activity.textColor());
+        TextView title = text("分享列表管理", 19, activity.textColor());
         title.setTypeface(null, Typeface.BOLD);
+        title.setSingleLine(true);
         heading.addView(title);
         changes = text("", 11, activity.subtextColor());
+        changes.setSingleLine(true);
         heading.addView(changes);
         titleRow.addView(heading, new LinearLayout.LayoutParams(0, -2, 1));
+        byApp = iconButton(R.drawable.ic_share_apps, "按应用管理");
+        byApp.setPadding(dp(10), dp(12), dp(10), dp(12));
+        byApp.setEnabled(false);
+        byApp.setAlpha(0.4f);
+        activity.setTapClickListener(byApp, v -> openAppManager());
+        titleRow.addView(byApp, new LinearLayout.LayoutParams(dp(44), dp(48)));
         ImageView more = iconButton(R.drawable.ic_settings_more, "更多操作");
+        more.setPadding(dp(10), dp(12), dp(10), dp(12));
         activity.setTapClickListener(more, v -> showMoreMenu());
-        titleRow.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        save = button("保存", true);
-        save.setMinWidth(dp(60));
-        save.setMinHeight(dp(48));
-        save.setContentDescription("保存所有类型的修改");
+        titleRow.addView(more, new LinearLayout.LayoutParams(dp(44), dp(48)));
+        save = iconButton(R.drawable.ic_share_save, "保存所有类型的修改");
+        save.setPadding(dp(10), dp(12), dp(10), dp(12));
         save.setEnabled(false);
+        save.setAlpha(0.4f);
         activity.setTapClickListener(save, v -> save());
-        titleRow.addView(save);
+        titleRow.addView(save, new LinearLayout.LayoutParams(dp(44), dp(48)));
         root.addView(titleRow, activity.matchWrap());
 
         initialState = state();
@@ -327,6 +337,7 @@ public final class ShareTargetsEditor {
             clearDrag();
             dismissUndo();
             dismissSheet();
+            if (appManager != null) appManager.dismiss();
             if (exitPrompt != null) exitPrompt.dismiss();
         });
         dialog.show();
@@ -361,6 +372,11 @@ public final class ShareTargetsEditor {
         styleTab(hiddenTab, showHidden);
         shownTab.setEnabled(!loading && draft != null);
         hiddenTab.setEnabled(!loading && draft != null);
+        if (byApp != null) {
+            boolean ready = !loading && draft != null && !targets.isEmpty();
+            byApp.setEnabled(ready);
+            byApp.setAlpha(ready ? 1f : 0.4f);
+        }
     }
 
     private void styleTab(TextView view, boolean active) {
@@ -629,6 +645,29 @@ public final class ShareTargetsEditor {
         undoAction = null;
     }
 
+    private void openAppManager() {
+        if (loading || draft == null || targets.isEmpty()) return;
+        dismissUndo();
+        clearDrag();
+        if (!editable()) {
+            new AlertDialog.Builder(activity)
+                    .setTitle("开启单独设置？")
+                    .setMessage("此类型沿用默认配置，开启单独设置后可按应用管理。")
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("开启并管理", (d, which) -> {
+                        independent.setChecked(true);
+                        showAppManager();
+                    }).show();
+            return;
+        }
+        showAppManager();
+    }
+
+    private void showAppManager() {
+        if ((appManager != null && appManager.isShowing()) || !editable()) return;
+        appManager = new ShareAppManagerDialog(activity, selected, targets.values(), draft, this::render).show();
+    }
+
     private void showMoreMenu() {
         LinearLayout body = newSheet("分享列表选项", "当前类型：" + selected.label);
         sheetAction(body, "重新扫描", !loading, this::load);
@@ -847,7 +886,7 @@ public final class ShareTargetsEditor {
         return target;
     }
 
-    private String targetName(String component, ShareTargetCatalog.Target target) {
+    static String targetName(String component, ShareTargetCatalog.Target target) {
         if (target == null) return "不可用入口";
         String label = target.label;
         return label.equals(component) || label.equals(component.substring(component.indexOf('/') + 1))

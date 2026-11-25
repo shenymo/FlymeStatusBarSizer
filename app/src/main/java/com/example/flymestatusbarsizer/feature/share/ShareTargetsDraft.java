@@ -34,6 +34,10 @@ public final class ShareTargetsDraft {
         if (value) hidden.add(key); else hidden.remove(key);
     }
 
+    public void setHiddenAll(Collection<String> components, boolean value) {
+        for (String component : components) setHidden(component, value);
+    }
+
     public boolean move(String component, int destination) {
         int source = order.indexOf(component);
         if (source < 0 || destination < 0 || destination >= order.size() || source == destination) {
