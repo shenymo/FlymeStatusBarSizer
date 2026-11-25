@@ -45,26 +45,48 @@ public final class DeclaredIntentCatalog {
     private DeclaredIntentCatalog() { }
 
     public static List<Entry> load(Context context, BooleanSupplier cancelled) {
+        return load(context, cancelled, null);
+    }
+
+    public static List<Entry> load(Context context, BooleanSupplier cancelled,
+            ProgressListener progress) {
+        if (isCancelled(cancelled)) return Collections.emptyList();
+        report(progress, 0, 0, "正在检查应用变化");
         PackageManager packageManager = context.getPackageManager();
         List<PackageInfo> packages = packageManager.getInstalledPackages(
                 PackageManager.GET_ACTIVITIES | PackageManager.GET_DISABLED_COMPONENTS);
-        long fingerprint = fingerprint(packageManager, packages);
+        if (isCancelled(cancelled)) return Collections.emptyList();
+        long fingerprint = fingerprint(packageManager, packages, cancelled);
+        if (isCancelled(cancelled)) return Collections.emptyList();
         Snapshot previous = cache;
-        if (previous != null && previous.fingerprint == fingerprint) return previous.entries;
+        if (previous != null && previous.fingerprint == fingerprint) {
+            report(progress, 1, 1, "已使用缓存入口");
+            return previous.entries;
+        }
 
         Map<String, Builder> builders = new LinkedHashMap<>();
+        int packageCount = packages.size();
+        int packageIndex = 0;
+        report(progress, 0, packageCount, "正在扫描应用清单");
         for (PackageInfo packageInfo : packages) {
-            if (cancelled.getAsBoolean()) return Collections.emptyList();
-            if (packageInfo.packageName == null || packageInfo.applicationInfo == null
-                    || !packageInfo.applicationInfo.enabled) continue;
-            parsePackage(packageManager, packageInfo, builders, cancelled);
+            if (isCancelled(cancelled)) return Collections.emptyList();
+            if (packageInfo.packageName != null && packageInfo.applicationInfo != null
+                    && packageInfo.applicationInfo.enabled) {
+                parsePackage(packageManager, packageInfo, builders, cancelled);
+            }
+            report(progress, ++packageIndex, packageCount, "正在扫描应用清单");
         }
         List<Entry> result = new ArrayList<>();
+        int entryCount = builders.size();
+        int entryIndex = 0;
+        report(progress, 0, entryCount, "正在读取入口信息");
         for (Builder builder : builders.values()) {
-            if (cancelled.getAsBoolean()) return Collections.emptyList();
+            if (isCancelled(cancelled)) return Collections.emptyList();
             Entry entry = createEntry(packageManager, builder);
             if (entry != null) result.add(entry);
+            report(progress, ++entryIndex, entryCount, "正在读取入口信息");
         }
+        if (isCancelled(cancelled)) return Collections.emptyList();
         List<Entry> immutable = Collections.unmodifiableList(result);
         synchronized (CACHE_LOCK) {
             Snapshot current = cache;
@@ -75,9 +97,19 @@ public final class DeclaredIntentCatalog {
         }
     }
 
-    private static long fingerprint(PackageManager packageManager, List<PackageInfo> packages) {
+    private static boolean isCancelled(BooleanSupplier cancelled) {
+        return cancelled != null && cancelled.getAsBoolean();
+    }
+
+    private static void report(ProgressListener progress, int current, int total, String phase) {
+        if (progress != null) progress.onProgress(current, total, phase);
+    }
+
+    private static long fingerprint(
+            PackageManager packageManager, List<PackageInfo> packages, BooleanSupplier cancelled) {
         long result = packages.size();
         for (PackageInfo packageInfo : packages) {
+            if (isCancelled(cancelled)) return 0L;
             result = 31 * result + String.valueOf(packageInfo.packageName).hashCode();
             result = 31 * result + packageInfo.lastUpdateTime;
             result = 31 * result + (packageInfo.applicationInfo != null
@@ -340,5 +372,9 @@ public final class DeclaredIntentCatalog {
             this.openTypes = Collections.unmodifiableSet(new LinkedHashSet<>(openTypes));
             this.activityInfo = activityInfo;
         }
+    }
+
+    public interface ProgressListener {
+        void onProgress(int current, int total, String phase);
     }
 }

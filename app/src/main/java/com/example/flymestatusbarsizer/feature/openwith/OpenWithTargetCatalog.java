@@ -15,6 +15,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
+import java.util.function.BooleanSupplier;
 
 public final class OpenWithTargetCatalog {
     private static final String CONTENT_URI = "content://com.example.flymestatusbarsizer/item";
@@ -23,23 +25,40 @@ public final class OpenWithTargetCatalog {
     private OpenWithTargetCatalog() { }
 
     public static Snapshot load(Context context, OpenWithContentType type) {
+        return load(context, type, null);
+    }
+
+    public static Snapshot load(Context context, OpenWithContentType type,
+            DeclaredIntentCatalog.ProgressListener progress) {
+        return load(context, type, () -> false, progress);
+    }
+
+    public static Snapshot load(Context context, OpenWithContentType type,
+            BooleanSupplier cancelled, DeclaredIntentCatalog.ProgressListener progress) {
+        checkCancelled(cancelled);
+        report(progress, 0, 0, "正在查询打开方式");
         PackageManager packageManager = context.getPackageManager();
         Map<String, ResolveInfo> found = new LinkedHashMap<>();
         for (String action : new String[]{Intent.ACTION_VIEW, Intent.ACTION_EDIT}) {
             for (Intent query : queries(action, type)) {
+                checkCancelled(cancelled);
                 for (ResolveInfo info : packageManager.queryIntentActivities(query,
                         PackageManager.MATCH_DEFAULT_ONLY)) {
-                ActivityInfo activity = info.activityInfo;
-                if (activity == null || !activity.exported || !activity.enabled
-                        || activity.applicationInfo == null || !activity.applicationInfo.enabled) continue;
-                String component = ShareTargetRules.normalizeComponent(
-                        activity.packageName + "/" + activity.name);
-                if (!component.isEmpty()) found.putIfAbsent(component, info);
+                    ActivityInfo activity = info.activityInfo;
+                    if (activity == null || !activity.exported || !activity.enabled
+                            || activity.applicationInfo == null || !activity.applicationInfo.enabled) continue;
+                    String component = ShareTargetRules.normalizeComponent(
+                            activity.packageName + "/" + activity.name);
+                    if (!component.isEmpty()) found.putIfAbsent(component, info);
                 }
             }
         }
         List<Target> targets = new ArrayList<>();
+        int total = found.size();
+        int processed = 0;
+        report(progress, 0, total, "正在加载打开方式");
         for (Map.Entry<String, ResolveInfo> entry : found.entrySet()) {
+            checkCancelled(cancelled);
             ResolveInfo info = entry.getValue();
             ActivityInfo activity = info.activityInfo;
             Drawable icon;
@@ -50,17 +69,30 @@ public final class OpenWithTargetCatalog {
             catch (RuntimeException ignored) { appIcon = icon; }
             targets.add(new Target(entry.getKey(), String.valueOf(info.loadLabel(packageManager)),
                     String.valueOf(activity.applicationInfo.loadLabel(packageManager)), icon, appIcon));
+            report(progress, ++processed, total, "正在加载打开方式");
         }
+        checkCancelled(cancelled);
         Map<String, Target> declared = new LinkedHashMap<>();
-        for (DeclaredIntentCatalog.Entry entry : DeclaredIntentCatalog.load(context, () -> false)) {
+        for (DeclaredIntentCatalog.Entry entry : DeclaredIntentCatalog.load(context, cancelled,
+                progress)) {
             if (entry.openTypes.contains(type.name())) {
                 declared.put(entry.component, new Target(entry.component, entry.label, entry.appName,
                         entry.icon, entry.appIcon));
             }
         }
+        checkCancelled(cancelled);
         for (Target target : targets) declared.remove(target.component);
         targets.addAll(declared.values());
         return new Snapshot(targets, true);
+    }
+
+    private static void checkCancelled(BooleanSupplier cancelled) {
+        if (cancelled != null && cancelled.getAsBoolean()) throw new CancellationException();
+    }
+
+    private static void report(
+            DeclaredIntentCatalog.ProgressListener progress, int current, int total, String phase) {
+        if (progress != null) progress.onProgress(current, total, phase);
     }
 
     private static List<Intent> queries(String action, OpenWithContentType type) {

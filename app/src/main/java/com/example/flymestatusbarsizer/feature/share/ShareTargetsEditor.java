@@ -11,9 +11,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 public final class ShareTargetsEditor {
@@ -89,19 +91,36 @@ public final class ShareTargetsEditor {
             @Override
             public ResolverTargetsUiApi.CatalogSnapshot loadTargets(
                     Context context, ResolverTargetsUiApi.ContentType type, BooleanSupplier cancelled) {
+                return loadTargets(context, type, cancelled, null);
+            }
+
+            @Override
+            public ResolverTargetsUiApi.CatalogSnapshot loadTargets(
+                    Context context,
+                    ResolverTargetsUiApi.ContentType type,
+                    BooleanSupplier cancelled,
+                    Consumer<ResolverTargetsUiApi.ScanProgress> progress) {
                 ShareContentType shareType = ShareContentType.valueOf(type.id);
+                if (catalog != null) {
+                    if (cancelled != null && cancelled.getAsBoolean()) {
+                        throw new CancellationException();
+                    }
+                    reportProgress(progress, CONFIG.loadingStatus, 0, -1);
+                    ShareTargetCatalog.Snapshot found = catalog.apply(context, shareType);
+                    if (cancelled != null && cancelled.getAsBoolean()) {
+                        throw new CancellationException();
+                    }
+                    return toUiSnapshot(found);
+                }
                 if (scanSession == null) {
-                    scanSession = new ShareTargetCatalog.Session(cancelled);
+                    scanSession = new ShareTargetCatalog.Session();
                 }
-                ShareTargetCatalog.Snapshot found = catalog == null
-                        ? scanSession.load(context, shareType)
-                        : catalog.apply(context, shareType);
-                List<ResolverTargetsUiApi.Target> items = new ArrayList<>(found.targets.size());
-                for (ShareTargetCatalog.Target target : found.targets) {
-                    items.add(new ResolverTargetsUiApi.Target(
-                            target.component, target.label, target.appName, target.icon, target.appIcon));
-                }
-                return new ResolverTargetsUiApi.CatalogSnapshot(items, found.systemOrderAvailable);
+                ShareTargetCatalog.Snapshot found = scanSession.load(
+                        context,
+                        shareType,
+                        cancelled,
+                        (current, total, phase) -> reportProgress(progress, phase, current, total));
+                return toUiSnapshot(found);
             }
 
             @Override
@@ -144,6 +163,20 @@ public final class ShareTargetsEditor {
         String label = target.label;
         return label.equals(component) || label.equals(component.substring(component.indexOf('/') + 1))
                 ? "分享入口" : label;
+    }
+
+    private static ResolverTargetsUiApi.CatalogSnapshot toUiSnapshot(ShareTargetCatalog.Snapshot found) {
+        List<ResolverTargetsUiApi.Target> items = new ArrayList<>(found.targets.size());
+        for (ShareTargetCatalog.Target target : found.targets) {
+            items.add(new ResolverTargetsUiApi.Target(
+                    target.component, target.label, target.appName, target.icon, target.appIcon));
+        }
+        return new ResolverTargetsUiApi.CatalogSnapshot(items, found.systemOrderAvailable);
+    }
+
+    private static void reportProgress(
+            Consumer<ResolverTargetsUiApi.ScanProgress> progress, String stage, int processed, int total) {
+        if (progress != null) progress.accept(new ResolverTargetsUiApi.ScanProgress(stage, processed, total));
     }
 
     private static ResolverTargetsUiApi.Rules toUiRules(ShareTargetRules rules) {

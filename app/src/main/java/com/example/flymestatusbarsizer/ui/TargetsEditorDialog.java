@@ -4,11 +4,13 @@ import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.ClipData;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Build;
 import android.text.Editable;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.DragEvent;
 import android.view.Gravity;
@@ -26,6 +28,7 @@ import android.widget.GridView;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -41,8 +44,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeSet;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 /** Shared fullscreen candidate-list editor used by both Share and Resolver managers. */
 public final class TargetsEditorDialog {
@@ -51,6 +58,14 @@ public final class TargetsEditorDialog {
 
         ResolverTargetsUiApi.CatalogSnapshot loadTargets(
                 Context context, ResolverTargetsUiApi.ContentType type, BooleanSupplier cancelled);
+
+        default ResolverTargetsUiApi.CatalogSnapshot loadTargets(
+                Context context,
+                ResolverTargetsUiApi.ContentType type,
+                BooleanSupplier cancelled,
+                Consumer<ResolverTargetsUiApi.ScanProgress> progress) {
+            return loadTargets(context, type, cancelled);
+        }
 
         ResolverTargetsUiApi.SavedState loadState(Context context);
 
@@ -160,6 +175,12 @@ public final class TargetsEditorDialog {
     private AlertDialog exitPrompt;
     private EditText search;
     private TargetsEditorDraft draft;
+    private LinearLayout scanProgressBox;
+    private TextView scanProgressText;
+    private TextView scanProgressCount;
+    private TextView cancelScan;
+    private ProgressBar scanProgressBar;
+    private ScanToken activeScan;
     private volatile boolean closed;
     private boolean loading;
     private String dragComponent;
@@ -357,6 +378,41 @@ public final class TargetsEditorDialog {
         filterBar.addView(status, new LinearLayout.LayoutParams(0, -2, 1));
         root.addView(filterBar, activity.matchWrapWithTop(6));
 
+        scanProgressBox = column();
+        scanProgressBox.setPadding(dp(12), dp(8), dp(12), dp(8));
+        scanProgressBox.setBackground(activity.roundRect(activity.surfaceSoftColor(), 12));
+        scanProgressBox.setVisibility(View.GONE);
+
+        LinearLayout progressHeader = row();
+        scanProgressText = text("", 12, activity.textColor());
+        scanProgressText.setSingleLine(true);
+        scanProgressText.setEllipsize(TextUtils.TruncateAt.END);
+        progressHeader.addView(scanProgressText, new LinearLayout.LayoutParams(0, -2, 1));
+
+        scanProgressCount = text("", 12, activity.subtextColor());
+        scanProgressCount.setSingleLine(true);
+        LinearLayout.LayoutParams countLp = new LinearLayout.LayoutParams(-2, -2);
+        countLp.setMarginStart(dp(8));
+        progressHeader.addView(scanProgressCount, countLp);
+
+        cancelScan = text("取消", 12, activity.primaryColor());
+        cancelScan.setTypeface(null, Typeface.BOLD);
+        cancelScan.setPadding(dp(10), dp(4), dp(4), dp(4));
+        cancelScan.setContentDescription("取消当前扫描");
+        activity.setTapClickListener(cancelScan, v -> cancelCurrentScan());
+        LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(-2, -2);
+        cancelLp.setMarginStart(dp(4));
+        progressHeader.addView(cancelScan, cancelLp);
+        scanProgressBox.addView(progressHeader, activity.matchWrap());
+
+        scanProgressBar = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
+        scanProgressBar.setIndeterminate(true);
+        scanProgressBar.setProgressTintList(ColorStateList.valueOf(activity.primaryColor()));
+        scanProgressBar.setIndeterminateTintList(ColorStateList.valueOf(activity.primaryColor()));
+        scanProgressBar.setProgressBackgroundTintList(ColorStateList.valueOf(activity.surfaceStrongColor()));
+        scanProgressBox.addView(scanProgressBar, activity.matchWrapWithTop(4));
+        root.addView(scanProgressBox, activity.matchWrapWithTop(6));
+
         FrameLayout contentArea = new FrameLayout(activity);
         FrameLayout gridArea = new FrameLayout(activity);
         list = new GridView(activity);
@@ -413,6 +469,10 @@ public final class TargetsEditorDialog {
         dialog.setContentView(overlayRoot);
         dialog.setOnDismissListener(ignored -> {
             closed = true;
+            if (activeScan != null) {
+                activeScan.cancelled.set(true);
+                activeScan = null;
+            }
             clearDrag();
             dismissUndo();
             dismissSheet();
@@ -483,6 +543,11 @@ public final class TargetsEditorDialog {
     private void scanSelected() {
         dismissUndo();
         clearDrag();
+        if (activeScan != null) {
+            activeScan.cancelled.set(true);
+        }
+        ScanToken token = new ScanToken();
+        activeScan = token;
         loading = true;
         independent.setEnabled(false);
         updateTabs();
@@ -491,32 +556,124 @@ public final class TargetsEditorDialog {
         status.setText(config.loadingStatus);
         empty.setText(config.loadingEmpty);
         empty.setVisibility(draft == null ? View.VISIBLE : View.GONE);
+        scanProgressBox.setVisibility(View.VISIBLE);
+        updateScanProgressUi(new ResolverTargetsUiApi.ScanProgress(config.loadingStatus));
+
         Context context = activity.getApplicationContext();
         ResolverTargetsUiApi.ContentType requested = selected;
+        BooleanSupplier isCancelled = () -> closed || token.cancelled.get();
+        Consumer<ResolverTargetsUiApi.ScanProgress> onProgress = progress -> {
+            if (progress == null || isCancelled.getAsBoolean()) return;
+            token.pendingProgress.set(progress);
+            if (token.progressScheduled.compareAndSet(false, true)) {
+                activity.runOnUiThread(() -> applyPendingProgress(token));
+            }
+        };
         scanner.execute(() -> {
-            if (closed) return;
+            if (isCancelled.getAsBoolean()) {
+                activity.runOnUiThread(() -> finishScanCancelled(token));
+                return;
+            }
             try {
                 ResolverTargetsUiApi.CatalogSnapshot found = dataSource.loadTargets(
-                        context, requested, () -> closed);
-                activity.runOnUiThread(() -> {
-                    if (closed || activity.isFinishing() || activity.isDestroyed()) return;
-                    catalogs.put(requested.id, found);
-                    loading = false;
-                    selectDraft();
-                });
+                        context, requested, isCancelled, onProgress);
+                if (isCancelled.getAsBoolean()) {
+                    activity.runOnUiThread(() -> finishScanCancelled(token));
+                    return;
+                }
+                activity.runOnUiThread(() -> finishScanSuccess(token, requested, found));
+            } catch (CancellationException error) {
+                activity.runOnUiThread(() -> finishScanCancelled(token));
             } catch (RuntimeException error) {
-                activity.runOnUiThread(() -> {
-                    if (closed || activity.isFinishing() || activity.isDestroyed()) return;
-                    loading = false;
-                    independent.setEnabled(draft != null);
-                    if (draft != null) render();
-                    updateTabs();
-                    updateSaveState();
-                    status.setText("扫描失败，可在更多中重新扫描");
-                    if (draft == null) empty.setText(config.scanErrorEmpty);
-                });
+                activity.runOnUiThread(() -> finishScanFailed(token));
             }
         });
+    }
+
+    private void cancelCurrentScan() {
+        if (!loading || activeScan == null) return;
+        ScanToken token = activeScan;
+        token.cancelled.set(true);
+        finishScanCancelled(token);
+    }
+
+    private void applyPendingProgress(ScanToken token) {
+        token.progressScheduled.set(false);
+        if (!isActiveScan(token) || !loading) return;
+        ResolverTargetsUiApi.ScanProgress progress = token.pendingProgress.getAndSet(null);
+        if (progress != null) {
+            updateScanProgressUi(progress);
+        }
+    }
+
+    private void updateScanProgressUi(ResolverTargetsUiApi.ScanProgress progress) {
+        String stage = progress.stage.isEmpty() ? config.loadingStatus : progress.stage;
+        scanProgressText.setText(stage);
+        if (progress.indeterminate()) {
+            scanProgressCount.setText("");
+            scanProgressCount.setVisibility(View.GONE);
+            if (!scanProgressBar.isIndeterminate()) {
+                scanProgressBar.setIndeterminate(true);
+            }
+        } else {
+            int total = progress.total;
+            int processed = Math.min(progress.processed, total);
+            scanProgressCount.setText(processed + "/" + total);
+            scanProgressCount.setVisibility(View.VISIBLE);
+            if (scanProgressBar.isIndeterminate()) {
+                scanProgressBar.setIndeterminate(false);
+            }
+            if (scanProgressBar.getMax() != total) {
+                scanProgressBar.setMax(total);
+            }
+            scanProgressBar.setProgress(processed);
+        }
+    }
+
+    private boolean isActiveScan(ScanToken token) {
+        return !closed && !activity.isFinishing() && !activity.isDestroyed() && token == activeScan;
+    }
+
+    private void finishScanSuccess(
+            ScanToken token,
+            ResolverTargetsUiApi.ContentType requested,
+            ResolverTargetsUiApi.CatalogSnapshot found) {
+        if (!isActiveScan(token)) return;
+        activeScan = null;
+        catalogs.put(requested.id, found);
+        loading = false;
+        scanProgressBox.setVisibility(View.GONE);
+        selectDraft();
+    }
+
+    private void finishScanCancelled(ScanToken token) {
+        finishScanAborted(token, "已取消扫描，可在更多中重新扫描", "已取消扫描\n可在更多中重新扫描");
+    }
+
+    private void finishScanFailed(ScanToken token) {
+        finishScanAborted(token, "扫描失败，可在更多中重新扫描", config.scanErrorEmpty);
+    }
+
+    private void finishScanAborted(ScanToken token, String statusText, String emptyText) {
+        if (!isActiveScan(token)) return;
+        activeScan = null;
+        loading = false;
+        scanProgressBox.setVisibility(View.GONE);
+        independent.setEnabled(draft != null);
+        if (draft != null) render();
+        updateTabs();
+        updateSaveState();
+        status.setText(statusText);
+        if (draft == null) {
+            empty.setText(emptyText);
+            empty.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private static final class ScanToken {
+        final AtomicBoolean cancelled = new AtomicBoolean();
+        final AtomicReference<ResolverTargetsUiApi.ScanProgress> pendingProgress = new AtomicReference<>();
+        final AtomicBoolean progressScheduled = new AtomicBoolean();
     }
 
     private void save() {

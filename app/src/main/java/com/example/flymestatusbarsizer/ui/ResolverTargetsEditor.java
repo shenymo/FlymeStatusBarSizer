@@ -7,6 +7,7 @@ import com.example.flymestatusbarsizer.MainActivity;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 /** Editor entry for ordinary Resolver ("打开方式") candidate apps by content type. */
 public final class ResolverTargetsEditor {
@@ -59,6 +60,15 @@ public final class ResolverTargetsEditor {
             public ResolverTargetsUiApi.CatalogSnapshot loadTargets(
                     Context context, ResolverTargetsUiApi.ContentType type, BooleanSupplier cancelled) {
                 return provider.loadTargets(context, type, cancelled);
+            }
+
+            @Override
+            public ResolverTargetsUiApi.CatalogSnapshot loadTargets(
+                    Context context,
+                    ResolverTargetsUiApi.ContentType type,
+                    BooleanSupplier cancelled,
+                    Consumer<ResolverTargetsUiApi.ScanProgress> progress) {
+                return provider.loadTargets(context, type, cancelled, progress);
             }
 
             @Override

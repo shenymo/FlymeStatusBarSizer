@@ -34,8 +34,13 @@ public final class ShareTargetCatalog {
         Session() { this(() -> false); }
         Session(BooleanSupplier cancelled) { this.cancelled = cancelled; }
 
-        private void checkCancelled() {
-            if (cancelled.getAsBoolean()) throw new CancellationException();
+        private static void checkCancelled(BooleanSupplier cancelled) {
+            if (cancelled != null && cancelled.getAsBoolean()) throw new CancellationException();
+        }
+
+        private static void report(
+                DeclaredIntentCatalog.ProgressListener progress, int current, int total, String phase) {
+            if (progress != null) progress.onProgress(current, total, phase);
         }
 
         private final Map<MetadataKey, Target> metadata = new LinkedHashMap<>();
@@ -45,10 +50,22 @@ public final class ShareTargetCatalog {
         private final ShareTargetSystemOrder.Session systemOrder = new ShareTargetSystemOrder.Session();
 
         Snapshot load(Context context, ShareContentType type) {
+            return load(context, type, cancelled, null);
+        }
+
+        Snapshot load(Context context, ShareContentType type,
+                DeclaredIntentCatalog.ProgressListener progress) {
+            return load(context, type, cancelled, progress);
+        }
+
+        Snapshot load(Context context, ShareContentType type, BooleanSupplier scanCancelled,
+                DeclaredIntentCatalog.ProgressListener progress) {
+            BooleanSupplier effectiveCancelled = scanCancelled != null ? scanCancelled : cancelled;
             PackageManager pm = context.getPackageManager();
             Map<String, ResolveInfo> found = new LinkedHashMap<>();
+            report(progress, 0, 0, "正在查询分享入口");
             for (String action : new String[]{Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE}) {
-                checkCancelled();
+                checkCancelled(effectiveCancelled);
                 Intent intent = new Intent(action).setType(type.mime);
                 for (ResolveInfo info : pm.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)) {
                     ActivityInfo ai = info.activityInfo;
@@ -59,16 +76,23 @@ public final class ShareTargetCatalog {
                     found.put(component, info);
                 }
             }
-            checkCancelled();
+            checkCancelled(effectiveCancelled);
+            report(progress, 0, 0, "正在读取系统排序");
             ShareTargetSystemOrder.Result ordered = systemOrder.load(context, new ArrayList<>(found.values()),
-                    info -> label(pm, info));
+                    info -> label(pm, info, effectiveCancelled));
+            checkCancelled(effectiveCancelled);
             List<Target> result = new ArrayList<>();
             Map<String, DeclaredIntentCatalog.Entry> declared = new LinkedHashMap<>();
-            for (DeclaredIntentCatalog.Entry entry : DeclaredIntentCatalog.load(context, cancelled)) {
+            for (DeclaredIntentCatalog.Entry entry : DeclaredIntentCatalog.load(
+                    context, effectiveCancelled, progress)) {
                 if (entry.shareTypes.contains(type.name())) declared.put(entry.component, entry);
             }
+            checkCancelled(effectiveCancelled);
+            int total = ordered.targets.size();
+            int processed = 0;
+            report(progress, 0, total, "正在加载分享入口");
             for (ResolveInfo info : ordered.targets) {
-                checkCancelled();
+                checkCancelled(effectiveCancelled);
                 ActivityInfo ai = info.activityInfo;
                 String component = ShareTargetRules.normalizeComponent(ai.packageName + "/" + ai.name);
                 // ResolveInfo may override the Activity label/icon differently for each MIME.
@@ -80,7 +104,7 @@ public final class ShareTargetCatalog {
                         appName = String.valueOf(ai.applicationInfo.loadLabel(pm));
                         appNames.put(ai.packageName, appName);
                     }
-                    String label = familiarLabel(component, label(pm, info));
+                    String label = familiarLabel(component, label(pm, info, effectiveCancelled));
                     Drawable icon;
                     try { icon = info.loadIcon(pm); }
                     catch (RuntimeException ignored) { icon = pm.getDefaultActivityIcon(); }
@@ -102,9 +126,10 @@ public final class ShareTargetCatalog {
                 if (appIcon == null) appIcon = icon;
                 result.add(new Target(component, cached.label, cached.appName, icon, appIcon));
                 declared.remove(component);
+                report(progress, ++processed, total, "正在加载分享入口");
             }
             for (DeclaredIntentCatalog.Entry entry : declared.values()) {
-                checkCancelled();
+                checkCancelled(effectiveCancelled);
                 result.add(new Target(entry.component, entry.label, entry.appName,
                         entry.icon, entry.appIcon));
             }
@@ -117,8 +142,8 @@ public final class ShareTargetCatalog {
             return state == null ? null : state.newDrawable(context.getResources()).mutate();
         }
 
-        private String label(PackageManager pm, ResolveInfo info) {
-            checkCancelled();
+        private String label(PackageManager pm, ResolveInfo info, BooleanSupplier scanCancelled) {
+            checkCancelled(scanCancelled);
             return labels.computeIfAbsent(metadataKey(info), key -> String.valueOf(info.loadLabel(pm)));
         }
 

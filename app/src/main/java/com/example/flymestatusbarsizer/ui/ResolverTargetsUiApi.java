@@ -20,7 +20,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 /** UI data and persistence contract for managing ordinary Resolver ("打开方式") candidates. */
 public final class ResolverTargetsUiApi {
@@ -62,9 +64,34 @@ public final class ResolverTargetsUiApi {
 
         CatalogSnapshot loadTargets(Context context, ContentType type, BooleanSupplier cancelled);
 
+        default CatalogSnapshot loadTargets(
+                Context context, ContentType type, BooleanSupplier cancelled, Consumer<ScanProgress> progress) {
+            return loadTargets(context, type, cancelled);
+        }
+
         SavedState loadRules(Context context);
 
         void saveRules(Context context, SavedState state);
+    }
+
+    public static final class ScanProgress {
+        public final String stage;
+        public final int processed;
+        public final int total;
+
+        public ScanProgress(String stage) {
+            this(stage, 0, -1);
+        }
+
+        public ScanProgress(String stage, int processed, int total) {
+            this.stage = stage == null ? "" : stage;
+            this.processed = Math.max(0, processed);
+            this.total = total;
+        }
+
+        public boolean indeterminate() {
+            return total <= 0;
+        }
     }
 
     public static final class ContentType {
@@ -194,11 +221,25 @@ public final class ResolverTargetsUiApi {
 
         @Override
         public CatalogSnapshot loadTargets(Context context, ContentType type, BooleanSupplier cancelled) {
+            return loadTargets(context, type, cancelled, null);
+        }
+
+        @Override
+        public CatalogSnapshot loadTargets(
+                Context context, ContentType type, BooleanSupplier cancelled, Consumer<ScanProgress> progress) {
             OpenWithContentType contentType = OpenWithContentType.valueOf(type.id);
-            OpenWithTargetCatalog.Snapshot snapshot = OpenWithTargetCatalog.load(context, contentType);
+            OpenWithTargetCatalog.Snapshot snapshot = OpenWithTargetCatalog.load(
+                    context,
+                    contentType,
+                    cancelled,
+                    (current, total, phase) -> {
+                        if (progress != null) progress.accept(new ScanProgress(phase, current, total));
+                    });
             List<Target> targets = new ArrayList<>(snapshot.targets.size());
             for (OpenWithTargetCatalog.Target target : snapshot.targets) {
-                if (cancelled.getAsBoolean()) break;
+                if (cancelled != null && cancelled.getAsBoolean()) {
+                    throw new CancellationException();
+                }
                 targets.add(new Target(target.component, target.label, target.appName,
                         target.icon, target.appIcon));
             }
