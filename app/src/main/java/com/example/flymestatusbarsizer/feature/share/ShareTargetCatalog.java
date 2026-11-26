@@ -60,6 +60,11 @@ public final class ShareTargetCatalog {
 
         Snapshot load(Context context, ShareContentType type, BooleanSupplier scanCancelled,
                 DeclaredIntentCatalog.ProgressListener progress) {
+            return load(context, type, true, scanCancelled, progress);
+        }
+
+        Snapshot load(Context context, ShareContentType type, boolean includeDeclaredManifests,
+                BooleanSupplier scanCancelled, DeclaredIntentCatalog.ProgressListener progress) {
             BooleanSupplier effectiveCancelled = scanCancelled != null ? scanCancelled : cancelled;
             PackageManager pm = context.getPackageManager();
             Map<String, ResolveInfo> found = new LinkedHashMap<>();
@@ -83,11 +88,13 @@ public final class ShareTargetCatalog {
             checkCancelled(effectiveCancelled);
             List<Target> result = new ArrayList<>();
             Map<String, DeclaredIntentCatalog.Entry> declared = new LinkedHashMap<>();
-            for (DeclaredIntentCatalog.Entry entry : DeclaredIntentCatalog.load(
-                    context, effectiveCancelled, progress)) {
-                if (entry.shareTypes.contains(type.name())) declared.put(entry.component, entry);
+            if (includeDeclaredManifests) {
+                for (DeclaredIntentCatalog.Entry entry : DeclaredIntentCatalog.load(
+                        context, effectiveCancelled, progress)) {
+                    if (entry.shareTypes.contains(type.name())) declared.put(entry.component, entry);
+                }
+                checkCancelled(effectiveCancelled);
             }
-            checkCancelled(effectiveCancelled);
             int total = ordered.targets.size();
             int processed = 0;
             report(progress, 0, total, "正在加载分享入口");

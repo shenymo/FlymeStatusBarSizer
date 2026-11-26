@@ -35,6 +35,12 @@ public final class OpenWithTargetCatalog {
 
     public static Snapshot load(Context context, OpenWithContentType type,
             BooleanSupplier cancelled, DeclaredIntentCatalog.ProgressListener progress) {
+        return load(context, type, true, cancelled, progress);
+    }
+
+    public static Snapshot load(Context context, OpenWithContentType type,
+            boolean includeDeclaredManifests,
+            BooleanSupplier cancelled, DeclaredIntentCatalog.ProgressListener progress) {
         checkCancelled(cancelled);
         report(progress, 0, 0, "正在查询打开方式");
         PackageManager packageManager = context.getPackageManager();
@@ -71,18 +77,20 @@ public final class OpenWithTargetCatalog {
                     String.valueOf(activity.applicationInfo.loadLabel(packageManager)), icon, appIcon));
             report(progress, ++processed, total, "正在加载打开方式");
         }
-        checkCancelled(cancelled);
-        Map<String, Target> declared = new LinkedHashMap<>();
-        for (DeclaredIntentCatalog.Entry entry : DeclaredIntentCatalog.load(context, cancelled,
-                progress)) {
-            if (entry.openTypes.contains(type.name())) {
-                declared.put(entry.component, new Target(entry.component, entry.label, entry.appName,
-                        entry.icon, entry.appIcon));
+        if (includeDeclaredManifests) {
+            checkCancelled(cancelled);
+            Map<String, Target> declared = new LinkedHashMap<>();
+            for (DeclaredIntentCatalog.Entry entry : DeclaredIntentCatalog.load(context, cancelled,
+                    progress)) {
+                if (entry.openTypes.contains(type.name())) {
+                    declared.put(entry.component, new Target(entry.component, entry.label, entry.appName,
+                            entry.icon, entry.appIcon));
+                }
             }
+            checkCancelled(cancelled);
+            for (Target target : targets) declared.remove(target.component);
+            targets.addAll(declared.values());
         }
-        checkCancelled(cancelled);
-        for (Target target : targets) declared.remove(target.component);
-        targets.addAll(declared.values());
         return new Snapshot(targets, true);
     }
 

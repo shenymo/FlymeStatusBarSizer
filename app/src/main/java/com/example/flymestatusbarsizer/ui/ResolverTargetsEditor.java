@@ -80,6 +80,16 @@ public final class ResolverTargetsEditor {
             public void saveState(Context context, ResolverTargetsUiApi.SavedState state) {
                 provider.saveRules(context, state);
             }
+
+            @Override
+            public boolean isReadManifestEntriesEnabled(Context context) {
+                return provider.isReadManifestEntriesEnabled(context);
+            }
+
+            @Override
+            public void setReadManifestEntriesEnabled(Context context, boolean enabled) {
+                provider.setReadManifestEntriesEnabled(context, enabled);
+            }
         }, CONFIG).show();
     }
 }

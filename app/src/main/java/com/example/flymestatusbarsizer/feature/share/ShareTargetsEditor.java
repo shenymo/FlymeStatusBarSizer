@@ -118,9 +118,22 @@ public final class ShareTargetsEditor {
                 ShareTargetCatalog.Snapshot found = scanSession.load(
                         context,
                         shareType,
+                        isReadManifestEntriesEnabled(context),
                         cancelled,
                         (current, total, phase) -> reportProgress(progress, phase, current, total));
                 return toUiSnapshot(found);
+            }
+
+            @Override
+            public boolean isReadManifestEntriesEnabled(Context context) {
+                return SettingsStore.readBoolean(SettingsStore.prefs(context),
+                        SettingsStore.KEY_SHARE_READ_MANIFEST_ENTRIES,
+                        SettingsStore.DEFAULT_SHARE_READ_MANIFEST_ENTRIES);
+            }
+
+            @Override
+            public void setReadManifestEntriesEnabled(Context context, boolean enabled) {
+                activity.putBooleanSetting(SettingsStore.KEY_SHARE_READ_MANIFEST_ENTRIES, enabled);
             }
 
             @Override
@@ -160,9 +173,10 @@ public final class ShareTargetsEditor {
 
     static String targetName(String component, ShareTargetCatalog.Target target) {
         if (target == null) return "不可用入口";
-        String label = target.label;
-        return label.equals(component) || label.equals(component.substring(component.indexOf('/') + 1))
-                ? "分享入口" : label;
+        return TargetsEditorDialog.targetName(component,
+                new ResolverTargetsUiApi.Target(
+                        target.component, target.label, target.appName, target.icon, target.appIcon),
+                CONFIG.entryFallbackLabel);
     }
 
     private static ResolverTargetsUiApi.CatalogSnapshot toUiSnapshot(ShareTargetCatalog.Snapshot found) {

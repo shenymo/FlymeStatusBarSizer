@@ -60,6 +60,12 @@ public final class ResolverTargetsUiApi {
 
         void setEnabled(Context context, boolean enabled);
 
+        default boolean isReadManifestEntriesEnabled(Context context) {
+            return false;
+        }
+
+        default void setReadManifestEntriesEnabled(Context context, boolean enabled) {}
+
         List<ContentType> getContentTypes(Context context);
 
         CatalogSnapshot loadTargets(Context context, ContentType type, BooleanSupplier cancelled);
@@ -116,9 +122,9 @@ public final class ResolverTargetsUiApi {
         public final Drawable appIcon;
 
         public Target(String component, String label, String appName, Drawable icon, Drawable appIcon) {
-            this.component = component;
-            this.label = label;
-            this.appName = appName;
+            this.component = component == null ? "" : component;
+            this.label = label == null ? "" : label;
+            this.appName = appName == null ? "" : appName;
             this.icon = icon;
             this.appIcon = appIcon;
         }
@@ -215,6 +221,23 @@ public final class ResolverTargetsUiApi {
         }
 
         @Override
+        public boolean isReadManifestEntriesEnabled(Context context) {
+            SharedPreferences prefs = SettingsStore.prefs(context);
+            return prefs == null ? SettingsStore.DEFAULT_OPEN_WITH_READ_MANIFEST_ENTRIES
+                    : SettingsStore.readBoolean(prefs,
+                            SettingsStore.KEY_OPEN_WITH_READ_MANIFEST_ENTRIES,
+                            SettingsStore.DEFAULT_OPEN_WITH_READ_MANIFEST_ENTRIES);
+        }
+
+        @Override
+        public void setReadManifestEntriesEnabled(Context context, boolean enabled) {
+            SharedPreferences prefs = SettingsStore.prefs(context);
+            if (prefs == null) return;
+            prefs.edit().putBoolean(SettingsStore.KEY_OPEN_WITH_READ_MANIFEST_ENTRIES, enabled).apply();
+            SettingsStore.notifyChanged(context);
+        }
+
+        @Override
         public List<ContentType> getContentTypes(Context context) {
             return DEFAULT_TYPES;
         }
@@ -231,6 +254,7 @@ public final class ResolverTargetsUiApi {
             OpenWithTargetCatalog.Snapshot snapshot = OpenWithTargetCatalog.load(
                     context,
                     contentType,
+                    isReadManifestEntriesEnabled(context),
                     cancelled,
                     (current, total, phase) -> {
                         if (progress != null) progress.accept(new ScanProgress(phase, current, total));

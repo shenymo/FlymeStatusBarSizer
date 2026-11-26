@@ -180,12 +180,14 @@ final class TargetsAppManagerDialog {
         Map<String, AppGroup> byPackage = new LinkedHashMap<>();
         Drawable fallbackIcon = activity.getPackageManager().getDefaultActivityIcon();
         for (ResolverTargetsUiApi.Target target : targets) {
+            if (target == null || target.component == null) continue;
             int slash = target.component.indexOf('/');
             if (slash <= 0) continue;
             String pkg = target.component.substring(0, slash);
             AppGroup group = byPackage.get(pkg);
             if (group == null) {
-                String name = target.appName.equals(pkg) ? "应用" : target.appName;
+                String rawAppName = target.appName == null ? "" : target.appName.trim();
+                String name = rawAppName.isEmpty() || rawAppName.equals(pkg) ? "应用" : rawAppName;
                 Drawable appIcon = target.appIcon != null ? target.appIcon
                         : target.icon != null ? target.icon : fallbackIcon;
                 group = new AppGroup(pkg, name, appIcon);
@@ -199,11 +201,28 @@ final class TargetsAppManagerDialog {
         List<AppGroup> active = new ArrayList<>();
         List<AppGroup> disabled = new ArrayList<>();
         for (AppGroup group : byPackage.values()) {
+            disambiguateDuplicateEntries(group);
             if (shownCount(group) > 0) active.add(group);
             else disabled.add(group);
         }
         active.addAll(disabled);
         return active;
+    }
+
+    private static void disambiguateDuplicateEntries(AppGroup group) {
+        if (group.entries.size() <= 1) return;
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (Entry entry : group.entries) {
+            counts.put(entry.label, counts.getOrDefault(entry.label, 0) + 1);
+        }
+        for (int i = 0; i < group.entries.size(); i++) {
+            Entry entry = group.entries.get(i);
+            if (counts.getOrDefault(entry.label, 0) <= 1) continue;
+            String suffix = TargetsEditorDialog.readableComponentSuffix(entry.component, group.appName);
+            if (suffix.isEmpty() || suffix.equals(entry.label)) continue;
+            String updated = suffix.endsWith("." + entry.label) ? suffix : entry.label + " · " + suffix;
+            group.entries.set(i, new Entry(entry.component, updated, entry.icon));
+        }
     }
 
     private void filter() {
@@ -223,7 +242,7 @@ final class TargetsAppManagerDialog {
             return true;
         }
         for (Entry entry : group.entries) {
-            if (entry.label.toLowerCase(Locale.ROOT).contains(query)) return true;
+            if (matchesEntry(entry, query)) return true;
         }
         return false;
     }
@@ -235,9 +254,14 @@ final class TargetsAppManagerDialog {
             return false;
         }
         for (Entry entry : group.entries) {
-            if (entry.label.toLowerCase(Locale.ROOT).contains(query)) return true;
+            if (matchesEntry(entry, query)) return true;
         }
         return false;
+    }
+
+    private static boolean matchesEntry(Entry entry, String query) {
+        return entry.label.toLowerCase(Locale.ROOT).contains(query)
+                || entry.component.toLowerCase(Locale.ROOT).contains(query);
     }
 
     private int shownCount(AppGroup group) {
@@ -394,7 +418,8 @@ final class TargetsAppManagerDialog {
             if (total == 1) {
                 String entryLabel = group.entries.get(0).label;
                 String state = shown == 0 ? "已隐藏" : "显示中";
-                return entryLabel.equals(group.appName) ? state : entryLabel + " · " + state;
+                return entryLabel.isEmpty() || entryLabel.equals(group.appName)
+                        ? state : entryLabel + " · " + state;
             }
             if (shown == total) return total + " 个入口 · 全部显示";
             if (shown == 0) return total + " 个入口 · 已全部隐藏";

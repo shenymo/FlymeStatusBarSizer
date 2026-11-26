@@ -443,10 +443,12 @@ public final class SettingsStore {
             "windowmode_recent_inner_ring_radius_percent";
     public static final String KEY_CARLINK_EXPAND_APPS_ENABLED = "carlink_expand_apps_enabled";
     public static final String KEY_SHARE_TARGETS_ENABLED = "share_targets_enabled";
+    public static final String KEY_SHARE_READ_MANIFEST_ENTRIES = "share_read_manifest_entries";
     public static final String KEY_SHARE_TARGET_PROFILES = "share_target_profiles";
     public static final String KEY_SHARE_TARGET_ORDER = "share_target_order";
     public static final String KEY_SHARE_HIDDEN_TARGETS = "share_hidden_targets";
     public static final String KEY_OPEN_WITH_TARGETS_ENABLED = "open_with_targets_enabled";
+    public static final String KEY_OPEN_WITH_READ_MANIFEST_ENTRIES = "open_with_read_manifest_entries";
     public static final String KEY_OPEN_WITH_TARGET_PROFILES = "open_with_target_profiles";
     public static final String KEY_OPEN_WITH_TARGET_ORDER = "open_with_target_order";
     public static final String KEY_OPEN_WITH_HIDDEN_TARGETS = "open_with_hidden_targets";
@@ -732,7 +734,9 @@ public final class SettingsStore {
     public static final int DEFAULT_WINDOWMODE_RECENT_INNER_RING_RADIUS_PERCENT = 38;
     public static final boolean DEFAULT_CARLINK_EXPAND_APPS_ENABLED = false;
     public static final boolean DEFAULT_SHARE_TARGETS_ENABLED = false;
+    public static final boolean DEFAULT_SHARE_READ_MANIFEST_ENTRIES = false;
     public static final boolean DEFAULT_OPEN_WITH_TARGETS_ENABLED = false;
+    public static final boolean DEFAULT_OPEN_WITH_READ_MANIFEST_ENTRIES = false;
     public static final boolean DEFAULT_CARLINK_NETEASE_COLD_START_FIX_ENABLED = false;
     public static final boolean DEFAULT_CARLINK_DAY_NIGHT_ISOLATION_ENABLED = false;
     public static final boolean DEFAULT_CARLINK_PERIODIC_REDRAW_DISABLED = false;
@@ -1074,7 +1078,9 @@ public final class SettingsStore {
 
     public static final String[] BOOLEAN_KEYS = StatusBarIconVisibility.appendPreferenceKeys(new String[]{
             KEY_SHARE_TARGETS_ENABLED,
+            KEY_SHARE_READ_MANIFEST_ENTRIES,
             KEY_OPEN_WITH_TARGETS_ENABLED,
+            KEY_OPEN_WITH_READ_MANIFEST_ENTRIES,
             KEY_ASSISTANT_BACKGROUND_CUSTOM,
             KEY_ASSISTANT_BACKGROUND_BLUR,
             KEY_ASSISTANT_GESTURE_ENABLED,
@@ -1850,8 +1856,12 @@ public final class SettingsStore {
                 return DEFAULT_CARLINK_EXPAND_APPS_ENABLED;
             case KEY_SHARE_TARGETS_ENABLED:
                 return DEFAULT_SHARE_TARGETS_ENABLED;
+            case KEY_SHARE_READ_MANIFEST_ENTRIES:
+                return DEFAULT_SHARE_READ_MANIFEST_ENTRIES;
             case KEY_OPEN_WITH_TARGETS_ENABLED:
                 return DEFAULT_OPEN_WITH_TARGETS_ENABLED;
+            case KEY_OPEN_WITH_READ_MANIFEST_ENTRIES:
+                return DEFAULT_OPEN_WITH_READ_MANIFEST_ENTRIES;
             case KEY_CARLINK_NETEASE_COLD_START_FIX_ENABLED:
                 return DEFAULT_CARLINK_NETEASE_COLD_START_FIX_ENABLED;
             case KEY_CARLINK_DAY_NIGHT_ISOLATION_ENABLED:

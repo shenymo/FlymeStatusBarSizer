@@ -72,6 +72,12 @@ public final class TargetsEditorDialog {
         void saveState(Context context, ResolverTargetsUiApi.SavedState state);
 
         default void onResetScanSession() {}
+
+        default boolean isReadManifestEntriesEnabled(Context context) {
+            return false;
+        }
+
+        default void setReadManifestEntriesEnabled(Context context, boolean enabled) {}
     }
 
     public static final class Config {
@@ -172,6 +178,7 @@ public final class TargetsEditorDialog {
     private FrameLayout overlayRoot;
     private View sheetScrim;
     private LinearLayout sheetBody;
+    private Runnable refreshSheet;
     private AlertDialog exitPrompt;
     private EditText search;
     private TargetsEditorDraft draft;
@@ -540,6 +547,15 @@ public final class TargetsEditorDialog {
         scanSelected();
     }
 
+    private void restartScan() {
+        if (activeScan != null) {
+            activeScan.cancelled.set(true);
+            activeScan = null;
+        }
+        loading = false;
+        load();
+    }
+
     private void scanSelected() {
         dismissUndo();
         clearDrag();
@@ -644,6 +660,7 @@ public final class TargetsEditorDialog {
         loading = false;
         scanProgressBox.setVisibility(View.GONE);
         selectDraft();
+        if (refreshSheet != null) refreshSheet.run();
     }
 
     private void finishScanCancelled(ScanToken token) {
@@ -668,6 +685,7 @@ public final class TargetsEditorDialog {
             empty.setText(emptyText);
             empty.setVisibility(View.VISIBLE);
         }
+        if (refreshSheet != null) refreshSheet.run();
     }
 
     private static final class ScanToken {
@@ -728,7 +746,9 @@ public final class TargetsEditorDialog {
             if (draft.isHidden(component)) hiddenCount++;
             if (draft.isHidden(component) != showHidden) continue;
             ResolverTargetsUiApi.Target target = target(component);
-            String haystack = component + (target == null ? "" : " " + target.label + " " + target.appName);
+            String displayName = targetName(component, target, config.entryFallbackLabel);
+            String haystack = component + " " + displayName + (target == null ? ""
+                    : " " + trim(target.label) + " " + trim(target.appName));
             if (haystack.toLowerCase(Locale.ROOT).contains(query)) visible.add(component);
         }
         shownTab.setText("显示中 " + (draft.components().size() - hiddenCount));
@@ -923,8 +943,17 @@ public final class TargetsEditorDialog {
 
     private void showMoreMenu() {
         LinearLayout body = newSheet(config.moreTitle, "当前类型：" + selected.label);
-        sheetAction(body, "重新扫描", !loading, this::load);
-        sheetAction(body, "恢复系统排序", draft != null && editable() && draft.hasFixedOrder(), () -> {
+        TextView rescan = sheetAction(body, "重新扫描", !loading, this::load);
+        sheetSwitch(body, "读取应用清单入口",
+                dataSource.isReadManifestEntriesEnabled(activity),
+                checked -> {
+                    dataSource.setReadManifestEntriesEnabled(activity, checked);
+                    restartScan();
+                    if (refreshSheet != null) refreshSheet.run();
+                });
+        TextView restoreOrder = sheetAction(body, "恢复系统排序",
+                draft != null && editable() && draft.hasFixedOrder(), () -> {
+            if (loading || draft == null || !editable()) return;
             dismissUndo();
             draft.followSystemOrder();
             search.setText("");
@@ -933,17 +962,24 @@ public final class TargetsEditorDialog {
             activity.showToast("已恢复系统排序，隐藏设置保留，点击保存生效");
         });
         body.addView(text("恢复系统排序会保留隐藏设置", 12, activity.subtextColor()));
-        sheetAction(body, "重置当前类型", draft != null && !loading, () ->
-                new AlertDialog.Builder(activity).setTitle("重置" + selected.label + "配置？")
-                        .setMessage(selected.isDefault
-                                ? "清除默认配置的排序和隐藏设置，沿用默认的类型也会同步变化。独立配置与总开关不受影响。点击保存后生效。"
-                                : "此类型将重新沿用默认配置，其他类型与总开关不受影响。点击保存后生效。")
-                        .setNegativeButton("取消", null)
-                        .setPositiveButton("重置", (d, which) -> resetSelected()).show());
+        TextView resetType = sheetAction(body, "重置当前类型", draft != null && !loading, () -> {
+            if (loading || draft == null) return;
+            new AlertDialog.Builder(activity).setTitle("重置" + selected.label + "配置？")
+                    .setMessage(selected.isDefault
+                            ? "清除默认配置的排序和隐藏设置，沿用默认的类型也会同步变化。独立配置与总开关不受影响。点击保存后生效。"
+                            : "此类型将重新沿用默认配置，其他类型与总开关不受影响。点击保存后生效。")
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("重置", (d, which) -> resetSelected()).show();
+        });
         sheetAction(body, "使用说明", true, () -> new AlertDialog.Builder(activity)
                 .setTitle(config.helpTitle)
                 .setMessage(config.helpMessage)
                 .setPositiveButton("知道了", null).show());
+        refreshSheet = () -> {
+            setSheetActionAvailable(rescan, !loading);
+            setSheetActionAvailable(restoreOrder, draft != null && editable() && draft.hasFixedOrder());
+            setSheetActionAvailable(resetType, draft != null && !loading);
+        };
         showSheet(body);
     }
 
@@ -981,15 +1017,42 @@ public final class TargetsEditorDialog {
         return body;
     }
 
-    private void sheetAction(LinearLayout body, String label, boolean available, Runnable action) {
+    private TextView sheetAction(LinearLayout body, String label, boolean available, Runnable action) {
         TextView item = text(label, 16, activity.textColor());
         item.setGravity(Gravity.CENTER_VERTICAL);
         item.setMinHeight(dp(52));
         item.setPadding(dp(12), dp(8), dp(12), dp(8));
         item.setBackground(activity.roundRect(activity.surfaceSoftColor(), 14));
+        setSheetActionAvailable(item, available);
+        activity.setTapClickListener(item, v -> { dismissSheet(); action.run(); });
+        body.addView(item, activity.matchWrapWithTop(8));
+        return item;
+    }
+
+    private void setSheetActionAvailable(TextView item, boolean available) {
         item.setEnabled(available);
         item.setAlpha(available ? 1f : 0.4f);
-        activity.setTapClickListener(item, v -> { dismissSheet(); action.run(); });
+    }
+
+    private void sheetSwitch(LinearLayout body, String label, boolean checked, Consumer<Boolean> onChanged) {
+        LinearLayout item = row();
+        item.setMinimumHeight(dp(52));
+        item.setPadding(dp(12), dp(6), dp(10), dp(6));
+        item.setBackground(activity.roundRect(activity.surfaceSoftColor(), 14));
+        TextView title = text(label, 16, activity.textColor());
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, -2, 1);
+        titleLp.setMarginEnd(dp(12));
+        item.addView(title, titleLp);
+        Switch toggle = new Switch(activity);
+        activity.styleSwitch(toggle);
+        toggle.setChecked(checked);
+        toggle.setContentDescription(label);
+        toggle.setOnCheckedChangeListener((view, isChecked) -> {
+            if (view.isPressed()) activity.performTapHaptic(view);
+            onChanged.accept(isChecked);
+        });
+        item.addView(toggle);
+        activity.setTapClickListener(item, v -> toggle.setChecked(!toggle.isChecked()));
         body.addView(item, activity.matchWrapWithTop(8));
     }
 
@@ -1010,6 +1073,7 @@ public final class TargetsEditorDialog {
     }
 
     private void dismissSheet() {
+        refreshSheet = null;
         if (overlayRoot == null) return;
         if (sheetBody != null) {
             View sheet = overlayRoot.getChildAt(overlayRoot.getChildCount() - 1);
@@ -1135,15 +1199,96 @@ public final class TargetsEditorDialog {
 
     public static String targetName(String component, ResolverTargetsUiApi.Target target, String fallback) {
         if (target == null) return "不可用入口";
-        String label = target.label;
-        return label.equals(component) || label.equals(component.substring(component.indexOf('/') + 1))
-                ? fallback : label;
+        String comp = trim(component).isEmpty() ? trim(target.component) : trim(component);
+        String label = trim(target.label);
+        String appName = trim(target.appName);
+        int slash = comp.indexOf('/');
+        String packageName = slash > 0 ? comp.substring(0, slash) : "";
+        String fullClass = fullClassName(comp, packageName);
+        String relativeClass = relativeClassName(fullClass, packageName);
+        String dotRelativeClass = !packageName.isEmpty() && fullClass.startsWith(packageName + ".")
+                ? fullClass.substring(packageName.length()) : fullClass;
+        boolean generic = label.isEmpty()
+                || label.equals(comp)
+                || (!fullClass.isEmpty() && label.equals(fullClass))
+                || (!relativeClass.isEmpty() && label.equals(relativeClass))
+                || (!dotRelativeClass.isEmpty() && label.equals(dotRelativeClass))
+                || (!packageName.isEmpty() && label.equals(packageName))
+                || (!appName.isEmpty() && label.equals(appName));
+        if (!generic) return label;
+        String readable = readableActivityName(relativeClass, appName);
+        if (!readable.isEmpty()) return readable;
+        String safeFallback = trim(fallback);
+        return safeFallback.isEmpty() ? "入口" : safeFallback;
+    }
+
+    static String readableComponentSuffix(String component, String appName) {
+        String comp = trim(component);
+        int slash = comp.indexOf('/');
+        String packageName = slash > 0 ? comp.substring(0, slash) : "";
+        String className = relativeClassName(fullClassName(comp, packageName), packageName);
+        if (className.isEmpty()) return "";
+        int lastDot = className.lastIndexOf('.');
+        if (lastDot <= 0) return formatClassSegment(className, appName);
+        int prevDot = className.lastIndexOf('.', lastDot - 1);
+        String parent = className.substring(prevDot + 1, lastDot);
+        String leaf = formatClassSegment(className.substring(lastDot + 1), appName);
+        return leaf.isEmpty() ? parent : parent + "." + leaf;
+    }
+
+    private static String fullClassName(String comp, String packageName) {
+        int slash = comp.indexOf('/');
+        if (slash < 0 || slash + 1 >= comp.length()) return "";
+        String fullClass = comp.substring(slash + 1);
+        return fullClass.startsWith(".") && !packageName.isEmpty() ? packageName + fullClass : fullClass;
+    }
+
+    private static String relativeClassName(String fullClass, String packageName) {
+        if (!packageName.isEmpty() && fullClass.startsWith(packageName + ".")) {
+            return fullClass.substring(packageName.length() + 1);
+        }
+        return fullClass;
+    }
+
+    private static String readableActivityName(String className, String appName) {
+        if (className.isEmpty()) return "";
+        int dot = className.lastIndexOf('.');
+        String simple = dot >= 0 ? className.substring(dot + 1) : className;
+        String readable = formatClassSegment(simple, appName);
+        if (simple.length() <= 2 && dot > 0) {
+            int prevDot = className.lastIndexOf('.', dot - 1);
+            String parent = className.substring(prevDot + 1, dot);
+            if (!parent.isEmpty()) return parent + "." + (readable.isEmpty() ? simple : readable);
+        }
+        return readable;
+    }
+
+    private static String formatClassSegment(String segment, String appName) {
+        String normalized = segment.replace('$', ' ').replace('_', ' ')
+                .replaceAll("(?<=[a-z0-9])(?=[A-Z])", " ")
+                .replaceAll("(?<=[A-Z])(?=[A-Z][a-z])", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        if (normalized.endsWith("Activity")) {
+            String withoutSuffix = normalized.substring(0, normalized.length() - "Activity".length()).trim();
+            if (!withoutSuffix.isEmpty() && !withoutSuffix.equalsIgnoreCase(appName)) {
+                normalized = withoutSuffix;
+            }
+        }
+        return normalized;
+    }
+
+    private static String trim(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private String appName(ResolverTargetsUiApi.Target target) {
         if (target == null) return "未检测到应用";
-        return target.appName.equals(target.component.substring(0, target.component.indexOf('/')))
-                ? "应用" : target.appName;
+        String name = trim(target.appName);
+        String comp = trim(target.component);
+        int slash = comp.indexOf('/');
+        String pkg = slash > 0 ? comp.substring(0, slash) : "";
+        return name.isEmpty() || (!pkg.isEmpty() && name.equals(pkg)) ? "应用" : name;
     }
 
     private final class TargetAdapter extends BaseAdapter {
