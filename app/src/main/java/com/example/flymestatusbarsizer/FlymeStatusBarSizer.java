@@ -3,6 +3,7 @@ package com.example.flymestatusbarsizer;
 import com.example.flymestatusbarsizer.feature.share.ShareTargetsHooks;
 import com.example.flymestatusbarsizer.feature.share.GalleryShareTargetsHooks;
 import com.example.flymestatusbarsizer.feature.openwith.OpenWithTargetsHooks;
+import com.example.flymestatusbarsizer.feature.resolver.ResolverQueryHooks;
 
 import com.example.flymestatusbarsizer.config.ModuleConfig;
 import com.example.flymestatusbarsizer.config.SettingsStore;
@@ -237,6 +238,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     @Override
     public void onSystemServerStarting(XposedModuleInterface.SystemServerStartingParam param) {
         MODULE = this;
+        ResolverQueryHooks.install(this, param.getClassLoader());
         OneStepFlowLog.info("server_lifecycle",
                 "phase=onSystemServerStarting pid=" + android.os.Process.myPid());
         com.example.flymestatusbarsizer.feature.onehanded.OneStepImePolicy.install(
