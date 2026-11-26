@@ -4,14 +4,19 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.EnumMap;
+import java.util.Collections;
 import java.util.Map;
 
-/** Missing override inherits defaults; an explicit empty override follows system behavior. */
+/** Missing overrides inherit default ordering while keeping hidden entries type-specific. */
 public final class ShareTargetProfiles {
     private final Map<ShareContentType, ShareTargetRules> overrides = new EnumMap<>(ShareContentType.class);
 
     public ShareTargetRules rulesFor(ShareContentType type, ShareTargetRules defaults) {
-        return overrides.getOrDefault(type, defaults);
+        if (type == ShareContentType.DEFAULT) return defaults;
+        ShareTargetRules override = overrides.get(type);
+        return override != null
+                ? override
+                : new ShareTargetRules(defaults.order(), Collections.emptySet());
     }
 
     public boolean hasOverrides() { return !overrides.isEmpty(); }

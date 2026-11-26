@@ -99,11 +99,9 @@ public final class GalleryShareTargetsHooks {
             // Every target carries the query Intent for this selection. The hosting Activity
             // is launched with internal album extras and does not carry the share MIME.
             ShareTargetRules rules = config.shareTargetRules;
-            if (config.shareTargetProfiles.hasOverrides()) {
-                Intent payload = (Intent) intent.get(source.get(0));
-                ShareContentType type = ShareContentType.resolve((Context) context.get(adapter), payload, contentTypes);
-                rules = config.shareTargetProfiles.rulesFor(type, rules);
-            }
+            Intent payload = (Intent) intent.get(source.get(0));
+            ShareContentType type = ShareContentType.resolve((Context) context.get(adapter), payload, contentTypes);
+            rules = config.shareTargetProfiles.rulesFor(type, rules);
             if (rules.isEmpty()) return source;
             // Keep the adapter's full source list intact: More/repository refreshes rebuild
             // it again, and removing a rule must be able to restore previously hidden items.

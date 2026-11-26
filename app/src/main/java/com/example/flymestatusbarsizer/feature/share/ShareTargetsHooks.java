@@ -141,7 +141,6 @@ public final class ShareTargetsHooks {
     }
 
     static ShareTargetRules rulesFor(ModuleConfig config, Activity activity) {
-        if (!config.shareTargetProfiles.hasOverrides()) return config.shareTargetRules;
         ShareContentType type = activity == null ? ShareContentType.DEFAULT
                 : ShareContentType.resolve(activity, activity.getIntent(), CONTENT_TYPES);
         return config.shareTargetProfiles.rulesFor(type, config.shareTargetRules);

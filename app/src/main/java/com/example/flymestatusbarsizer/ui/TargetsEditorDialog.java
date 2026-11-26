@@ -38,6 +38,7 @@ import com.example.flymestatusbarsizer.MainActivity;
 import com.example.flymestatusbarsizer.R;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -723,7 +724,8 @@ public final class TargetsEditorDialog {
         }
         ResolverTargetsUiApi.Rules rules = selected.isDefault
                 ? defaults
-                : overrides.getOrDefault(selected.id, defaults);
+                : overrides.getOrDefault(selected.id,
+                        new ResolverTargetsUiApi.Rules(defaults.order, Collections.emptySet()));
         draft = new TargetsEditorDraft(targets.keySet(), rules);
         updatingSelection = true;
         independent.setEnabled(true);

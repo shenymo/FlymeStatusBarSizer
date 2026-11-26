@@ -6,6 +6,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.EnumMap;
+import java.util.Collections;
 import java.util.Map;
 
 public final class OpenWithTargetProfiles {
@@ -13,7 +14,11 @@ public final class OpenWithTargetProfiles {
             new EnumMap<>(OpenWithContentType.class);
 
     public ShareTargetRules rulesFor(OpenWithContentType type, ShareTargetRules defaults) {
-        return overrides.getOrDefault(type, defaults);
+        if (type == OpenWithContentType.DEFAULT) return defaults;
+        ShareTargetRules override = overrides.get(type);
+        return override != null
+                ? override
+                : new ShareTargetRules(defaults.order(), Collections.emptySet());
     }
 
     public boolean hasOverrides() { return !overrides.isEmpty(); }
