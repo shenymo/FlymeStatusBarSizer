@@ -252,7 +252,8 @@ public class FlymeStatusBarSizer extends XposedModule {
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
         String packageName = param.getPackageName();
         if (!param.isFirstPackage() && !MEIZU_PPS.equals(packageName)
-                && !PHONE_PACKAGE.equals(packageName) && !"android".equals(packageName)) {
+                && !PHONE_PACKAGE.equals(packageName) && !"android".equals(packageName)
+                && !ShareTargetsHooks.PACKAGE.equals(packageName)) {
             return;
         }
         MODULE = this;
@@ -262,7 +263,13 @@ public class FlymeStatusBarSizer extends XposedModule {
         if (ShareTargetsHooks.PACKAGE.equals(packageName)) {
             ShareTargetsHooks.install(this, loader);
         }
+        if (ShareTargetsHooks.SYSTEM_PACKAGE.equals(packageName)) {
+            ShareTargetsHooks.install(this, loader);
+        }
         if (OpenWithTargetsHooks.PACKAGE.equals(packageName)) {
+            OpenWithTargetsHooks.install(this, loader);
+        }
+        if (OpenWithTargetsHooks.CHOOSER_PACKAGE.equals(packageName)) {
             OpenWithTargetsHooks.install(this, loader);
         }
         if (GalleryShareTargetsHooks.PACKAGE.equals(packageName)) {

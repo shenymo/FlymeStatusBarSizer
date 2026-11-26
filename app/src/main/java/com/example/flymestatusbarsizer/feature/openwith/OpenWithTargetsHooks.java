@@ -15,7 +15,10 @@ import java.util.List;
 
 public final class OpenWithTargetsHooks {
     public static final String PACKAGE = "android";
+    public static final String CHOOSER_PACKAGE = "com.android.intentresolver";
     private static final String RESOLVER = "com.android.internal.app.ResolverActivity";
+    private static final String MZ_RESOLVER = "com.android.internal.chooser.MzResolverActivity";
+    private static final String CHOOSER = "com.android.intentresolver.ChooserActivity";
     private static final String TAG = "FlymeStatusBarSizer";
 
     private OpenWithTargetsHooks() { }
@@ -38,7 +41,7 @@ public final class OpenWithTargetsHooks {
                 }
                 try {
                     Object activity = activityField.get(chain.getThisObject());
-                    if (!(activity instanceof Activity) || !RESOLVER.equals(activity.getClass().getName())) {
+                    if (!(activity instanceof Activity) || !isResolverActivity((Activity) activity)) {
                         return original;
                     }
                     ShareTargetRules rules = rulesFor(config, (Activity) activity);
@@ -63,9 +66,7 @@ public final class OpenWithTargetsHooks {
         try {
             Class<?> adapter = Class.forName("com.android.internal.chooser.adapter.BaseResolverAdapter", false, loader);
             Field activityField = adapter.getDeclaredField("mActivity");
-            Field isChooser = adapter.getDeclaredField("mIsChooserActivity");
             activityField.setAccessible(true);
-            isChooser.setAccessible(true);
             Method rebuild = adapter.getDeclaredMethod("rebuildData", List.class);
             rebuild.setAccessible(true);
             module.intercept(rebuild, chain -> {
@@ -74,10 +75,9 @@ public final class OpenWithTargetsHooks {
                 try {
                     ModuleConfig config = ModuleConfig.load(null);
                     if (config.enabled && config.openWithTargetsEnabled
-                            && !isChooser.getBoolean(chain.getThisObject())
                             && args.length > 0 && args[0] instanceof List<?>) {
                         Activity activity = (Activity) activityField.get(chain.getThisObject());
-                        if (activity != null && RESOLVER.equals(activity.getClass().getName())) {
+                        if (activity != null && isResolverActivity(activity)) {
                             ShareTargetRules rules = rulesFor(config, activity);
                             if (!rules.isEmpty()) {
                                 replacement = new Object[]{rules.apply((List<?>) args[0],
@@ -97,13 +97,29 @@ public final class OpenWithTargetsHooks {
     }
 
     private static ShareTargetRules rulesFor(ModuleConfig config, Activity activity) {
-        android.content.Intent intent = activity.getIntent();
+        android.content.Intent intent = targetIntent(activity);
         if (intent == null || (!android.content.Intent.ACTION_VIEW.equals(intent.getAction())
                 && !android.content.Intent.ACTION_EDIT.equals(intent.getAction()))) {
             return ShareTargetRules.EMPTY;
         }
         OpenWithContentType type = OpenWithContentType.resolve(activity, intent);
         return config.openWithTargetProfiles.rulesFor(type, config.openWithTargetRules);
+    }
+
+    private static boolean isResolverActivity(Activity activity) {
+        String name = activity.getClass().getName();
+        return RESOLVER.equals(name) || MZ_RESOLVER.equals(name) || CHOOSER.equals(name);
+    }
+
+    private static android.content.Intent targetIntent(Activity activity) {
+        android.content.Intent intent = activity == null ? null : activity.getIntent();
+        for (int depth = 0; intent != null && depth < 3
+                && android.content.Intent.ACTION_CHOOSER.equals(intent.getAction()); depth++) {
+            Object nested = intent.getParcelableExtra(android.content.Intent.EXTRA_INTENT);
+            if (!(nested instanceof android.content.Intent)) return intent;
+            intent = (android.content.Intent) nested;
+        }
+        return intent;
     }
 
     private static void deoptimize(FlymeStatusBarSizer module, Class<?> type, String... names) {

@@ -19,8 +19,12 @@ import java.util.Map;
 
 public final class ShareTargetsHooks {
     public static final String PACKAGE = "com.android.intentresolver";
+    public static final String SYSTEM_PACKAGE = "android";
     private static final ShareContentType.Cache CONTENT_TYPES = new ShareContentType.Cache();
     private static final String TAG = "FlymeStatusBarSizer";
+    private static final String RESOLVER = "com.android.internal.app.ResolverActivity";
+    private static final String MZ_RESOLVER = "com.android.internal.chooser.MzResolverActivity";
+    private static final String CHOOSER = "com.android.intentresolver.ChooserActivity";
 
     private ShareTargetsHooks() {}
 
@@ -41,8 +45,7 @@ public final class ShareTargetsHooks {
                         || !(original instanceof List<?>)) return original;
                 try {
                     Object activity = activityField.get(chain.getThisObject());
-                    if (!(activity instanceof Activity)
-                            || !"com.android.intentresolver.ChooserActivity".equals(activity.getClass().getName())) {
+                    if (!(activity instanceof Activity) || !isResolverActivity((Activity) activity)) {
                         return original;
                     }
                     // Runs before the system's zero/one-target checks and before adapter grouping.
@@ -68,8 +71,6 @@ public final class ShareTargetsHooks {
             Class<?> adapter = Class.forName("com.android.internal.chooser.adapter.BaseResolverAdapter", false, loader);
             Field activityField = adapter.getDeclaredField("mActivity");
             activityField.setAccessible(true);
-            Field isChooser = adapter.getDeclaredField("mIsChooserActivity");
-            isChooser.setAccessible(true);
             Field iconDpi = adapter.getDeclaredField("mIconDpi");
             iconDpi.setAccessible(true);
             Field resources = adapter.getDeclaredField("mResources");
@@ -91,17 +92,18 @@ public final class ShareTargetsHooks {
                 Object[] replacement = args;
                 try {
                     ModuleConfig config = ModuleConfig.load(null);
-                    if (config.enabled && config.shareTargetsEnabled
-                            && isChooser.getBoolean(chain.getThisObject()) && args[0] instanceof List<?>) {
+                    if (config.enabled && config.shareTargetsEnabled && args[0] instanceof List<?>) {
                         Activity activity = (Activity) activityField.get(chain.getThisObject());
-                        ShareTargetRules rules = rulesFor(config, activity);
-                        if (!rules.isEmpty()) {
-                            List<?> targets = rules.apply((List<?>) args[0],
-                                    value -> componentOf(value, resolveInfoField));
-                            replacement = new Object[]{targets};
-                            prefetchOrderedIcons(activity, chain.getThisObject(), targets, rules,
-                                    resolveInfoField, displayIcon,
-                                    iconDpi, resources, imageLoader, loadIcon);
+                        if (isResolverActivity(activity)) {
+                            ShareTargetRules rules = rulesFor(config, activity);
+                            if (!rules.isEmpty()) {
+                                List<?> targets = rules.apply((List<?>) args[0],
+                                        value -> componentOf(value, resolveInfoField));
+                                replacement = new Object[]{targets};
+                                prefetchOrderedIcons(activity, chain.getThisObject(), targets, rules,
+                                        resolveInfoField, displayIcon,
+                                        iconDpi, resources, imageLoader, loadIcon);
+                            }
                         }
                     }
                 } catch (Throwable error) {
@@ -141,9 +143,28 @@ public final class ShareTargetsHooks {
     }
 
     static ShareTargetRules rulesFor(ModuleConfig config, Activity activity) {
-        ShareContentType type = activity == null ? ShareContentType.DEFAULT
-                : ShareContentType.resolve(activity, activity.getIntent(), CONTENT_TYPES);
+        android.content.Intent intent = targetIntent(activity);
+        if (intent == null || (!android.content.Intent.ACTION_SEND.equals(intent.getAction())
+                && !android.content.Intent.ACTION_SEND_MULTIPLE.equals(intent.getAction()))) {
+            return ShareTargetRules.EMPTY;
+        }
+        ShareContentType type = ShareContentType.resolve(activity, activity.getIntent(), CONTENT_TYPES);
         return config.shareTargetProfiles.rulesFor(type, config.shareTargetRules);
+    }
+
+    private static boolean isResolverActivity(Activity activity) {
+        if (activity == null) return false;
+        String name = activity.getClass().getName();
+        return RESOLVER.equals(name) || MZ_RESOLVER.equals(name) || CHOOSER.equals(name);
+    }
+
+    private static android.content.Intent targetIntent(Activity activity) {
+        android.content.Intent intent = activity == null ? null : activity.getIntent();
+        if (intent != null && android.content.Intent.ACTION_CHOOSER.equals(intent.getAction())) {
+            Object nested = intent.getParcelableExtra(android.content.Intent.EXTRA_INTENT);
+            if (nested instanceof android.content.Intent) return (android.content.Intent) nested;
+        }
+        return intent;
     }
 
     private static void deoptimize(FlymeStatusBarSizer module, Class<?> type, String... names) {
