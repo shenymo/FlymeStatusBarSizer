@@ -18,6 +18,8 @@ public enum RestartTarget {
             "修改 OneMind 设置后，需重启 OneMind 才能生效。"),
     PHONE_MANAGER("com.meizu.safe", "手机管家",
             "修改后台优化设置后，需重启手机管家才能生效。"),
+    PACKAGE_INSTALLER("com.android.packageinstaller", "软件包安装程序",
+            "重启软件包安装程序后，下次安装应用时生效。"),
     PHONE_SERVICE("com.android.phone", "电话服务",
             "重启电话服务期间，通话和短信功能会短暂中断。"),
     CARLINK("com.upuphone.carlink", "CarLink",
@@ -47,7 +49,7 @@ public enum RestartTarget {
         return switch (this) {
             case SYSTEM_UI -> new String[]{
                     "killall " + packageName, "pkill -f " + packageName, "am crash " + packageName};
-            case SHARE_RESOLVER, GALLERY, LAUNCHER -> new String[]{
+            case SHARE_RESOLVER, GALLERY, LAUNCHER, PACKAGE_INSTALLER -> new String[]{
                     "am force-stop " + packageName, "pkill -f " + packageName, "killall " + packageName};
             // Keep bound services eligible for reconnection; force-stop removes their bindings.
             case ASSISTANT -> new String[]{"killall " + packageName, "pkill -f " + packageName};

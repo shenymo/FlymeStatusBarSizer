@@ -3823,6 +3823,10 @@ public class MainActivity extends AppCompatActivity {
         return settingsCardFactory.createLauncherRecentsSettingsCard();
     }
 
+    public View createPackageInstallerSettingsCard() {
+        return settingsCardFactory.createPackageInstallerSettingsCard();
+    }
+
     public View createSystemAppearanceSettingsCard() {
         return settingsCardFactory.createSystemAppearanceSettingsCard();
     }

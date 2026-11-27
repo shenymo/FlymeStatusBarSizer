@@ -433,6 +433,8 @@ public final class ModuleConfig {
     public boolean oneMindPerfDisableEnabled = SettingsStore.DEFAULT_ONEMIND_PERF_DISABLE_ENABLED;
     public boolean mzSafeBackgroundOptimizationEnabled =
             SettingsStore.DEFAULT_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED;
+    public boolean packageInstallerSafetyBypassEnabled =
+            SettingsStore.DEFAULT_PACKAGE_INSTALLER_SAFETY_BYPASS_ENABLED;
     public boolean oneMindLogcatEnabled = SettingsStore.DEFAULT_ONEMIND_LOGCAT_ENABLED;
     public int telephonyDebugSimCount = SettingsStore.DEFAULT_TELEPHONY_DEBUG_SIM_COUNT;
     public int telephonyDebugDefaultDataSlot = SettingsStore.DEFAULT_TELEPHONY_DEBUG_DEFAULT_DATA_SLOT;
@@ -1401,6 +1403,10 @@ public final class ModuleConfig {
                     prefs,
                     SettingsStore.KEY_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED,
                     SettingsStore.DEFAULT_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED);
+            config.packageInstallerSafetyBypassEnabled = SettingsStore.readBoolean(
+                    prefs,
+                    SettingsStore.KEY_PACKAGE_INSTALLER_SAFETY_BYPASS_ENABLED,
+                    SettingsStore.DEFAULT_PACKAGE_INSTALLER_SAFETY_BYPASS_ENABLED);
             config.oneMindLogcatEnabled = SettingsStore.readBoolean(
                     prefs,
                     SettingsStore.KEY_ONEMIND_LOGCAT_ENABLED,

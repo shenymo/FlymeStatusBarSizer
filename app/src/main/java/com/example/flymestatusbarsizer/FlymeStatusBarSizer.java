@@ -101,6 +101,7 @@ public class FlymeStatusBarSizer extends XposedModule {
     private static final String FLYME_SYSTEMUI_TOOLS = "com.flyme.systemuitools";
     private static final String MEIZU_PPS = "com.meizu.pps";
     private static final String CARLINK = "com.upuphone.carlink";
+    private static final String PACKAGE_INSTALLER = "com.android.packageinstaller";
     private static volatile FlymeStatusBarSizer MODULE;
     private static volatile ModuleConfig launcherRecentsConfigSource;
     private static volatile LauncherRecentsConfigSnapshot launcherRecentsConfigSnapshot;
@@ -255,7 +256,8 @@ public class FlymeStatusBarSizer extends XposedModule {
         String packageName = param.getPackageName();
         if (!param.isFirstPackage() && !MEIZU_PPS.equals(packageName)
                 && !PHONE_PACKAGE.equals(packageName) && !"android".equals(packageName)
-                && !ShareTargetsHooks.PACKAGE.equals(packageName)) {
+                && !ShareTargetsHooks.PACKAGE.equals(packageName)
+                && !PACKAGE_INSTALLER.equals(packageName)) {
             return;
         }
         MODULE = this;
@@ -300,6 +302,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         }
         if ("com.meizu.safe".equals(packageName)) {
             MzSafeOptimizationHooks.install(this, loader);
+        }
+        if (PACKAGE_INSTALLER.equals(packageName)) {
+            com.example.flymestatusbarsizer.feature.mzsafe.PackageInstallerHooks.install(this, loader);
         }
         if (PHONE_PACKAGE.equals(packageName)) {
             com.example.flymestatusbarsizer.feature.ime.VerificationCodeHooks.install(this, loader);
@@ -727,6 +732,11 @@ public class FlymeStatusBarSizer extends XposedModule {
     public static boolean isMzSafeBackgroundOptimizationEnabled() {
         ModuleConfig config = ModuleConfig.load(null);
         return config != null && config.enabled && config.mzSafeBackgroundOptimizationEnabled;
+    }
+
+    public static boolean isPackageInstallerSafetyBypassEnabled() {
+        ModuleConfig config = ModuleConfig.load(null);
+        return config != null && config.enabled && config.packageInstallerSafetyBypassEnabled;
     }
 
     public static boolean isOneMindLogcatEnabled() {

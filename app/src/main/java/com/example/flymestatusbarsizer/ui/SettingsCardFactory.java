@@ -836,6 +836,19 @@ public final class SettingsCardFactory {
                 content);
     }
 
+    public View createPackageInstallerSettingsCard() {
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        activity.addSwitchRow(content, "纯净安装器",
+                "跳过 Flyme 安全扫描和联网风险检查，但仍保留系统安装确认。",
+                SettingsStore.KEY_PACKAGE_INSTALLER_SAFETY_BYPASS_ENABLED,
+                SettingsStore.DEFAULT_PACKAGE_INSTALLER_SAFETY_BYPASS_ENABLED);
+        return activity.buildSectionCard(
+                "纯净安装器",
+                "调整软件包安装程序行为，修改后重启软件包安装程序生效。",
+                content);
+    }
+
     public View createSystemAppearanceSettingsCard() {
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);

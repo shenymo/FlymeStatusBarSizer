@@ -6,6 +6,7 @@ com.android.intentresolver
 com.meizu.media.gallery
 com.meizu.pps
 com.meizu.safe
+com.android.packageinstaller
 com.meizu.flyme.launcher
 com.meizu.assistant
 com.flyme.systemuitools
