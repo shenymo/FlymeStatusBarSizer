@@ -3,6 +3,8 @@ package com.example.flymestatusbarsizer.feature.mzsafe;
 import com.example.flymestatusbarsizer.FlymeStatusBarSizer;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.Context;
@@ -14,6 +16,7 @@ import android.content.pm.SigningInfo;
 import android.content.res.Resources;
 import android.database.Cursor;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -26,15 +29,22 @@ import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.system.Os;
 import android.text.Layout;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
 import android.text.TextUtils;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -248,14 +258,21 @@ public final class PackageInstallerHooks {
             return;
         }
 
+        String apkIdentity = buildApkIdentity(pkgInfo, apkFile, sourceUri);
+        if (!TextUtils.equals(views.boundApkIdentity, apkIdentity)) {
+            views.boundApkIdentity = apkIdentity;
+            setSignatureExpanded(views, false, false);
+            clearCopyFeedback(views);
+        }
+
         boolean isInstalled = isActuallyInstalled(installedPkgInfo, installedAppInfo);
-        views.versionValue.setText(formatVersionText(pkgInfo, isInstalled ? installedPkgInfo : null));
+        bindVersionRows(views, pkgInfo, isInstalled ? installedPkgInfo : null);
+
         boolean needsAsyncPath = isContentUri(sourceUri);
         if (needsAsyncPath) {
-            views.pathValue.setText("解析中...");
+            bindPendingPathRow(views, "解析中...");
         } else {
-            views.pathValue.setText(formatPathText(
-                    resolveFileUriPath(sourceUri, stagedFile), sourceUri, apkFile, stagedFile));
+            bindPathRow(views, resolveFileUriPath(sourceUri, stagedFile), sourceUri, apkFile, stagedFile);
         }
 
         SignatureData apkSigData = extractSignatureData(pkgInfo);
@@ -268,15 +285,15 @@ public final class PackageInstallerHooks {
                 && (pkgInfo.signingInfo == null
                 || (isInstalled && installedPkgInfo.signingInfo == null));
         if (needsAsyncSignature && apkFile != null) {
-            views.signatureValue.setText("解析中...");
+            bindPendingSignatureSection(views, "解析中...");
         } else {
-            views.signatureValue.setText(formatSignatureText(isInstalled, apkSigData, installedSigData));
+            bindSignatureSection(views, isInstalled, apkSigData, installedSigData);
         }
 
         if (apkFile != null || needsAsyncPath) {
-            views.abiValue.setText(apkFile != null ? "解析中..." : "无本地 APK 文件");
+            views.abiRow.valueView.setText(apkFile != null ? "解析中..." : "无本地 APK 文件");
             Object requestToken = new Object();
-            views.abiValue.setTag(requestToken);
+            views.abiRow.valueView.setTag(requestToken);
             String packageName = pkgInfo.packageName;
             boolean fetchApkSig = apkFile != null && (apkSigData.currentDigests.isEmpty()
                     || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && pkgInfo.signingInfo == null));
@@ -291,37 +308,44 @@ public final class PackageInstallerHooks {
                 SignatureData resolvedInstalledSig = fetchInstalledSig
                         ? preferNonEmpty(extractInstalledSignatureData(activity, packageName), installedSigData)
                         : installedSigData;
-                String sigText = apkFile != null && (needsAsyncSignature || needsSigningInfoRefresh)
-                        ? formatSignatureText(isInstalled, resolvedApkSig, resolvedInstalledSig)
-                        : null;
-                String pathText = needsAsyncPath
-                        ? formatPathText(resolveContentUriPath(activity, sourceUri, stagedFile),
-                                sourceUri, apkFile, stagedFile)
+                boolean shouldUpdateSig = apkFile != null && (needsAsyncSignature || needsSigningInfoRefresh);
+                String resolvedContentPath = needsAsyncPath
+                        ? resolveContentUriPath(activity, sourceUri, stagedFile)
                         : null;
                 views.container.post(() -> {
                     if (activity.isFinishing() || activity.isDestroyed()) {
                         return;
                     }
-                    if (views.abiValue.getTag() != requestToken) {
+                    if (views.abiRow.valueView.getTag() != requestToken) {
                         return;
                     }
                     if (abiText != null) {
-                        views.abiValue.setText(abiText);
+                        views.abiRow.valueView.setText(abiText);
                     }
-                    if (sigText != null) {
-                        views.signatureValue.setText(sigText);
+                    if (shouldUpdateSig) {
+                        bindSignatureSection(views, isInstalled, resolvedApkSig, resolvedInstalledSig);
                     }
-                    if (pathText != null) {
-                        views.pathValue.setText(pathText);
+                    if (needsAsyncPath) {
+                        bindPathRow(views, resolvedContentPath, sourceUri, apkFile, stagedFile);
                     }
                 });
             });
         } else {
-            views.abiValue.setTag(null);
-            views.abiValue.setText("无本地 APK 文件");
+            views.abiRow.valueView.setTag(null);
+            views.abiRow.valueView.setText("无本地 APK 文件");
         }
 
         syncDetailVisibilityWithCurrentContent(activity, fields, views.container);
+    }
+
+    private static String buildApkIdentity(PackageInfo pkgInfo, File apkFile, Uri sourceUri) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(pkgInfo.packageName != null ? pkgInfo.packageName : "");
+        sb.append('|').append(getVersionCodeCompat(pkgInfo));
+        sb.append('|').append(pkgInfo.versionName != null ? pkgInfo.versionName : "");
+        sb.append('|').append(apkFile != null ? apkFile.getAbsolutePath() : "");
+        sb.append('|').append(sourceUri != null ? sourceUri.toString() : "");
+        return sb.toString();
     }
 
     private static void syncDetailVisibilityWithCurrentContent(
@@ -369,7 +393,6 @@ public final class PackageInstallerHooks {
     }
 
     private static DetailViews ensureDetailViews(Activity activity, TextView refVersionView) {
-        Resources res = activity.getResources();
         String pkg = activity.getPackageName();
         ViewGroup contentPanel = findContentPanel(activity);
         if (contentPanel == null) {
@@ -380,25 +403,13 @@ public final class PackageInstallerHooks {
             return (DetailViews) existing.getTag(DETAIL_VIEWS_TAG_KEY);
         }
 
-        int marginMedium = resolveDimenAttrOrFallback(
-                activity, pkg, "marginMedium", "fd_sys_margin_medium", 16);
-        int marginSmall = resolveDimenAttrOrFallback(
-                activity, pkg, "marginSmall", "fd_sys_margin_small", 8);
-        int dividerColor = resolveColorAttrOrFallback(
-                activity, pkg, "colorOutlineVariant", "fd_sys_color_outline_variant_default", 0x0D000000);
-        int textFallbackColor = resolveColorAttrOrFallback(
-                activity, pkg, "colorOnSurfaceVariant", "fd_sys_color_on_surface_variant_default", 0x993C3C43);
-        int styleId = res.getIdentifier("apk_detail_info", "style", pkg);
-        int dimenId = res.getIdentifier("apk_detail_info_sp", "dimen", pkg);
-        int labelGapPx = dpToPx(activity, 2);
-        int rowPaddingVerticalPx = dpToPx(activity, 12);
-        int dividerHeightPx = Math.max(1, dpToPx(activity, 1));
+        DetailTheme theme = DetailTheme.resolve(activity, pkg, refVersionView);
 
         LinearLayout card = new LinearLayout(activity);
         card.setTag(DETAIL_PANEL_TAG);
         card.setOrientation(LinearLayout.VERTICAL);
-        applyCardBackground(activity, pkg, card);
-        card.setPadding(marginMedium, 0, marginMedium, 0);
+        card.setBackground(null);
+        card.setPadding(theme.cardHorizontalPaddingPx, 0, theme.cardHorizontalPaddingPx, 0);
 
         ViewGroup.MarginLayoutParams cardParams;
         if (contentPanel instanceof FrameLayout) {
@@ -412,9 +423,9 @@ public final class PackageInstallerHooks {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT);
         }
-        cardParams.setMarginStart(marginMedium);
-        cardParams.setMarginEnd(marginMedium);
-        cardParams.bottomMargin = marginSmall;
+        cardParams.setMarginStart(theme.marginMediumPx);
+        cardParams.setMarginEnd(theme.marginMediumPx);
+        cardParams.bottomMargin = theme.marginSmallPx;
         card.setLayoutParams(cardParams);
 
         ScrollView scrollView = new ScrollView(activity);
@@ -428,60 +439,75 @@ public final class PackageInstallerHooks {
         rowsContainer.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
+        rowsContainer.setPadding(0, theme.marginSmallPx / 2, 0, theme.marginSmallPx / 2);
 
-        TextView versionValue = addDetailRow(
-                activity, rowsContainer, "版本", refVersionView,
-                styleId, dimenId, textFallbackColor, labelGapPx, rowPaddingVerticalPx);
-        addDivider(activity, rowsContainer, dividerColor, dividerHeightPx);
-        TextView abiValue = addDetailRow(
-                activity, rowsContainer, "支持 ABI", refVersionView,
-                styleId, dimenId, textFallbackColor, labelGapPx, rowPaddingVerticalPx);
-        addDivider(activity, rowsContainer, dividerColor, dividerHeightPx);
-        TextView signatureValue = addDetailRow(
-                activity, rowsContainer, "签名", refVersionView,
-                styleId, dimenId, textFallbackColor, labelGapPx, rowPaddingVerticalPx);
-        addDivider(activity, rowsContainer, dividerColor, dividerHeightPx);
-        TextView pathValue = addDetailRow(
-                activity, rowsContainer, "本地路径", refVersionView,
-                styleId, dimenId, textFallbackColor, labelGapPx, rowPaddingVerticalPx);
+        DetailRow installedVersionRow = createDetailRow(activity, rowsContainer, "当前版本", theme, true);
+        View installedVersionDivider = addDivider(activity, rowsContainer, theme.dividerColor, theme.dividerHeightPx);
+        DetailRow targetVersionRow = createDetailRow(activity, rowsContainer, "待安装版本", theme, true);
+        addDivider(activity, rowsContainer, theme.dividerColor, theme.dividerHeightPx);
+        DetailRow abiRow = createDetailRow(activity, rowsContainer, "支持 ABI", theme, false);
+        addDivider(activity, rowsContainer, theme.dividerColor, theme.dividerHeightPx);
+
+        SignatureSection signatureSection = createSignatureSection(activity, rowsContainer, theme);
+        addDivider(activity, rowsContainer, theme.dividerColor, theme.dividerHeightPx);
+        DetailRow pathRow = createDetailRow(activity, rowsContainer, "本地路径", theme, true);
 
         scrollView.addView(rowsContainer);
         card.addView(scrollView);
 
-        DetailViews views = new DetailViews(card, versionValue, abiValue, signatureValue, pathValue);
+        DetailViews views = new DetailViews(
+                activity,
+                card,
+                theme,
+                installedVersionRow,
+                installedVersionDivider,
+                targetVersionRow,
+                abiRow,
+                signatureSection,
+                pathRow);
+
+        bindCopyLongPress(views, installedVersionRow.rowView);
+        bindCopyLongPress(views, targetVersionRow.rowView);
+        bindCopyLongPress(views, pathRow.rowView);
+        bindCopyLongPress(views, signatureSection.headerRowView);
+        bindCopyLongPress(views, signatureSection.apkDigestRow.rowView);
+        bindCopyLongPress(views, signatureSection.installedDigestRow.rowView);
+
+        signatureSection.headerRowView.setOnClickListener(v ->
+                setSignatureExpanded(views, !views.signatureExpanded, true));
+
         card.setTag(DETAIL_VIEWS_TAG_KEY, views);
         contentPanel.addView(card);
         return views;
     }
 
-    private static TextView addDetailRow(
+    private static DetailRow createDetailRow(
             Activity activity,
             LinearLayout parent,
             String label,
-            TextView refVersionView,
-            int styleId,
-            int dimenId,
-            int textFallbackColor,
-            int labelGapPx,
-            int rowPaddingVerticalPx) {
+            DetailTheme theme,
+            boolean interactive) {
         LinearLayout row = new LinearLayout(activity);
         row.setOrientation(LinearLayout.VERTICAL);
-        row.setPadding(0, rowPaddingVerticalPx, 0, rowPaddingVerticalPx);
+        row.setPadding(theme.rowHorizontalPaddingPx, theme.rowPaddingVerticalPx,
+                theme.rowHorizontalPaddingPx, theme.rowPaddingVerticalPx);
         row.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
+        if (interactive) {
+            applyInteractiveForeground(activity, row);
+            row.setLongClickable(true);
+        }
 
-        TextView labelView = createDetailTextView(
-                activity, refVersionView, styleId, dimenId, textFallbackColor);
+        TextView labelView = createStyledTextView(activity, theme, theme.labelTextSizePx, theme.labelColor);
         labelView.setText(label);
         LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
-        labelParams.bottomMargin = labelGapPx;
+        labelParams.bottomMargin = theme.labelGapPx;
         labelView.setLayoutParams(labelParams);
 
-        TextView valueView = createDetailTextView(
-                activity, refVersionView, styleId, dimenId, textFallbackColor);
+        TextView valueView = createStyledTextView(activity, theme, theme.valueTextSizePx, theme.valueColor);
         valueView.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -489,25 +515,174 @@ public final class PackageInstallerHooks {
         row.addView(labelView);
         row.addView(valueView);
         parent.addView(row);
-        return valueView;
+        return new DetailRow(row, labelView, valueView);
     }
 
-    private static void addDivider(Activity activity, LinearLayout parent, int color, int heightPx) {
+    private static SignatureSection createSignatureSection(
+            Activity activity,
+            LinearLayout parent,
+            DetailTheme theme) {
+        LinearLayout container = new LinearLayout(activity);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout headerRow = new LinearLayout(activity);
+        headerRow.setOrientation(LinearLayout.HORIZONTAL);
+        headerRow.setGravity(Gravity.CENTER_VERTICAL);
+        headerRow.setPadding(theme.rowHorizontalPaddingPx, theme.rowPaddingVerticalPx,
+                theme.rowHorizontalPaddingPx, theme.rowPaddingVerticalPx);
+        headerRow.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        applyInteractiveForeground(activity, headerRow);
+        headerRow.setClickable(true);
+        headerRow.setLongClickable(true);
+
+        LinearLayout leftColumn = new LinearLayout(activity);
+        leftColumn.setOrientation(LinearLayout.VERTICAL);
+        leftColumn.setLayoutParams(new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView labelView = createStyledTextView(activity, theme, theme.labelTextSizePx, theme.labelColor);
+        labelView.setText("签名");
+        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        labelParams.bottomMargin = theme.labelGapPx;
+        labelView.setLayoutParams(labelParams);
+
+        TextView summaryView = createStyledTextView(activity, theme, theme.valueTextSizePx, theme.valueColor);
+        summaryView.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        leftColumn.addView(labelView);
+        leftColumn.addView(summaryView);
+
+        ImageView arrowView = createExpandArrowView(activity, theme);
+        TextView arrowFallbackView = null;
+        if (arrowView == null) {
+            arrowFallbackView = createStyledTextView(activity, theme, theme.labelTextSizePx, theme.labelColor);
+            arrowFallbackView.setText("展开");
+            LinearLayout.LayoutParams fallbackParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            fallbackParams.setMarginStart(theme.marginSmallPx);
+            arrowFallbackView.setLayoutParams(fallbackParams);
+        }
+
+        headerRow.addView(leftColumn);
+        if (arrowView != null) {
+            headerRow.addView(arrowView);
+        } else {
+            headerRow.addView(arrowFallbackView);
+        }
+
+        LinearLayout digestContainer = new LinearLayout(activity);
+        digestContainer.setOrientation(LinearLayout.VERTICAL);
+        digestContainer.setVisibility(View.GONE);
+        digestContainer.setPadding(0, 0, 0, theme.marginSmallPx);
+        digestContainer.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        DetailRow apkDigestRow = createDigestSubRow(activity, digestContainer, "SHA-256", theme);
+        DetailRow installedDigestRow = createDigestSubRow(activity, digestContainer, "已安装 SHA-256", theme);
+
+        container.addView(headerRow);
+        container.addView(digestContainer);
+        parent.addView(container);
+
+        return new SignatureSection(
+                headerRow,
+                summaryView,
+                arrowView,
+                arrowFallbackView,
+                digestContainer,
+                apkDigestRow,
+                installedDigestRow);
+    }
+
+    private static DetailRow createDigestSubRow(
+            Activity activity,
+            LinearLayout parent,
+            String label,
+            DetailTheme theme) {
+        LinearLayout row = new LinearLayout(activity);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(theme.rowHorizontalPaddingPx, theme.subRowPaddingVerticalPx,
+                theme.rowHorizontalPaddingPx, theme.subRowPaddingVerticalPx);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowParams.topMargin = theme.labelGapPx;
+        row.setLayoutParams(rowParams);
+        applySubtleContainerBackground(row, theme.subCardBgColor, theme.highlightCornerRadiusPx);
+        applyInteractiveForeground(activity, row);
+        row.setLongClickable(true);
+
+        TextView labelView = createStyledTextView(activity, theme, theme.subLabelTextSizePx, theme.labelColor);
+        labelView.setText(label);
+        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        labelParams.bottomMargin = theme.labelGapPx;
+        labelView.setLayoutParams(labelParams);
+
+        TextView valueView = createStyledTextView(activity, theme, theme.digestTextSizePx, theme.valueColor);
+        valueView.setTypeface(Typeface.MONOSPACE);
+        valueView.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        row.addView(labelView);
+        row.addView(valueView);
+        parent.addView(row);
+        return new DetailRow(row, labelView, valueView);
+    }
+
+    private static ImageView createExpandArrowView(Activity activity, DetailTheme theme) {
+        Resources res = activity.getResources();
+        String pkg = activity.getPackageName();
+        int arrowId = res.getIdentifier("service_record_arrow", "drawable", pkg);
+        if (arrowId == 0) {
+            arrowId = res.getIdentifier("mz_arrow_next_right", "drawable", pkg);
+        }
+        if (arrowId == 0) {
+            return null;
+        }
+        Drawable arrowDrawable = activity.getDrawable(arrowId);
+        if (arrowDrawable == null) {
+            return null;
+        }
+        ImageView arrow = new ImageView(activity);
+        arrow.setImageDrawable(arrowDrawable);
+        arrow.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int sizePx = dpToPx(activity, 18);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(sizePx, sizePx);
+        params.setMarginStart(theme.marginSmallPx);
+        arrow.setLayoutParams(params);
+        return arrow;
+    }
+
+    private static View addDivider(Activity activity, LinearLayout parent, int color, int heightPx) {
         View divider = new View(activity);
         divider.setBackgroundColor(color);
         divider.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, heightPx));
         parent.addView(divider);
+        return divider;
     }
 
-    private static TextView createDetailTextView(
+    private static TextView createStyledTextView(
             Activity activity,
-            TextView refView,
-            int styleId,
-            int dimenId,
-            int fallbackColor) {
-        TextView textView = styleId != 0
-                ? new TextView(activity, null, 0, styleId)
+            DetailTheme theme,
+            float textSizePx,
+            int textColor) {
+        TextView textView = theme.styleId != 0
+                ? new TextView(activity, null, 0, theme.styleId)
                 : new TextView(activity);
         textView.setSingleLine(false);
         textView.setMaxLines(Integer.MAX_VALUE);
@@ -515,46 +690,139 @@ public final class PackageInstallerHooks {
         textView.setHorizontallyScrolling(false);
         textView.setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE);
         textView.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
-        if (refView != null) {
-            textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, refView.getTextSize());
-            textView.setTextColor(refView.getTextColors());
-            if (refView.getTypeface() != null) {
-                textView.setTypeface(refView.getTypeface());
-            }
-            textView.setLetterSpacing(refView.getLetterSpacing());
-        } else {
-            if (dimenId != 0) {
-                textView.setTextSize(TypedValue.COMPLEX_UNIT_PX,
-                        activity.getResources().getDimension(dimenId));
-            } else {
-                textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f);
-            }
-            textView.setTextColor(fallbackColor);
+        textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, textSizePx);
+        textView.setTextColor(textColor);
+        if (theme.baseTypeface != null) {
+            textView.setTypeface(theme.baseTypeface);
         }
+        textView.setLetterSpacing(theme.letterSpacing);
         return textView;
     }
 
-    private static void applyCardBackground(Activity activity, String pkg, View card) {
-        int bgId = activity.getResources().getIdentifier("service_record_bg", "drawable", pkg);
-        if (bgId != 0) {
-            Drawable bg = activity.getDrawable(bgId);
-            if (bg != null) {
-                card.setBackground(bg);
-                return;
+    private static void applyInteractiveForeground(Activity activity, View view) {
+        TypedValue out = new TypedValue();
+        if (activity.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, out, true)
+                && out.resourceId != 0) {
+            Drawable ripple = activity.getDrawable(out.resourceId);
+            if (ripple != null) {
+                view.setForeground(ripple);
             }
         }
-        int bgColor = resolveColorAttrOrFallback(
-                activity, pkg, "colorSurfaceContainerLow", null, 0x0A000000);
-        GradientDrawable fallback = new GradientDrawable();
-        fallback.setColor(bgColor);
-        fallback.setCornerRadius(dpToPx(activity, 8));
-        card.setBackground(fallback);
+    }
+
+    private static void applySubtleContainerBackground(View view, int color, int cornerRadiusPx) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(color);
+        bg.setCornerRadius(cornerRadiusPx);
+        view.setTag(BASE_BG_TAG_KEY, bg);
+        view.setBackground(bg);
+    }
+
+    private static final int COPY_TARGET_TAG_KEY = 0x7f5a0002;
+    private static final int BASE_BG_TAG_KEY = 0x7f5a0003;
+
+    private static void bindCopyLongPress(DetailViews views, View targetView) {
+        targetView.setOnLongClickListener(v -> {
+            Object tag = v.getTag(COPY_TARGET_TAG_KEY);
+            if (!(tag instanceof CopyTarget)) {
+                return false;
+            }
+            CopyTarget copyTarget = (CopyTarget) tag;
+            handleCopyTarget(views, v, copyTarget);
+            return true;
+        });
+    }
+
+    private static void setCopyTarget(View targetView, CopyTarget copyTarget) {
+        targetView.setTag(COPY_TARGET_TAG_KEY, copyTarget);
+    }
+
+    private static void handleCopyTarget(
+            DetailViews views,
+            View targetView,
+            CopyTarget copyTarget) {
+        targetView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        if (!copyTarget.isCopyable()) {
+            showCopyFeedback(views, targetView, false);
+            return;
+        }
+        ClipboardManager clipboard = views.activity.getSystemService(ClipboardManager.class);
+        if (clipboard == null) {
+            showCopyFeedback(views, targetView, false);
+            return;
+        }
+        try {
+            clipboard.setPrimaryClip(ClipData.newPlainText(copyTarget.label, copyTarget.value));
+        } catch (Throwable ignored) {
+            showCopyFeedback(views, targetView, false);
+            return;
+        }
+        showCopyFeedback(views, targetView, true);
+    }
+
+    private static void showCopyFeedback(
+            DetailViews views,
+            View targetView,
+            boolean copied) {
+        clearCopyFeedback(views);
+
+        GradientDrawable highlightBg = new GradientDrawable();
+        highlightBg.setColor(copied ? views.theme.primaryContainerColor : views.theme.errorContainerColor);
+        highlightBg.setCornerRadius(views.theme.highlightCornerRadiusPx);
+        targetView.setBackground(highlightBg);
+        views.activeHighlightView = targetView;
+
+        if (views.activeToast != null) {
+            views.activeToast.cancel();
+        }
+        views.activeToast = Toast.makeText(
+                views.activity,
+                copied ? "已复制" : "无法复制",
+                Toast.LENGTH_SHORT);
+        views.activeToast.show();
+
+        Runnable resetTask = () -> clearCopyFeedback(views);
+        views.pendingResetRunnable = resetTask;
+        views.container.postDelayed(resetTask, 800L);
+    }
+
+    private static void clearCopyFeedback(DetailViews views) {
+        if (views.pendingResetRunnable != null) {
+            views.container.removeCallbacks(views.pendingResetRunnable);
+            views.pendingResetRunnable = null;
+        }
+        if (views.activeHighlightView != null) {
+            Object baseBg = views.activeHighlightView.getTag(BASE_BG_TAG_KEY);
+            views.activeHighlightView.setBackground(baseBg instanceof Drawable ? (Drawable) baseBg : null);
+            views.activeHighlightView = null;
+        }
+    }
+
+    private static void setSignatureExpanded(DetailViews views, boolean expanded, boolean animate) {
+        views.signatureExpanded = expanded;
+        boolean hasExpandableDetails = views.signatureSection.hasExpandableDetails;
+        views.signatureSection.digestContainer.setVisibility(
+                expanded && hasExpandableDetails ? View.VISIBLE : View.GONE);
+        float targetRotation = expanded ? 90f : 0f;
+        if (views.signatureSection.arrowView != null) {
+            if (animate) {
+                views.signatureSection.arrowView.animate()
+                        .rotation(targetRotation)
+                        .setDuration(150L)
+                        .start();
+            } else {
+                views.signatureSection.arrowView.animate().cancel();
+                views.signatureSection.arrowView.setRotation(targetRotation);
+            }
+        } else if (views.signatureSection.arrowFallbackView != null) {
+            views.signatureSection.arrowFallbackView.setText(expanded ? "收起" : "展开");
+        }
     }
 
     private static int resolveDimenAttrOrFallback(
             Activity activity, String pkg, String attrName, String dimenName, int fallbackDp) {
         Resources res = activity.getResources();
-        int attrId = res.getIdentifier(attrName, "attr", pkg);
+        int attrId = attrName != null ? res.getIdentifier(attrName, "attr", pkg) : 0;
         if (attrId != 0) {
             TypedValue out = new TypedValue();
             if (activity.getTheme().resolveAttribute(attrId, out, true)
@@ -574,7 +842,7 @@ public final class PackageInstallerHooks {
     private static int resolveColorAttrOrFallback(
             Activity activity, String pkg, String attrName, String colorName, int fallbackColor) {
         Resources res = activity.getResources();
-        int attrId = res.getIdentifier(attrName, "attr", pkg);
+        int attrId = attrName != null ? res.getIdentifier(attrName, "attr", pkg) : 0;
         if (attrId != 0) {
             TypedValue out = new TypedValue();
             if (activity.getTheme().resolveAttribute(attrId, out, true)) {
@@ -609,20 +877,209 @@ public final class PackageInstallerHooks {
         return info != null && (info.flags & ApplicationInfo.FLAG_INSTALLED) != 0;
     }
 
-    private static String formatVersionText(PackageInfo newPkgInfo, PackageInfo installedPkgInfo) {
-        String newVer = formatSingleVersion(newPkgInfo);
+    private static void bindVersionRows(
+            DetailViews views, PackageInfo newPkgInfo, PackageInfo installedPkgInfo) {
+        String newVersionName = safeVersionName(newPkgInfo);
+        long newVersionCode = getVersionCodeCompat(newPkgInfo);
+        String newRawVersion = formatRawVersion(newVersionName, newVersionCode);
+        setCopyTarget(views.targetVersionRow.rowView,
+                CopyTarget.of("待安装版本", newRawVersion));
+
         if (installedPkgInfo == null) {
-            return newVer;
+            views.installedVersionRow.rowView.setVisibility(View.GONE);
+            views.installedVersionDivider.setVisibility(View.GONE);
+            setCopyTarget(views.installedVersionRow.rowView,
+                    CopyTarget.unavailable("当前版本"));
+            views.targetVersionRow.valueView.setText(newRawVersion);
+            return;
         }
-        return formatSingleVersion(installedPkgInfo) + " -> " + newVer;
+
+        String installedVersionName = safeVersionName(installedPkgInfo);
+        long installedVersionCode = getVersionCodeCompat(installedPkgInfo);
+        String installedRawVersion = formatRawVersion(installedVersionName, installedVersionCode);
+        setCopyTarget(views.installedVersionRow.rowView,
+                CopyTarget.of("当前版本", installedRawVersion));
+
+        views.installedVersionRow.rowView.setVisibility(View.VISIBLE);
+        views.installedVersionDivider.setVisibility(View.VISIBLE);
+
+        boolean isDowngrade = newVersionCode < installedVersionCode;
+        int targetHighlightColor = isDowngrade
+                ? views.theme.warningColor
+                : views.theme.primaryAccentColor;
+        int installedHighlightColor = views.theme.installedVersionDiffColor;
+
+        SpannableStringBuilder installedDisplay = new SpannableStringBuilder();
+        SpannableStringBuilder targetDisplay = new SpannableStringBuilder();
+        appendDiffHighlightedVersionNames(
+                installedVersionName, newVersionName,
+                installedHighlightColor, targetHighlightColor,
+                installedDisplay, targetDisplay);
+
+        installedDisplay.append(" (");
+        targetDisplay.append(" (");
+        boolean codeDiffers = installedVersionCode != newVersionCode;
+        appendHighlightedSegment(installedDisplay, String.valueOf(installedVersionCode),
+                codeDiffers, installedHighlightColor);
+        appendHighlightedSegment(targetDisplay, String.valueOf(newVersionCode),
+                codeDiffers, targetHighlightColor);
+        installedDisplay.append(')');
+        targetDisplay.append(')');
+
+        if (isDowngrade) {
+            int start = targetDisplay.length();
+            targetDisplay.append("  降级安装");
+            targetDisplay.setSpan(new ForegroundColorSpan(views.theme.warningColor),
+                    start + 2, targetDisplay.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            targetDisplay.setSpan(new StyleSpan(Typeface.BOLD),
+                    start + 2, targetDisplay.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+
+        views.installedVersionRow.valueView.setText(installedDisplay);
+        views.targetVersionRow.valueView.setText(targetDisplay);
     }
 
-    private static String formatSingleVersion(PackageInfo pkgInfo) {
-        String versionName = TextUtils.isEmpty(pkgInfo.versionName) ? "未知" : pkgInfo.versionName;
-        long versionCode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+    private static String safeVersionName(PackageInfo pkgInfo) {
+        return TextUtils.isEmpty(pkgInfo.versionName) ? "未知" : pkgInfo.versionName;
+    }
+
+    @SuppressWarnings("deprecation")
+    private static long getVersionCodeCompat(PackageInfo pkgInfo) {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
                 ? pkgInfo.getLongVersionCode()
                 : pkgInfo.versionCode;
+    }
+
+    private static String formatRawVersion(String versionName, long versionCode) {
         return versionName + " (" + versionCode + ")";
+    }
+
+    private static void appendDiffHighlightedVersionNames(
+            String installedName,
+            String targetName,
+            int installedColor,
+            int targetColor,
+            SpannableStringBuilder installedOut,
+            SpannableStringBuilder targetOut) {
+        if (TextUtils.equals(installedName, targetName)) {
+            installedOut.append(installedName);
+            targetOut.append(targetName);
+            return;
+        }
+        List<VersionToken> installedTokens = tokenizeVersionName(installedName);
+        List<VersionToken> targetTokens = tokenizeVersionName(targetName);
+        int maxCount = Math.max(installedTokens.size(), targetTokens.size());
+        for (int i = 0; i < maxCount; i++) {
+            VersionToken oldTok = i < installedTokens.size() ? installedTokens.get(i) : null;
+            VersionToken newTok = i < targetTokens.size() ? targetTokens.get(i) : null;
+            if (oldTok != null && newTok != null) {
+                if (TextUtils.equals(oldTok.text, newTok.text)) {
+                    installedOut.append(oldTok.text);
+                    targetOut.append(newTok.text);
+                } else if (!oldTok.isSeparator && !newTok.isSeparator) {
+                    appendTokenDiff(oldTok.text, newTok.text,
+                            installedColor, targetColor, installedOut, targetOut);
+                } else {
+                    appendHighlightedSegment(installedOut, oldTok.text, !oldTok.isSeparator, installedColor);
+                    appendHighlightedSegment(targetOut, newTok.text, !newTok.isSeparator, targetColor);
+                }
+            } else if (oldTok != null) {
+                appendHighlightedSegment(installedOut, oldTok.text, true, installedColor);
+            } else {
+                appendHighlightedSegment(targetOut, newTok.text, true, targetColor);
+            }
+        }
+    }
+
+    private static void appendTokenDiff(
+            String oldText,
+            String newText,
+            int installedColor,
+            int targetColor,
+            SpannableStringBuilder installedOut,
+            SpannableStringBuilder targetOut) {
+        int minLen = Math.min(oldText.length(), newText.length());
+        int prefix = 0;
+        while (prefix < minLen && oldText.charAt(prefix) == newText.charAt(prefix)) {
+            prefix++;
+        }
+        int suffix = 0;
+        while (suffix < (minLen - prefix)
+                && oldText.charAt(oldText.length() - 1 - suffix)
+                == newText.charAt(newText.length() - 1 - suffix)) {
+            suffix++;
+        }
+        boolean allowSubTokenTrim = (!TextUtils.isDigitsOnly(oldText) || !TextUtils.isDigitsOnly(newText)
+                || minLen > 4) && (prefix + suffix) >= (minLen / 2) && prefix + suffix > 0;
+        if (!allowSubTokenTrim) {
+            appendHighlightedSegment(installedOut, oldText, true, installedColor);
+            appendHighlightedSegment(targetOut, newText, true, targetColor);
+            return;
+        }
+        appendSubDiff(installedOut, oldText, prefix, oldText.length() - suffix, installedColor);
+        appendSubDiff(targetOut, newText, prefix, newText.length() - suffix, targetColor);
+    }
+
+    private static void appendSubDiff(
+            SpannableStringBuilder out,
+            String text,
+            int diffStart,
+            int diffEnd,
+            int highlightColor) {
+        if (diffStart > 0) {
+            out.append(text, 0, diffStart);
+        }
+        if (diffEnd > diffStart) {
+            appendHighlightedSegment(out, text.substring(diffStart, diffEnd), true, highlightColor);
+        }
+        if (diffEnd < text.length()) {
+            out.append(text, diffEnd, text.length());
+        }
+    }
+
+    private static void appendHighlightedSegment(
+            SpannableStringBuilder out, String text, boolean highlight, int color) {
+        int start = out.length();
+        out.append(text);
+        if (highlight && !text.isEmpty()) {
+            out.setSpan(new ForegroundColorSpan(color),
+                    start, out.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            out.setSpan(new StyleSpan(Typeface.BOLD),
+                    start, out.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+    }
+
+    private static List<VersionToken> tokenizeVersionName(String versionName) {
+        List<VersionToken> tokens = new ArrayList<>();
+        if (TextUtils.isEmpty(versionName)) {
+            return tokens;
+        }
+        int len = versionName.length();
+        int i = 0;
+        while (i < len) {
+            boolean sep = isVersionSeparator(versionName.charAt(i));
+            int start = i;
+            i++;
+            while (i < len && isVersionSeparator(versionName.charAt(i)) == sep) {
+                i++;
+            }
+            tokens.add(new VersionToken(versionName.substring(start, i), sep));
+        }
+        return tokens;
+    }
+
+    private static boolean isVersionSeparator(char ch) {
+        return ch == '.' || ch == '-' || ch == '_' || ch == '+' || ch == ':' || ch == '/' || Character.isWhitespace(ch);
+    }
+
+    private static final class VersionToken {
+        final String text;
+        final boolean isSeparator;
+
+        VersionToken(String text, boolean isSeparator) {
+            this.text = text;
+            this.isSeparator = isSeparator;
+        }
     }
 
     private static boolean isContentUri(Uri uri) {
@@ -856,21 +1313,49 @@ public final class PackageInstallerHooks {
         return path;
     }
 
-    private static String formatPathText(
-            String resolvedOriginalPath, Uri sourceUri, File apkFile, File stagedFile) {
+    private static void bindPendingPathRow(DetailViews views, String pendingText) {
+        views.pathRow.valueView.setText(pendingText);
+        setCopyTarget(views.pathRow.rowView,
+                CopyTarget.unavailable("本地路径"));
+    }
+
+    private static void bindPathRow(
+            DetailViews views,
+            String resolvedOriginalPath,
+            Uri sourceUri,
+            File apkFile,
+            File stagedFile) {
         if (!TextUtils.isEmpty(resolvedOriginalPath)) {
-            return resolvedOriginalPath;
+            views.pathRow.valueView.setText(resolvedOriginalPath);
+            setCopyTarget(views.pathRow.rowView, CopyTarget.of("本地路径", resolvedOriginalPath));
+            return;
         }
         if (apkFile != null) {
             String path = apkFile.getAbsolutePath();
             boolean isStaged = stagedFile != null
                     && (stagedFile == apkFile || path.equals(stagedFile.getAbsolutePath()));
-            return isStaged ? path + "（暂存文件）" : path;
+            setCopyTarget(views.pathRow.rowView, CopyTarget.of("本地路径", path));
+            if (isStaged) {
+                SpannableStringBuilder sb = new SpannableStringBuilder(path);
+                int noteStart = sb.length();
+                sb.append("（暂存文件）");
+                sb.setSpan(new ForegroundColorSpan(views.theme.labelColor),
+                        noteStart, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                views.pathRow.valueView.setText(sb);
+            } else {
+                views.pathRow.valueView.setText(path);
+            }
+            return;
         }
         if (isContentUri(sourceUri)) {
-            return sourceUri.toString();
+            String uriText = sourceUri.toString();
+            views.pathRow.valueView.setText(uriText);
+            setCopyTarget(views.pathRow.rowView, CopyTarget.of("本地路径", uriText));
+            return;
         }
-        return "无本地 APK 文件";
+        views.pathRow.valueView.setText("无本地 APK 文件");
+        setCopyTarget(views.pathRow.rowView,
+                CopyTarget.unavailable("本地路径"));
     }
 
     private static Set<String> extractApkAbis(File apkFile) {
@@ -1029,36 +1514,408 @@ public final class PackageInstallerHooks {
         }
     }
 
-    private static String formatSignatureText(
-            boolean isInstalled, SignatureData apkSig, SignatureData installedSig) {
+    private static void bindPendingSignatureSection(DetailViews views, String pendingText) {
+        SignatureSection section = views.signatureSection;
+        section.summaryView.setText(pendingText);
+        section.hasExpandableDetails = false;
+        setArrowIndicatorVisible(section, false);
+        setCopyTarget(section.headerRowView,
+                CopyTarget.unavailable("SHA-256"));
+        section.apkDigestRow.rowView.setVisibility(View.GONE);
+        section.installedDigestRow.rowView.setVisibility(View.GONE);
+        setSignatureExpanded(views, false, false);
+    }
+
+    private static void bindSignatureSection(
+            DetailViews views,
+            boolean isInstalled,
+            SignatureData apkSig,
+            SignatureData installedSig) {
+        SignatureSection section = views.signatureSection;
         List<String> apkDigests = apkSig.currentDigests;
         List<String> installedDigests = installedSig.currentDigests;
+
         if (!isInstalled) {
             if (apkDigests.isEmpty()) {
-                return "无法读取签名";
+                section.summaryView.setText("无法读取签名");
+                section.hasExpandableDetails = false;
+                setArrowIndicatorVisible(section, false);
+                setCopyTarget(section.headerRowView,
+                        CopyTarget.unavailable("SHA-256"));
+                section.apkDigestRow.rowView.setVisibility(View.GONE);
+                section.installedDigestRow.rowView.setVisibility(View.GONE);
+                setSignatureExpanded(views, false, false);
+                return;
             }
-            return "SHA-256: " + TextUtils.join("\nSHA-256: ", apkDigests);
+            String apkHex = TextUtils.join("\n", apkDigests);
+            section.summaryView.setText("已读取签名");
+            section.hasExpandableDetails = true;
+            setArrowIndicatorVisible(section, true);
+            setCopyTarget(section.headerRowView, CopyTarget.of("SHA-256", apkHex));
+            bindDigestRow(section.apkDigestRow, "SHA-256", apkHex, "SHA-256", views.theme.valueColor);
+            section.installedDigestRow.rowView.setVisibility(View.GONE);
+            setSignatureExpanded(views, views.signatureExpanded, false);
+            return;
         }
+
         if (!apkDigests.isEmpty() && !installedDigests.isEmpty()) {
+            String apkHex = TextUtils.join("\n", apkDigests);
+            String installedHex = TextUtils.join("\n", installedDigests);
             if (apkDigests.equals(installedDigests)) {
-                return "一致（与已安装应用相同）\nSHA-256: "
-                        + TextUtils.join("\nSHA-256: ", apkDigests);
+                section.summaryView.setText(buildStyledStatusText(
+                        "一致", "（与已安装应用相同）",
+                        views.theme.primaryAccentColor, views.theme.valueColor, true));
+                section.hasExpandableDetails = true;
+                setArrowIndicatorVisible(section, true);
+                setCopyTarget(section.headerRowView, CopyTarget.of("SHA-256", apkHex));
+                bindDigestRow(section.apkDigestRow, "SHA-256", apkHex, "SHA-256", views.theme.valueColor);
+                section.installedDigestRow.rowView.setVisibility(View.GONE);
+                setSignatureExpanded(views, views.signatureExpanded, false);
+                return;
             }
             if (!apkSig.historyDigests.isEmpty() && apkSig.historyDigests.containsAll(installedDigests)) {
-                return "一致（证书轮换兼容）\n新包 SHA-256: "
-                        + TextUtils.join(", ", apkDigests)
-                        + "\n已安装 SHA-256: "
-                        + TextUtils.join(", ", installedDigests);
+                section.summaryView.setText(buildStyledStatusText(
+                        "一致", "（证书轮换兼容）",
+                        views.theme.primaryAccentColor, views.theme.valueColor, true));
+                section.hasExpandableDetails = true;
+                setArrowIndicatorVisible(section, true);
+                setCopyTarget(section.headerRowView, CopyTarget.of("待安装 SHA-256", apkHex));
+                bindDigestRow(section.apkDigestRow, "待安装 SHA-256", apkHex, "待安装 SHA-256", views.theme.valueColor);
+                bindDigestRow(section.installedDigestRow, "已安装 SHA-256", installedHex, "已安装 SHA-256", views.theme.valueColor);
+                setSignatureExpanded(views, views.signatureExpanded, false);
+                return;
             }
-            return "不一致（与已安装应用不同）\n新包 SHA-256: "
-                    + TextUtils.join(", ", apkDigests)
-                    + "\n已安装 SHA-256: "
-                    + TextUtils.join(", ", installedDigests);
+            section.summaryView.setText(buildStyledStatusText(
+                    "不一致（与已安装应用不同）", null,
+                    views.theme.errorColor, views.theme.errorColor, true));
+            section.hasExpandableDetails = true;
+            setArrowIndicatorVisible(section, true);
+            setCopyTarget(section.headerRowView, CopyTarget.of("待安装 SHA-256", apkHex));
+            bindDigestRow(section.apkDigestRow, "待安装 SHA-256", apkHex, "待安装 SHA-256", views.theme.errorColor);
+            bindDigestRow(section.installedDigestRow, "已安装 SHA-256", installedHex, "已安装 SHA-256", views.theme.valueColor);
+            setSignatureExpanded(views, views.signatureExpanded, false);
+            return;
         }
-        return "无法比对\n新包 SHA-256: "
-                + (apkDigests.isEmpty() ? "未知" : TextUtils.join(", ", apkDigests))
-                + "\n已安装 SHA-256: "
-                + (installedDigests.isEmpty() ? "未知" : TextUtils.join(", ", installedDigests));
+
+        section.summaryView.setText(buildStyledStatusText(
+                "无法比对", "（签名信息不完整）",
+                views.theme.warningColor, views.theme.labelColor, true));
+        boolean hasApk = !apkDigests.isEmpty();
+        boolean hasInstalled = !installedDigests.isEmpty();
+        section.hasExpandableDetails = hasApk || hasInstalled;
+        setArrowIndicatorVisible(section, section.hasExpandableDetails);
+        if (hasApk) {
+            String apkHex = TextUtils.join("\n", apkDigests);
+            setCopyTarget(section.headerRowView, CopyTarget.of("待安装 SHA-256", apkHex));
+            bindDigestRow(section.apkDigestRow, "待安装 SHA-256", apkHex, "待安装 SHA-256", views.theme.valueColor);
+        } else {
+            section.apkDigestRow.rowView.setVisibility(View.VISIBLE);
+            section.apkDigestRow.labelView.setText("待安装 SHA-256");
+            section.apkDigestRow.valueView.setText("未知");
+            section.apkDigestRow.valueView.setTextColor(views.theme.labelColor);
+            setCopyTarget(section.apkDigestRow.rowView,
+                    CopyTarget.unavailable("待安装 SHA-256"));
+        }
+        if (hasInstalled) {
+            String installedHex = TextUtils.join("\n", installedDigests);
+            if (!hasApk) {
+                setCopyTarget(section.headerRowView, CopyTarget.of("已安装 SHA-256", installedHex));
+            }
+            bindDigestRow(section.installedDigestRow, "已安装 SHA-256", installedHex, "已安装 SHA-256", views.theme.valueColor);
+        } else {
+            section.installedDigestRow.rowView.setVisibility(View.VISIBLE);
+            section.installedDigestRow.labelView.setText("已安装 SHA-256");
+            section.installedDigestRow.valueView.setText("未知");
+            section.installedDigestRow.valueView.setTextColor(views.theme.labelColor);
+            setCopyTarget(section.installedDigestRow.rowView,
+                    CopyTarget.unavailable("已安装 SHA-256"));
+        }
+        if (!hasApk && !hasInstalled) {
+            setCopyTarget(section.headerRowView,
+                    CopyTarget.unavailable("SHA-256"));
+        }
+        setSignatureExpanded(views, views.signatureExpanded, false);
+    }
+
+    private static void bindDigestRow(
+            DetailRow digestRow,
+            String label,
+            String hexValue,
+            String copyLabel,
+            int textColor) {
+        digestRow.rowView.setVisibility(View.VISIBLE);
+        digestRow.labelView.setText(label);
+        digestRow.valueView.setText(hexValue);
+        digestRow.valueView.setTextColor(textColor);
+        setCopyTarget(digestRow.rowView, CopyTarget.of(copyLabel, hexValue));
+    }
+
+    private static void setArrowIndicatorVisible(SignatureSection section, boolean visible) {
+        int visibility = visible ? View.VISIBLE : View.GONE;
+        if (section.arrowView != null) {
+            section.arrowView.setVisibility(visibility);
+        }
+        if (section.arrowFallbackView != null) {
+            section.arrowFallbackView.setVisibility(visibility);
+        }
+    }
+
+    private static CharSequence buildStyledStatusText(
+            String lead,
+            String detail,
+            int leadColor,
+            int detailColor,
+            boolean boldLead) {
+        SpannableStringBuilder sb = new SpannableStringBuilder(lead);
+        sb.setSpan(new ForegroundColorSpan(leadColor), 0, lead.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        if (boldLead) {
+            sb.setSpan(new StyleSpan(Typeface.BOLD), 0, lead.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        if (!TextUtils.isEmpty(detail)) {
+            int start = sb.length();
+            sb.append(detail);
+            sb.setSpan(new ForegroundColorSpan(detailColor), start, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        return sb;
+    }
+
+    private static final class CopyTarget {
+        final String label;
+        final String value;
+
+        private CopyTarget(String label, String value) {
+            this.label = label;
+            this.value = value;
+        }
+
+        static CopyTarget of(String label, String value) {
+            return new CopyTarget(label, value);
+        }
+
+        static CopyTarget unavailable(String label) {
+            return new CopyTarget(label, null);
+        }
+
+        boolean isCopyable() {
+            return !TextUtils.isEmpty(value);
+        }
+    }
+
+    private static final class DetailTheme {
+        final int styleId;
+        final Typeface baseTypeface;
+        final float letterSpacing;
+        final float labelTextSizePx;
+        final float valueTextSizePx;
+        final float subLabelTextSizePx;
+        final float digestTextSizePx;
+        final int marginMediumPx;
+        final int marginSmallPx;
+        final int labelGapPx;
+        final int cardHorizontalPaddingPx;
+        final int rowHorizontalPaddingPx;
+        final int rowPaddingVerticalPx;
+        final int subRowPaddingVerticalPx;
+        final int dividerHeightPx;
+        final int highlightCornerRadiusPx;
+        final int dividerColor;
+        final int labelColor;
+        final int valueColor;
+        final int primaryAccentColor;
+        final int primaryContainerColor;
+        final int installedVersionDiffColor;
+        final int warningColor;
+        final int errorColor;
+        final int errorContainerColor;
+        final int subCardBgColor;
+
+        private DetailTheme(
+                int styleId,
+                Typeface baseTypeface,
+                float letterSpacing,
+                float labelTextSizePx,
+                float valueTextSizePx,
+                float subLabelTextSizePx,
+                float digestTextSizePx,
+                int marginMediumPx,
+                int marginSmallPx,
+                int labelGapPx,
+                int cardHorizontalPaddingPx,
+                int rowHorizontalPaddingPx,
+                int rowPaddingVerticalPx,
+                int subRowPaddingVerticalPx,
+                int dividerHeightPx,
+                int highlightCornerRadiusPx,
+                int dividerColor,
+                int labelColor,
+                int valueColor,
+                int primaryAccentColor,
+                int primaryContainerColor,
+                int installedVersionDiffColor,
+                int warningColor,
+                int errorColor,
+                int errorContainerColor,
+                int subCardBgColor) {
+            this.styleId = styleId;
+            this.baseTypeface = baseTypeface;
+            this.letterSpacing = letterSpacing;
+            this.labelTextSizePx = labelTextSizePx;
+            this.valueTextSizePx = valueTextSizePx;
+            this.subLabelTextSizePx = subLabelTextSizePx;
+            this.digestTextSizePx = digestTextSizePx;
+            this.marginMediumPx = marginMediumPx;
+            this.marginSmallPx = marginSmallPx;
+            this.labelGapPx = labelGapPx;
+            this.cardHorizontalPaddingPx = cardHorizontalPaddingPx;
+            this.rowHorizontalPaddingPx = rowHorizontalPaddingPx;
+            this.rowPaddingVerticalPx = rowPaddingVerticalPx;
+            this.subRowPaddingVerticalPx = subRowPaddingVerticalPx;
+            this.dividerHeightPx = dividerHeightPx;
+            this.highlightCornerRadiusPx = highlightCornerRadiusPx;
+            this.dividerColor = dividerColor;
+            this.labelColor = labelColor;
+            this.valueColor = valueColor;
+            this.primaryAccentColor = primaryAccentColor;
+            this.primaryContainerColor = primaryContainerColor;
+            this.installedVersionDiffColor = installedVersionDiffColor;
+            this.warningColor = warningColor;
+            this.errorColor = errorColor;
+            this.errorContainerColor = errorContainerColor;
+            this.subCardBgColor = subCardBgColor;
+        }
+
+        static DetailTheme resolve(Activity activity, String pkg, TextView refView) {
+            Resources res = activity.getResources();
+            int styleId = res.getIdentifier("apk_detail_info", "style", pkg);
+            int dimenId = res.getIdentifier("apk_detail_info_sp", "dimen", pkg);
+            float baseSizePx;
+            if (refView != null) {
+                baseSizePx = refView.getTextSize();
+            } else if (dimenId != 0) {
+                baseSizePx = res.getDimension(dimenId);
+            } else {
+                baseSizePx = TypedValue.applyDimension(
+                        TypedValue.COMPLEX_UNIT_SP, 14f, res.getDisplayMetrics());
+            }
+
+            float labelTextSizePx = Math.max(
+                    TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 12f, res.getDisplayMetrics()),
+                    baseSizePx * 0.88f);
+            float subLabelTextSizePx = Math.max(
+                    TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 11.5f, res.getDisplayMetrics()),
+                    baseSizePx * 0.84f);
+            float digestTextSizePx = Math.max(
+                    TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 12f, res.getDisplayMetrics()),
+                    baseSizePx * 0.88f);
+
+            int marginMediumPx = resolveDimenAttrOrFallback(
+                    activity, pkg, "marginMedium", "fd_sys_margin_medium", 16);
+            int marginSmallPx = resolveDimenAttrOrFallback(
+                    activity, pkg, "marginSmall", "fd_sys_margin_small", 8);
+            int rowHorizontalPaddingPx = dpToPx(activity, 6);
+            int cardHorizontalPaddingPx = Math.max(0, marginMediumPx - rowHorizontalPaddingPx);
+
+            int dividerColor = resolveColorAttrOrFallback(
+                    activity, pkg, "colorOutlineVariant", "fd_sys_color_outline_variant_default", 0x0D000000);
+            int labelColor = resolveColorAttrOrFallback(
+                    activity, pkg, "colorOnSurfaceVariant", "fd_sys_color_on_surface_variant_default", 0x993C3C43);
+            int valueColor = resolveColorAttrOrFallback(
+                    activity, pkg, "colorOnSurface", "fd_sys_color_on_surface_default", 0xFF000000);
+            int primaryAccentColor = resolveColorAttrOrFallback(
+                    activity, pkg, "colorPrimary", "fd_sys_color_primary_green", 0xFF35C44F);
+            int primaryContainerColor = withFallbackAlpha(
+                    resolveColorAttrOrFallback(
+                            activity, pkg, "colorPrimaryContainer", "fd_sys_color_primary_container_green", 0),
+                    primaryAccentColor, 0x24);
+            int installedVersionDiffColor = resolveColorAttrOrFallback(
+                    activity, pkg, null, "fd_sys_color_primary_blue", 0xFF206CFF);
+            int warningColor = resolveColorAttrOrFallback(
+                    activity, pkg, null, "warning_color", 0xFFFF7024);
+            int errorColor = resolveColorAttrOrFallback(
+                    activity, pkg, "colorError", "fd_sys_color_error_default", 0xFFFF0000);
+            int errorContainerColor = withFallbackAlpha(
+                    resolveColorAttrOrFallback(
+                            activity, pkg, "colorErrorContainer", "fd_sys_color_error_container_default", 0),
+                    errorColor, 0x1E);
+            int subCardBgColor = resolveColorAttrOrFallback(
+                    activity, pkg, null, "fd_sys_color_primary_container_default",
+                    withFallbackAlpha(0, labelColor, 0x12));
+
+            return new DetailTheme(
+                    styleId,
+                    refView != null ? refView.getTypeface() : null,
+                    refView != null ? refView.getLetterSpacing() : 0f,
+                    labelTextSizePx,
+                    baseSizePx,
+                    subLabelTextSizePx,
+                    digestTextSizePx,
+                    marginMediumPx,
+                    marginSmallPx,
+                    dpToPx(activity, 2),
+                    cardHorizontalPaddingPx,
+                    rowHorizontalPaddingPx,
+                    dpToPx(activity, 11),
+                    dpToPx(activity, 8),
+                    Math.max(1, dpToPx(activity, 1)),
+                    dpToPx(activity, 8),
+                    dividerColor,
+                    labelColor,
+                    valueColor,
+                    primaryAccentColor,
+                    primaryContainerColor,
+                    installedVersionDiffColor,
+                    warningColor,
+                    errorColor,
+                    errorContainerColor,
+                    subCardBgColor);
+        }
+
+        private static int withFallbackAlpha(int resolvedColor, int tintBase, int alpha) {
+            if (resolvedColor != 0) {
+                return resolvedColor;
+            }
+            return Color.argb(alpha, Color.red(tintBase), Color.green(tintBase), Color.blue(tintBase));
+        }
+    }
+
+    private static final class DetailRow {
+        final View rowView;
+        final TextView labelView;
+        final TextView valueView;
+
+        DetailRow(View rowView, TextView labelView, TextView valueView) {
+            this.rowView = rowView;
+            this.labelView = labelView;
+            this.valueView = valueView;
+        }
+    }
+
+    private static final class SignatureSection {
+        final View headerRowView;
+        final TextView summaryView;
+        final ImageView arrowView;
+        final TextView arrowFallbackView;
+        final ViewGroup digestContainer;
+        final DetailRow apkDigestRow;
+        final DetailRow installedDigestRow;
+        boolean hasExpandableDetails;
+
+        SignatureSection(
+                View headerRowView,
+                TextView summaryView,
+                ImageView arrowView,
+                TextView arrowFallbackView,
+                ViewGroup digestContainer,
+                DetailRow apkDigestRow,
+                DetailRow installedDigestRow) {
+            this.headerRowView = headerRowView;
+            this.summaryView = summaryView;
+            this.arrowView = arrowView;
+            this.arrowFallbackView = arrowFallbackView;
+            this.digestContainer = digestContainer;
+            this.apkDigestRow = apkDigestRow;
+            this.installedDigestRow = installedDigestRow;
+        }
     }
 
     private static final class SignatureData {
@@ -1106,23 +1963,40 @@ public final class PackageInstallerHooks {
     }
 
     private static final class DetailViews {
+        final Activity activity;
         final View container;
-        final TextView versionValue;
-        final TextView abiValue;
-        final TextView signatureValue;
-        final TextView pathValue;
+        final DetailTheme theme;
+        final DetailRow installedVersionRow;
+        final View installedVersionDivider;
+        final DetailRow targetVersionRow;
+        final DetailRow abiRow;
+        final SignatureSection signatureSection;
+        final DetailRow pathRow;
+        String boundApkIdentity;
+        boolean signatureExpanded;
+        View activeHighlightView;
+        Toast activeToast;
+        Runnable pendingResetRunnable;
 
         DetailViews(
+                Activity activity,
                 View container,
-                TextView versionValue,
-                TextView abiValue,
-                TextView signatureValue,
-                TextView pathValue) {
+                DetailTheme theme,
+                DetailRow installedVersionRow,
+                View installedVersionDivider,
+                DetailRow targetVersionRow,
+                DetailRow abiRow,
+                SignatureSection signatureSection,
+                DetailRow pathRow) {
+            this.activity = activity;
             this.container = container;
-            this.versionValue = versionValue;
-            this.abiValue = abiValue;
-            this.signatureValue = signatureValue;
-            this.pathValue = pathValue;
+            this.theme = theme;
+            this.installedVersionRow = installedVersionRow;
+            this.installedVersionDivider = installedVersionDivider;
+            this.targetVersionRow = targetVersionRow;
+            this.abiRow = abiRow;
+            this.signatureSection = signatureSection;
+            this.pathRow = pathRow;
         }
     }
 }
