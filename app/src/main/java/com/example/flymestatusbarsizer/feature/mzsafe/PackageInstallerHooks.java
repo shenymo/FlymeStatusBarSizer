@@ -13,12 +13,14 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
 import android.content.pm.SigningInfo;
+import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -510,7 +512,7 @@ public final class PackageInstallerHooks {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
         if (interactive) {
-            applyInteractiveForeground(activity, row);
+            applyInteractiveForeground(activity, row, theme);
             row.setLongClickable(true);
         }
 
@@ -551,7 +553,7 @@ public final class PackageInstallerHooks {
         headerRow.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
-        applyInteractiveForeground(activity, headerRow);
+        applyInteractiveForeground(activity, headerRow, theme);
         headerRow.setClickable(true);
         headerRow.setLongClickable(true);
 
@@ -635,7 +637,7 @@ public final class PackageInstallerHooks {
         rowParams.topMargin = theme.labelGapPx;
         row.setLayoutParams(rowParams);
         applySubtleContainerBackground(row, theme.subCardBgColor, theme.highlightCornerRadiusPx);
-        applyInteractiveForeground(activity, row);
+        applyInteractiveForeground(activity, row, theme);
         row.setLongClickable(true);
 
         TextView labelView = createStyledTextView(activity, theme, theme.subLabelTextSizePx, theme.labelColor);
@@ -714,15 +716,39 @@ public final class PackageInstallerHooks {
         return textView;
     }
 
-    private static void applyInteractiveForeground(Activity activity, View view) {
+    private static void applyInteractiveForeground(Activity activity, View view, DetailTheme theme) {
+        GradientDrawable mask = new GradientDrawable();
+        mask.setColor(Color.WHITE);
+        mask.setCornerRadius(theme.highlightCornerRadiusPx);
+
         TypedValue out = new TypedValue();
         if (activity.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, out, true)
                 && out.resourceId != 0) {
-            Drawable ripple = activity.getDrawable(out.resourceId);
-            if (ripple != null) {
-                view.setForeground(ripple);
+            Drawable drawable = activity.getDrawable(out.resourceId);
+            if (drawable != null) {
+                Drawable mutated = drawable.mutate();
+                if (mutated instanceof RippleDrawable
+                        && ((RippleDrawable) mutated).setDrawableByLayerId(android.R.id.mask, mask)) {
+                    view.setForeground(mutated);
+                    return;
+                }
             }
         }
+
+        int highlightColor = Color.argb(
+                0x24,
+                Color.red(theme.primaryAccentColor),
+                Color.green(theme.primaryAccentColor),
+                Color.blue(theme.primaryAccentColor));
+        if (activity.getTheme().resolveAttribute(android.R.attr.colorControlHighlight, out, true)) {
+            if (out.resourceId != 0) {
+                highlightColor = activity.getColor(out.resourceId);
+            } else if (out.type >= TypedValue.TYPE_FIRST_COLOR_INT
+                    && out.type <= TypedValue.TYPE_LAST_COLOR_INT) {
+                highlightColor = out.data;
+            }
+        }
+        view.setForeground(new RippleDrawable(ColorStateList.valueOf(highlightColor), null, mask));
     }
 
     private static void applySubtleContainerBackground(View view, int color, int cornerRadiusPx) {
