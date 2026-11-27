@@ -159,7 +159,6 @@ public final class PackageInstallerHooks {
                     if (primaryButton instanceof TextView) {
                         TextView textButton = (TextView) primaryButton;
                         textButton.setText("安装");
-                        textButton.setTextColor(Color.WHITE);
                     }
                     primaryButton.setOnClickListener(view -> {
                         try {
@@ -235,12 +234,11 @@ public final class PackageInstallerHooks {
     }
 
     private static Method findNoArgMethod(Class<?> clazz, String name) {
-        for (Method method : clazz.getDeclaredMethods()) {
-            if (name.equals(method.getName()) && method.getParameterTypes().length == 0) {
-                return method;
-            }
+        try {
+            return clazz.getDeclaredMethod(name);
+        } catch (NoSuchMethodException ignored) {
+            return null;
         }
-        return null;
     }
 
     private static void bindApkDetail(Activity activity, DetailFields fields) throws Throwable {
@@ -287,11 +285,14 @@ public final class PackageInstallerHooks {
         SignatureData installedSigData = isInstalled
                 ? extractSignatureData(installedPkgInfo)
                 : SignatureData.EMPTY;
-        boolean needsAsyncSignature = apkSigData.currentDigests.isEmpty()
-                || (isInstalled && installedSigData.currentDigests.isEmpty());
-        boolean needsSigningInfoRefresh = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
-                && (pkgInfo.signingInfo == null
-                || (isInstalled && installedPkgInfo.signingInfo == null));
+        boolean apkSignatureNeedsRefresh = apkSigData.currentDigests.isEmpty()
+                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                && pkgInfo.signingInfo == null);
+        boolean installedSignatureNeedsRefresh = isInstalled
+                && (installedSigData.currentDigests.isEmpty()
+                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                && installedPkgInfo.signingInfo == null));
+        boolean needsAsyncSignature = apkSignatureNeedsRefresh || installedSignatureNeedsRefresh;
         if (needsAsyncSignature && apkFile != null) {
             bindPendingSignatureSection(views, "解析中...");
         } else {
@@ -303,11 +304,8 @@ public final class PackageInstallerHooks {
             Object requestToken = new Object();
             views.abiRow.valueView.setTag(requestToken);
             String packageName = pkgInfo.packageName;
-            boolean fetchApkSig = apkFile != null && (apkSigData.currentDigests.isEmpty()
-                    || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && pkgInfo.signingInfo == null));
-            boolean fetchInstalledSig = apkFile != null && isInstalled
-                    && (installedSigData.currentDigests.isEmpty()
-                    || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && installedPkgInfo.signingInfo == null));
+            boolean fetchApkSig = apkFile != null && apkSignatureNeedsRefresh;
+            boolean fetchInstalledSig = apkFile != null && installedSignatureNeedsRefresh;
             DETAIL_EXECUTOR.execute(() -> {
                 String abiText = apkFile != null ? formatAbiText(extractApkAbis(apkFile)) : null;
                 SignatureData resolvedApkSig = fetchApkSig
@@ -316,7 +314,7 @@ public final class PackageInstallerHooks {
                 SignatureData resolvedInstalledSig = fetchInstalledSig
                         ? preferNonEmpty(extractInstalledSignatureData(activity, packageName), installedSigData)
                         : installedSigData;
-                boolean shouldUpdateSig = apkFile != null && (needsAsyncSignature || needsSigningInfoRefresh);
+                boolean shouldUpdateSig = apkFile != null && needsAsyncSignature;
                 String resolvedContentPath = needsAsyncPath
                         ? resolveContentUriPath(activity, sourceUri, stagedFile)
                         : null;
@@ -427,8 +425,10 @@ public final class PackageInstallerHooks {
     }
 
     private static View findExistingDetailContainer(Activity activity) {
-        ViewGroup panel = findContentPanel(activity);
-        return panel != null ? panel.findViewWithTag(DETAIL_PANEL_TAG) : null;
+        if (activity == null || activity.getWindow() == null) {
+            return null;
+        }
+        return activity.getWindow().getDecorView().findViewWithTag(DETAIL_PANEL_TAG);
     }
 
     private static DetailViews ensureDetailViews(Activity activity, TextView refVersionView) {
@@ -1510,6 +1510,7 @@ public final class PackageInstallerHooks {
         }
         Signature[] currentSignatures = null;
         Signature[] historySignatures = null;
+        boolean currentUsesHistory = false;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && pkgInfo.signingInfo != null) {
             SigningInfo signingInfo = pkgInfo.signingInfo;
             Signature[] contentsSigners = signingInfo.getApkContentsSigners();
@@ -1518,14 +1519,17 @@ public final class PackageInstallerHooks {
                 currentSignatures = contentsSigners;
             } else {
                 currentSignatures = history;
+                currentUsesHistory = true;
             }
             historySignatures = history;
         }
         if (currentSignatures == null || currentSignatures.length == 0) {
             currentSignatures = pkgInfo.signatures;
+            currentUsesHistory = false;
         }
         List<String> currentDigests = hashSignatures(currentSignatures);
-        List<String> historyDigests = hashSignatures(historySignatures);
+        List<String> historyDigests = currentUsesHistory
+                ? currentDigests : hashSignatures(historySignatures);
         if (currentDigests.isEmpty() && historyDigests.isEmpty()) {
             return SignatureData.EMPTY;
         }
