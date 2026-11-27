@@ -262,14 +262,18 @@ public final class PackageInstallerHooks {
             return;
         }
 
-        String apkIdentity = buildApkIdentity(pkgInfo, apkFile, sourceUri);
-        if (!TextUtils.equals(views.boundApkIdentity, apkIdentity)) {
-            views.boundApkIdentity = apkIdentity;
-            setSignatureExpanded(views, false, false);
-            clearCopyFeedback(views);
-        }
-
         boolean isInstalled = isActuallyInstalled(installedPkgInfo, installedAppInfo);
+        String detailIdentity = buildDetailIdentity(
+                pkgInfo, installedPkgInfo, isInstalled, apkFile, sourceUri);
+        if (TextUtils.equals(views.boundDetailIdentity, detailIdentity)) {
+            syncDetailVisibilityWithCurrentContent(activity, fields, views.container);
+            return;
+        }
+        views.boundDetailIdentity = detailIdentity;
+        views.abiRow.valueView.setTag(null);
+        setSignatureExpanded(views, false, false);
+        clearCopyFeedback(views);
+
         bindVersionRows(views, pkgInfo, isInstalled ? installedPkgInfo : null);
 
         boolean needsAsyncPath = isContentUri(sourceUri);
@@ -362,6 +366,24 @@ public final class PackageInstallerHooks {
         sb.append('|').append(pkgInfo.versionName != null ? pkgInfo.versionName : "");
         sb.append('|').append(apkFile != null ? apkFile.getAbsolutePath() : "");
         sb.append('|').append(sourceUri != null ? sourceUri.toString() : "");
+        return sb.toString();
+    }
+
+    private static String buildDetailIdentity(
+            PackageInfo pkgInfo,
+            PackageInfo installedPkgInfo,
+            boolean isInstalled,
+            File apkFile,
+            Uri sourceUri) {
+        StringBuilder sb = new StringBuilder(buildApkIdentity(pkgInfo, apkFile, sourceUri));
+        sb.append('|').append(isInstalled);
+        if (isInstalled && installedPkgInfo != null) {
+            sb.append('|').append(installedPkgInfo.packageName != null
+                    ? installedPkgInfo.packageName : "");
+            sb.append('|').append(getVersionCodeCompat(installedPkgInfo));
+            sb.append('|').append(installedPkgInfo.versionName != null
+                    ? installedPkgInfo.versionName : "");
+        }
         return sb.toString();
     }
 
@@ -1575,107 +1597,116 @@ public final class PackageInstallerHooks {
         SignatureSection section = views.signatureSection;
         List<String> apkDigests = apkSig.currentDigests;
         List<String> installedDigests = installedSig.currentDigests;
+        String apkHex = apkDigests.isEmpty() ? null : TextUtils.join("\n", apkDigests);
+        String installedHex = installedDigests.isEmpty() ? null : TextUtils.join("\n", installedDigests);
 
         if (!isInstalled) {
-            if (apkDigests.isEmpty()) {
-                section.summaryView.setText("无法读取签名");
-                section.hasExpandableDetails = false;
-                setArrowIndicatorVisible(section, false);
-                setCopyTarget(section.headerRowView,
-                        CopyTarget.unavailable("SHA-256"));
+            if (apkHex == null) {
                 section.apkDigestRow.rowView.setVisibility(View.GONE);
                 section.installedDigestRow.rowView.setVisibility(View.GONE);
-                setSignatureExpanded(views, false, false);
+                applySignatureHeader(
+                        views,
+                        "无法读取签名",
+                        false,
+                        CopyTarget.unavailable("SHA-256"),
+                        false);
                 return;
             }
-            String apkHex = TextUtils.join("\n", apkDigests);
-            section.summaryView.setText("已读取签名");
-            section.hasExpandableDetails = true;
-            setArrowIndicatorVisible(section, true);
-            setCopyTarget(section.headerRowView, CopyTarget.of("SHA-256", apkHex));
-            bindDigestRow(section.apkDigestRow, "SHA-256", apkHex, "SHA-256", views.theme.valueColor);
-            section.installedDigestRow.rowView.setVisibility(View.GONE);
-            setSignatureExpanded(views, views.signatureExpanded, false);
+            bindSingleDigestSection(views, "已读取签名", apkHex);
             return;
         }
 
-        if (!apkDigests.isEmpty() && !installedDigests.isEmpty()) {
-            String apkHex = TextUtils.join("\n", apkDigests);
-            String installedHex = TextUtils.join("\n", installedDigests);
+        if (apkHex != null && installedHex != null) {
             if (apkDigests.equals(installedDigests)) {
-                section.summaryView.setText(buildStyledStatusText(
-                        "一致", "（与已安装应用相同）",
-                        views.theme.primaryAccentColor, views.theme.valueColor, true));
-                section.hasExpandableDetails = true;
-                setArrowIndicatorVisible(section, true);
-                setCopyTarget(section.headerRowView, CopyTarget.of("SHA-256", apkHex));
-                bindDigestRow(section.apkDigestRow, "SHA-256", apkHex, "SHA-256", views.theme.valueColor);
-                section.installedDigestRow.rowView.setVisibility(View.GONE);
-                setSignatureExpanded(views, views.signatureExpanded, false);
+                bindSingleDigestSection(
+                        views,
+                        buildStyledStatusText(
+                                "一致", "（与已安装应用相同）",
+                                views.theme.primaryAccentColor, views.theme.valueColor, true),
+                        apkHex);
                 return;
             }
-            if (!apkSig.historyDigests.isEmpty() && apkSig.historyDigests.containsAll(installedDigests)) {
-                section.summaryView.setText(buildStyledStatusText(
-                        "一致", "（证书轮换兼容）",
-                        views.theme.primaryAccentColor, views.theme.valueColor, true));
-                section.hasExpandableDetails = true;
-                setArrowIndicatorVisible(section, true);
-                setCopyTarget(section.headerRowView, CopyTarget.of("待安装 SHA-256", apkHex));
-                bindDigestRow(section.apkDigestRow, "待安装 SHA-256", apkHex, "待安装 SHA-256", views.theme.valueColor);
-                bindDigestRow(section.installedDigestRow, "已安装 SHA-256", installedHex, "已安装 SHA-256", views.theme.valueColor);
-                setSignatureExpanded(views, views.signatureExpanded, false);
-                return;
-            }
-            section.summaryView.setText(buildStyledStatusText(
-                    "不一致（与已安装应用不同）", null,
-                    views.theme.errorColor, views.theme.errorColor, true));
-            section.hasExpandableDetails = true;
-            setArrowIndicatorVisible(section, true);
-            setCopyTarget(section.headerRowView, CopyTarget.of("待安装 SHA-256", apkHex));
-            bindDigestRow(section.apkDigestRow, "待安装 SHA-256", apkHex, "待安装 SHA-256", views.theme.errorColor);
+            boolean rotationCompatible =
+                    !apkSig.historyDigests.isEmpty() && apkSig.historyDigests.containsAll(installedDigests);
+            CharSequence summaryText = rotationCompatible
+                    ? buildStyledStatusText(
+                            "一致", "（证书轮换兼容）",
+                            views.theme.primaryAccentColor, views.theme.valueColor, true)
+                    : buildStyledStatusText(
+                            "不一致（与已安装应用不同）", null,
+                            views.theme.errorColor, views.theme.errorColor, true);
+            int apkColor = rotationCompatible ? views.theme.valueColor : views.theme.errorColor;
+            bindDigestRow(section.apkDigestRow, "待安装 SHA-256", apkHex, "待安装 SHA-256", apkColor);
             bindDigestRow(section.installedDigestRow, "已安装 SHA-256", installedHex, "已安装 SHA-256", views.theme.valueColor);
-            setSignatureExpanded(views, views.signatureExpanded, false);
+            applySignatureHeader(
+                    views,
+                    summaryText,
+                    true,
+                    CopyTarget.of("待安装 SHA-256", apkHex),
+                    views.signatureExpanded);
             return;
         }
 
-        section.summaryView.setText(buildStyledStatusText(
-                "无法比对", "（签名信息不完整）",
-                views.theme.warningColor, views.theme.labelColor, true));
-        boolean hasApk = !apkDigests.isEmpty();
-        boolean hasInstalled = !installedDigests.isEmpty();
-        section.hasExpandableDetails = hasApk || hasInstalled;
-        setArrowIndicatorVisible(section, section.hasExpandableDetails);
-        if (hasApk) {
-            String apkHex = TextUtils.join("\n", apkDigests);
-            setCopyTarget(section.headerRowView, CopyTarget.of("待安装 SHA-256", apkHex));
-            bindDigestRow(section.apkDigestRow, "待安装 SHA-256", apkHex, "待安装 SHA-256", views.theme.valueColor);
-        } else {
-            section.apkDigestRow.rowView.setVisibility(View.VISIBLE);
-            section.apkDigestRow.labelView.setText("待安装 SHA-256");
-            section.apkDigestRow.valueView.setText("未知");
-            section.apkDigestRow.valueView.setTextColor(views.theme.labelColor);
-            setCopyTarget(section.apkDigestRow.rowView,
-                    CopyTarget.unavailable("待安装 SHA-256"));
+        bindOptionalDigestRow(section.apkDigestRow, "待安装 SHA-256", apkHex, views.theme);
+        bindOptionalDigestRow(section.installedDigestRow, "已安装 SHA-256", installedHex, views.theme);
+        CopyTarget headerCopyTarget = apkHex != null
+                ? CopyTarget.of("待安装 SHA-256", apkHex)
+                : (installedHex != null
+                        ? CopyTarget.of("已安装 SHA-256", installedHex)
+                        : CopyTarget.unavailable("SHA-256"));
+        applySignatureHeader(
+                views,
+                buildStyledStatusText(
+                        "无法比对", "（签名信息不完整）",
+                        views.theme.warningColor, views.theme.labelColor, true),
+                apkHex != null || installedHex != null,
+                headerCopyTarget,
+                views.signatureExpanded);
+    }
+
+    private static void bindSingleDigestSection(
+            DetailViews views,
+            CharSequence summaryText,
+            String apkHex) {
+        SignatureSection section = views.signatureSection;
+        bindDigestRow(section.apkDigestRow, "SHA-256", apkHex, "SHA-256", views.theme.valueColor);
+        section.installedDigestRow.rowView.setVisibility(View.GONE);
+        applySignatureHeader(
+                views,
+                summaryText,
+                true,
+                CopyTarget.of("SHA-256", apkHex),
+                views.signatureExpanded);
+    }
+
+    private static void bindOptionalDigestRow(
+            DetailRow digestRow,
+            String label,
+            String hexValue,
+            DetailTheme theme) {
+        if (!TextUtils.isEmpty(hexValue)) {
+            bindDigestRow(digestRow, label, hexValue, label, theme.valueColor);
+            return;
         }
-        if (hasInstalled) {
-            String installedHex = TextUtils.join("\n", installedDigests);
-            if (!hasApk) {
-                setCopyTarget(section.headerRowView, CopyTarget.of("已安装 SHA-256", installedHex));
-            }
-            bindDigestRow(section.installedDigestRow, "已安装 SHA-256", installedHex, "已安装 SHA-256", views.theme.valueColor);
-        } else {
-            section.installedDigestRow.rowView.setVisibility(View.VISIBLE);
-            section.installedDigestRow.labelView.setText("已安装 SHA-256");
-            section.installedDigestRow.valueView.setText("未知");
-            section.installedDigestRow.valueView.setTextColor(views.theme.labelColor);
-            setCopyTarget(section.installedDigestRow.rowView,
-                    CopyTarget.unavailable("已安装 SHA-256"));
-        }
-        if (!hasApk && !hasInstalled) {
-            setCopyTarget(section.headerRowView,
-                    CopyTarget.unavailable("SHA-256"));
-        }
-        setSignatureExpanded(views, views.signatureExpanded, false);
+        digestRow.rowView.setVisibility(View.VISIBLE);
+        digestRow.labelView.setText(label);
+        digestRow.valueView.setText("未知");
+        digestRow.valueView.setTextColor(theme.labelColor);
+        setCopyTarget(digestRow.rowView, CopyTarget.unavailable(label));
+    }
+
+    private static void applySignatureHeader(
+            DetailViews views,
+            CharSequence summaryText,
+            boolean hasExpandableDetails,
+            CopyTarget headerCopyTarget,
+            boolean expanded) {
+        SignatureSection section = views.signatureSection;
+        section.summaryView.setText(summaryText);
+        section.hasExpandableDetails = hasExpandableDetails;
+        setArrowIndicatorVisible(section, hasExpandableDetails);
+        setCopyTarget(section.headerRowView, headerCopyTarget);
+        setSignatureExpanded(views, expanded, false);
     }
 
     private static void bindDigestRow(
@@ -2015,7 +2046,7 @@ public final class PackageInstallerHooks {
         final DetailRow abiRow;
         final SignatureSection signatureSection;
         final DetailRow pathRow;
-        String boundApkIdentity;
+        String boundDetailIdentity;
         boolean signatureExpanded;
         View activeHighlightView;
         Toast activeToast;
