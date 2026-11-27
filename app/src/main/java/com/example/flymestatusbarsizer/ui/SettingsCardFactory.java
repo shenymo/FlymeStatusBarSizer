@@ -727,10 +727,10 @@ public final class SettingsCardFactory {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
         activity.addActionButtonRow(content, "管理打开方式",
-                "按网页链接、图片、视频、音频、文档和安装包等类型管理“打开方式”弹窗中的候选应用，与“分享面板”互不影响。",
+                "按网页链接、图片、视频、音频、文档和安装包等类型隐藏或排序候选应用。规则保存后立即写入；Hook 已激活时，重开“打开方式”弹窗即可生效。",
                 "管理", () -> new ResolverTargetsEditor(activity).show());
         return activity.buildSectionCard("打开方式",
-                "仅控制系统的“打开方式”弹窗（用其他应用打开文件或链接），不影响“分享面板”。默认跟随系统顺序，可按内容类型隐藏和排序。",
+                "仅控制系统的“打开方式”弹窗（用其他应用打开文件或链接），不影响“分享面板”。需在 LSPosed 启用本模块及“系统框架（android）”范围并重启手机加载 Hook；Hook 已激活时，开关更改在重新打开弹窗后生效。",
                 content, false, ResolverTargetsUiApi.getProvider().isEnabled(activity),
                 (buttonView, isChecked) -> ResolverTargetsUiApi.getProvider().setEnabled(activity, isChecked));
     }
