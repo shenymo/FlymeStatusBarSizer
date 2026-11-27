@@ -633,6 +633,8 @@ public final class SettingsStore {
             "mz_safe_background_optimization_enabled";
     public static final String KEY_PACKAGE_INSTALLER_SAFETY_BYPASS_ENABLED =
             "package_installer_safety_bypass_enabled";
+    public static final String KEY_PACKAGE_INSTALLER_DETAILS_ENABLED =
+            "package_installer_details_enabled";
     public static final String KEY_ONEMIND_LOGCAT_ENABLED =
             "onemind_logcat_enabled";
     static final String KEY_ONEMIND_HOOK_INSTALLED_UPTIME_MS =
@@ -846,6 +848,7 @@ public final class SettingsStore {
     public static final boolean DEFAULT_ONEMIND_PERF_DISABLE_ENABLED = false;
     public static final boolean DEFAULT_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED = false;
     public static final boolean DEFAULT_PACKAGE_INSTALLER_SAFETY_BYPASS_ENABLED = false;
+    public static final boolean DEFAULT_PACKAGE_INSTALLER_DETAILS_ENABLED = false;
     public static final boolean DEFAULT_ONEMIND_LOGCAT_ENABLED = false;
     public static final int DEFAULT_TELEPHONY_DEBUG_SIM_COUNT = 2;
     public static final int TELEPHONY_DEBUG_DEFAULT_DATA_SLOT_NONE = -1;
@@ -1166,6 +1169,7 @@ public final class SettingsStore {
             KEY_ONEMIND_PERF_DISABLE_ENABLED,
             KEY_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED,
             KEY_PACKAGE_INSTALLER_SAFETY_BYPASS_ENABLED,
+            KEY_PACKAGE_INSTALLER_DETAILS_ENABLED,
             KEY_ONEMIND_LOGCAT_ENABLED
     });
 
@@ -1928,6 +1932,8 @@ public final class SettingsStore {
                 return DEFAULT_MZ_SAFE_BACKGROUND_OPTIMIZATION_ENABLED;
             case KEY_PACKAGE_INSTALLER_SAFETY_BYPASS_ENABLED:
                 return DEFAULT_PACKAGE_INSTALLER_SAFETY_BYPASS_ENABLED;
+            case KEY_PACKAGE_INSTALLER_DETAILS_ENABLED:
+                return DEFAULT_PACKAGE_INSTALLER_DETAILS_ENABLED;
             default:
                 return false;
         }

@@ -263,6 +263,9 @@ public class FlymeStatusBarSizer extends XposedModule {
         MODULE = this;
         ModuleConfig.setConfigChangedCallback(FlymeStatusBarSizer::scheduleConfigChangedRefresh);
         ModuleConfig.attachToModule(this);
+        if (PACKAGE_INSTALLER.equals(packageName) && !isPackageInstallerSafetyBypassEnabled()) {
+            return;
+        }
         ClassLoader loader = param.getDefaultClassLoader();
         if (ShareTargetsHooks.PACKAGE.equals(packageName)) {
             ShareTargetsHooks.install(this, loader);
@@ -737,6 +740,13 @@ public class FlymeStatusBarSizer extends XposedModule {
     public static boolean isPackageInstallerSafetyBypassEnabled() {
         ModuleConfig config = ModuleConfig.load(null);
         return config != null && config.enabled && config.packageInstallerSafetyBypassEnabled;
+    }
+
+    public static boolean isPackageInstallerDetailsEnabled() {
+        ModuleConfig config = ModuleConfig.load(null);
+        return config != null && config.enabled
+                && config.packageInstallerSafetyBypassEnabled
+                && config.packageInstallerDetailsEnabled;
     }
 
     public static boolean isOneMindLogcatEnabled() {

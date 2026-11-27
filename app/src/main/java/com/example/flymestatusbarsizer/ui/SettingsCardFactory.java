@@ -839,10 +839,26 @@ public final class SettingsCardFactory {
     public View createPackageInstallerSettingsCard() {
         LinearLayout content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
-        activity.addSwitchRow(content, "纯净安装器",
-                "跳过 Flyme 安全扫描和联网风险检查，但仍保留系统安装确认。",
+        LinearLayout detailOptions = new LinearLayout(activity);
+        detailOptions.setOrientation(LinearLayout.VERTICAL);
+        MaterialSwitch masterSwitch = activity.addSwitchRow(content, "启用纯净安装器",
+                "跳过 Flyme 安全扫描和联网风险检查，但仍保留系统安装确认；关闭后不对软件包安装程序做任何修改。",
                 SettingsStore.KEY_PACKAGE_INSTALLER_SAFETY_BYPASS_ENABLED,
-                SettingsStore.DEFAULT_PACKAGE_INSTALLER_SAFETY_BYPASS_ENABLED);
+                SettingsStore.DEFAULT_PACKAGE_INSTALLER_SAFETY_BYPASS_ENABLED,
+                (buttonView, isChecked) -> {
+                    activity.setEnabledRecursively(detailOptions, isChecked);
+                    detailOptions.setAlpha(isChecked ? 1f : 0.45f);
+                });
+        LinearLayout.LayoutParams detailOptionsLp = PageViewUtils.matchWrap();
+        detailOptionsLp.leftMargin = activity.dp(12);
+        activity.addDivider(detailOptions);
+        activity.addSwitchRow(detailOptions, "显示安装详细信息",
+                "在安装界面显示版本对比、支持 ABI、签名比对与本地路径；仅在启用纯净安装器后生效。",
+                SettingsStore.KEY_PACKAGE_INSTALLER_DETAILS_ENABLED,
+                SettingsStore.DEFAULT_PACKAGE_INSTALLER_DETAILS_ENABLED);
+        activity.setEnabledRecursively(detailOptions, masterSwitch.isChecked());
+        detailOptions.setAlpha(masterSwitch.isChecked() ? 1f : 0.45f);
+        content.addView(detailOptions, detailOptionsLp);
         return activity.buildSectionCard(
                 "纯净安装器",
                 "调整软件包安装程序行为，修改后重启软件包安装程序生效。",
