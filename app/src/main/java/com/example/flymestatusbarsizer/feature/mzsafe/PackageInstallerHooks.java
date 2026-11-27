@@ -252,6 +252,8 @@ public final class PackageInstallerHooks {
         File stagedFile = (File) fields.stagedApkFile.get(activity);
         Uri sourceUri = (Uri) fields.sourceUri.get(activity);
         TextView refVersionView = (TextView) fields.appVersionView.get(activity);
+        TextView apkSizeView = (TextView) fields.apkSizeView.get(activity);
+        hideHeaderVersionView(refVersionView, apkSizeView);
 
         DetailViews views = ensureDetailViews(activity, refVersionView);
         if (views == null) {
@@ -336,6 +338,19 @@ public final class PackageInstallerHooks {
         }
 
         syncDetailVisibilityWithCurrentContent(activity, fields, views.container);
+    }
+
+    private static void hideHeaderVersionView(TextView appVersionView, TextView apkSizeView) {
+        if (appVersionView != null && appVersionView.getVisibility() != View.GONE) {
+            appVersionView.setVisibility(View.GONE);
+        }
+        if (apkSizeView != null && apkSizeView.getLayoutParams() instanceof ViewGroup.MarginLayoutParams) {
+            ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) apkSizeView.getLayoutParams();
+            if (lp.getMarginStart() != 0) {
+                lp.setMarginStart(0);
+                apkSizeView.setLayoutParams(lp);
+            }
+        }
     }
 
     private static String buildApkIdentity(PackageInfo pkgInfo, File apkFile, Uri sourceUri) {
@@ -1938,6 +1953,7 @@ public final class PackageInstallerHooks {
         final Field stagedApkFile;
         final Field sourceUri;
         final Field appVersionView;
+        final Field apkSizeView;
         final Field topMessageLayout;
         final Field scanLoadingLayout;
         final Field adInstallLayouts;
@@ -1950,6 +1966,7 @@ public final class PackageInstallerHooks {
             stagedApkFile = getAccessibleField(activityClass, "stagedApkFile");
             sourceUri = getAccessibleField(activityClass, "sourceURI");
             appVersionView = getAccessibleField(activityClass, "appVersionView");
+            apkSizeView = getAccessibleField(activityClass, "apkSizeView");
             topMessageLayout = getAccessibleField(activityClass, "top_message_layout");
             scanLoadingLayout = getAccessibleField(activityClass, "scan_loading_layout");
             adInstallLayouts = getAccessibleField(activityClass, "ad_install_layouts");
