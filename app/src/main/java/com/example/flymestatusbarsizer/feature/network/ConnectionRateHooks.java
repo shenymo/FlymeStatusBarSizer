@@ -332,7 +332,6 @@ public final class ConnectionRateHooks {
         }
 
         if (changed) {
-            FlymeStatusBarSizer.disableAncestorClipping(view, 4);
             if (unitView != null) {
                 unitView.requestLayout();
                 unitView.invalidate();

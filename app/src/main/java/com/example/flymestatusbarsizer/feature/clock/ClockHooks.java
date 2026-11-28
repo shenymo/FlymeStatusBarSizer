@@ -665,7 +665,6 @@ public final class ClockHooks {
         if (view == null) {
             return false;
         }
-        FlymeStatusBarSizer.disableAncestorClipping(view, 4);
         boolean changed = false;
         if (Math.abs(view.getScaleX() - 1f) > 0.001f) {
             view.setScaleX(1f);

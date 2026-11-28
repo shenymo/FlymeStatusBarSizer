@@ -692,7 +692,6 @@ final class ClockDetailPopupController {
         dismissAnimationRunning = false;
         popupLayoutUpdatePending = false;
         startPopupSession();
-        FlymeStatusBarSizer.disableAncestorClipping(anchor, 6);
         FlymeStatusBarSizer.ClockConfigSnapshot clockConfig =
                 FlymeStatusBarSizer.loadClockConfig(contentView.getContext());
         refreshLunarDateConfig(clockConfig);

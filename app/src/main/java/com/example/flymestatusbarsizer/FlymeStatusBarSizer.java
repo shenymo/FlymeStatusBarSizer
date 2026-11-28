@@ -3280,7 +3280,6 @@ public class FlymeStatusBarSizer extends XposedModule {
             state.hasLayoutSignature = false;
             return changed;
         }
-        disableAncestorClipping(view, 6);
         ensureBatteryViewRuntimeSnapshot(view, state);
         boolean showBolt = state.showBolt;
         int width = customBatteryMeasuredWidthWithMergedIcons(view, config, showBolt);
@@ -4722,7 +4721,6 @@ public class FlymeStatusBarSizer extends XposedModule {
                 : signalLevel;
         int targetHeight = resolveTargetSignalIconBoxSize(view);
         resizeSignalIconView(view, mobileTypeBadge, mobileTypeBadgeText);
-        disableAncestorClipping(view, 6);
         int intrinsicHeight = SignalPreviewPainter.resolveIntrinsicHeight(targetHeight);
         int intrinsicWidth = SignalPreviewPainter.resolveIntrinsicWidth(
                 intrinsicHeight, mobileTypeBadge, mobileTypeBadgeText);
@@ -4919,7 +4917,6 @@ public class FlymeStatusBarSizer extends XposedModule {
         resetSignalWrapperScaleIfNeeded(view);
         alignSignalIconVertically(view);
         syncWifiWrapperSize(view, config);
-        disableAncestorClipping(view, 6);
         boolean showSecondaryBadge = mergedDualWifi && WIFI_SLOT_PRIMARY.equals(resolveWifiSlot(view));
         int intrinsicHeight = resolveWifiIconIntrinsicHeight(view);
         int intrinsicWidth = resolveWifiIconIntrinsicWidth(view, intrinsicHeight);
@@ -7168,18 +7165,6 @@ public class FlymeStatusBarSizer extends XposedModule {
 
     private static void refreshTrackedInputMethodViews() {
         ImeHooks.refreshTrackedInputMethodViews();
-    }
-
-    public static void disableAncestorClipping(View view, int maxDepth) {
-        ViewParent parent = view.getParent();
-        int depth = 0;
-        while (parent instanceof ViewGroup && depth < maxDepth) {
-            ViewGroup group = (ViewGroup) parent;
-            group.setClipChildren(false);
-            group.setClipToPadding(false);
-            parent = group.getParent();
-            depth++;
-        }
     }
 
     private static void disableChildClipping(View view) {
