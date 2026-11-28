@@ -521,9 +521,14 @@ public final class SignalPreviewPainter {
 
         float contentWidthFor5ga = metrics.mainWidth + metrics.textGap + metrics.subWidth;
         metrics.sidePadding = Math.max(0f, (boxSize - contentWidthFor5ga) / 2f);
-        metrics.badgeWidth = badgeType == MOBILE_TYPE_BADGE_5GA
-                ? boxSize + boxSize * MOBILE_TYPE_5GA_TRAILING_PADDING_RATIO
-                : metrics.mainWidth + metrics.sidePadding * 2f;
+        if (badgeType == MOBILE_TYPE_BADGE_5GA) {
+            float textRight = metrics.sidePadding + metrics.mainWidth + metrics.textGap
+                    + metrics.subBoundsRight;
+            float minimumWidth = boxSize + boxSize * MOBILE_TYPE_5GA_TRAILING_PADDING_RATIO;
+            metrics.badgeWidth = Math.max(minimumWidth, textRight + boxSize * 0.04f);
+        } else {
+            metrics.badgeWidth = metrics.mainWidth + metrics.sidePadding * 2f;
+        }
         return metrics;
     }
 
